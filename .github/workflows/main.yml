@@ -1,12 +1,11 @@
-name: CI
+name: Main
 
 on:
   push:
-    branches-ignore: [main]
-  pull_request:
+    branches: [main]
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: main-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -122,3 +121,21 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    needs: [fly-config, go-checks, lint, vulncheck, gitleaks]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://imsub.fly.dev
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

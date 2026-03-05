@@ -196,6 +196,11 @@ make status     # Show app status
 make logs       # Show recent logs
 ```
 
+### GitHub Actions Deploy Flow
+
+Push to `main` runs `CI`; if it passes, GitHub Actions deploys to Fly.io.
+
+
 ### Health Check
 
 - **Endpoint:** `GET /healthz` (includes Redis connectivity check)
