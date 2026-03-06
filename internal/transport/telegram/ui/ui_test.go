@@ -39,6 +39,7 @@ func TestSubEndSubscribeMarkup(t *testing.T) {
 	got := SubEndSubscribeMarkup("en", "name with spaces")
 	if got == nil {
 		t.Fatalf("SubEndSubscribeMarkup(%q, %q) = nil, want non-nil", "en", "name with spaces")
+		return // prevent staticcheck SA5011 warning
 	}
 	if len(got.InlineKeyboard) != 1 || len(got.InlineKeyboard[0]) != 1 {
 		t.Errorf("SubEndSubscribeMarkup(%q, %q) keyboard = %+v, want 1 row with 1 button", "en", "name with spaces", got.InlineKeyboard)

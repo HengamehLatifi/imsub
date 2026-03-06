@@ -68,7 +68,6 @@ func (f *callbacksFakeObserver) EventSubMessage(messageType, subscriptionType, r
 	f.eventResult = result
 }
 
-//nolint:unparam // test helper args can be constant
 func newController(store controllerStore, obs metricsObserver, viewer viewerOAuthHandler, creator creatorOAuthHandler, subEnd subEndHandler) *Controller {
 	return New(Dependencies{
 		Config: config.Config{

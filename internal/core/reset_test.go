@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"slices"
 	"testing"
@@ -113,7 +112,7 @@ func TestResetViewerDataAndRevokeGroupAccess(t *testing.T) {
 			}
 			return nil
 		},
-		slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		slog.New(slog.DiscardHandler),
 	)
 
 	count, err := svc.ResetViewerDataAndRevokeGroupAccess(t.Context(), 9)

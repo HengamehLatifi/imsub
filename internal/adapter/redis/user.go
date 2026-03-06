@@ -34,7 +34,7 @@ func isDifferentTwitchLinkError(err error) bool {
 func (s *Store) UserIdentity(ctx context.Context, telegramUserID int64) (core.UserIdentity, bool, error) {
 	vals, err := s.rdb.HGetAll(ctx, keyUserIdentity(telegramUserID)).Result()
 	if err != nil {
-		return core.UserIdentity{}, false, err
+		return core.UserIdentity{}, false, fmt.Errorf("redis hgetall user identity: %w", err)
 	}
 	if len(vals) == 0 {
 		return core.UserIdentity{}, false, nil
@@ -114,7 +114,7 @@ func (s *Store) SaveUserIdentityOnly(ctx context.Context, telegramUserID int64, 
 		if isDifferentTwitchLinkError(err) {
 			return displacedUserID, core.ErrDifferentTwitch
 		}
-		return displacedUserID, err
+		return displacedUserID, fmt.Errorf("eval link viewer identity script: %w", err)
 	}
 	return displacedUserID, nil
 }
@@ -146,7 +146,7 @@ func (s *Store) SaveUserCreator(ctx context.Context, telegramUserID int64, creat
 		if isDifferentTwitchLinkError(err) {
 			return displacedUserID, core.ErrDifferentTwitch
 		}
-		return displacedUserID, err
+		return displacedUserID, fmt.Errorf("eval link viewer creator script: %w", err)
 	}
 	return displacedUserID, nil
 }
@@ -155,7 +155,7 @@ func (s *Store) SaveUserCreator(ctx context.Context, telegramUserID int64, creat
 func (s *Store) UserCreatorIDs(ctx context.Context, telegramUserID int64) ([]string, error) {
 	ids, err := s.rdb.SMembers(ctx, keyUserCreators(telegramUserID)).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis smembers user creators: %w", err)
 	}
 	if len(ids) != 0 {
 		slices.Sort(ids)
@@ -164,7 +164,7 @@ func (s *Store) UserCreatorIDs(ctx context.Context, telegramUserID int64) ([]str
 
 	allIDs, err := s.rdb.SMembers(ctx, keyCreatorsSet()).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis smembers creators set: %w", err)
 	}
 	if len(allIDs) == 0 {
 		return nil, nil
@@ -176,7 +176,7 @@ func (s *Store) UserCreatorIDs(ctx context.Context, telegramUserID int64) ([]str
 		cmds[i] = pipe.SIsMember(ctx, keyCreatorMembers(creatorID), tgStr)
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis exec pipeline user creators check: %w", err)
 	}
 	fallbackIDs := make([]string, 0, len(allIDs))
 	for i, creatorID := range allIDs {
@@ -204,8 +204,10 @@ func (s *Store) RemoveUserCreatorByTelegram(ctx context.Context, telegramUserID 
 	pipe := s.rdb.TxPipeline()
 	pipe.SRem(ctx, keyCreatorMembers(creatorID), tgStr)
 	pipe.SRem(ctx, keyUserCreators(telegramUserID), creatorID)
-	_, err := pipe.Exec(ctx)
-	return err
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("redis exec remove user creator link: %w", err)
+	}
+	return nil
 }
 
 // AddUserCreatorMembership adds a user to a creator's member set and reverse index.
@@ -214,8 +216,10 @@ func (s *Store) AddUserCreatorMembership(ctx context.Context, telegramUserID int
 	pipe := s.rdb.TxPipeline()
 	pipe.SAdd(ctx, keyCreatorMembers(creatorID), tgStr)
 	pipe.SAdd(ctx, keyUserCreators(telegramUserID), creatorID)
-	_, err := pipe.Exec(ctx)
-	return err
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("redis exec add user creator link: %w", err)
+	}
+	return nil
 }
 
 // RemoveUserCreatorByTwitch resolves a Twitch user to Telegram and removes their creator membership.
@@ -225,11 +229,11 @@ func (s *Store) RemoveUserCreatorByTwitch(ctx context.Context, twitchUserID, cre
 		if errors.Is(err, redis.Nil) {
 			return 0, false, nil
 		}
-		return 0, false, err
+		return 0, false, fmt.Errorf("redis get twitch mapping: %w", err)
 	}
 	tgID, err := strconv.ParseInt(tgStr, 10, 64)
 	if err != nil {
-		return 0, false, err
+		return 0, false, fmt.Errorf("parse telegram user id: %w", err)
 	}
 	if err := s.RemoveUserCreatorByTelegram(ctx, tgID, creatorID); err != nil {
 		return 0, false, err
@@ -259,6 +263,8 @@ func (s *Store) DeleteAllUserData(ctx context.Context, telegramUserID int64) err
 	if ok && identity.TwitchUserID != "" {
 		pipe.Del(ctx, keyTwitchToTelegram(identity.TwitchUserID))
 	}
-	_, err = pipe.Exec(ctx)
-	return err
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("redis exec delete all user data: %w", err)
+	}
+	return nil
 }

@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -20,7 +21,7 @@ func (s *Store) MarkEventProcessed(ctx context.Context, messageID string, ttl ti
 		return true, nil
 	}
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("redis set nx event message: %w", err)
 	}
 	return false, nil
 }

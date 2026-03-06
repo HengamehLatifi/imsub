@@ -11,13 +11,33 @@ import (
 	"imsub/internal/core"
 )
 
+const (
+	eventStatusUnknown                          = "unknown"
+	eventStatusError                            = "error"
+	eventStatusBadBody                          = "bad_body"
+	eventStatusInvalidSignature                 = "invalid_signature"
+	eventStatusMissingMessageType               = "missing_message_type"
+	eventStatusInvalidJSON                      = "invalid_json"
+	eventStatusChallengeOK                      = "challenge_ok"
+	eventStatusMissingMessageID                 = "missing_message_id"
+	eventStatusRedisError                       = "redis_error"
+	eventStatusDuplicate                        = "duplicate"
+	eventStatusRevocation                       = "revocation"
+	eventStatusNotificationSubscribeStoreFailed = "notification_subscribe_store_failed"
+	eventStatusNotificationSubscribe            = "notification_subscribe"
+	eventStatusNotificationSubEndFailed         = "notification_subscription_end_failed"
+	eventStatusNotificationSubEnd               = "notification_subscription_end"
+	eventStatusNotificationOther                = "notification_other"
+	eventStatusIgnoredMessageType               = "ignored_message_type"
+)
+
 // EventSubWebhook verifies and processes Twitch EventSub webhook deliveries.
 func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 	logger := c.logCtx(r.Context())
 	logger.Debug("eventsub webhook received", "method", r.Method, "path", r.URL.Path)
 	messageType := strings.TrimSpace(r.Header.Get("Twitch-Eventsub-Message-Type"))
-	subscriptionType := "unknown"
-	result := "error"
+	subscriptionType := eventStatusUnknown
+	result := eventStatusError
 	defer func() {
 		if c.obs != nil {
 			c.obs.EventSubMessage(messageType, subscriptionType, result)
@@ -26,26 +46,26 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
-		result = "bad_body"
+		result = eventStatusBadBody
 		WriteHTTPError(w, BadRequestError("bad body", err))
 		return
 	}
 	if !twitch.VerifyEventSubSignature(c.cfg.TwitchEventSubSecret, r.Header, body) {
 		logger.Debug("eventsub signature verification failed", "message_id", r.Header.Get("Twitch-Eventsub-Message-Id"), "message_type", r.Header.Get("Twitch-Eventsub-Message-Type"))
-		result = "invalid_signature"
+		result = eventStatusInvalidSignature
 		WriteHTTPError(w, UnauthorizedError("invalid signature", nil))
 		return
 	}
 
 	if messageType == "" {
-		result = "missing_message_type"
+		result = eventStatusMissingMessageType
 		WriteHTTPError(w, BadRequestError("missing message type", nil))
 		return
 	}
 
 	var env twitch.EventSubEnvelope
 	if err := json.Unmarshal(body, &env); err != nil {
-		result = "invalid_json"
+		result = eventStatusInvalidJSON
 		WriteHTTPError(w, BadRequestError("invalid json", err))
 		return
 	}
@@ -64,13 +84,13 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// A write error here only means the client connection closed early.
 		_, _ = w.Write([]byte(env.Challenge))
-		result = "challenge_ok"
+		result = eventStatusChallengeOK
 		return
 	}
 
 	messageID := r.Header.Get("Twitch-Eventsub-Message-Id")
 	if messageID == "" {
-		result = "missing_message_id"
+		result = eventStatusMissingMessageID
 		WriteHTTPError(w, BadRequestError("missing message id", nil))
 		return
 	}
@@ -78,7 +98,7 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	alreadyProcessed, err := c.store.MarkEventProcessed(ctx, messageID, 24*time.Hour)
 	if err != nil {
-		result = "redis_error"
+		result = eventStatusRedisError
 		WriteHTTPError(w, BadGatewayError("redis error", err))
 		return
 	}
@@ -87,7 +107,7 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// A write error here only means the client connection closed early.
 		_, _ = w.Write([]byte("duplicate ignored"))
-		result = "duplicate"
+		result = eventStatusDuplicate
 		return
 	}
 
@@ -95,17 +115,17 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 	case "revocation":
 		logger.Warn("eventsub revocation received", "type", env.Subscription.Type, "creator_id", env.Subscription.Condition.BroadcasterUserID)
 		w.WriteHeader(http.StatusNoContent)
-		result = "revocation"
+		result = eventStatusRevocation
 	case "notification":
 		logger.Debug("eventsub notification received", "type", env.Subscription.Type, "broadcaster_id", env.Subscription.Condition.BroadcasterUserID, "user_id", env.Event.UserID)
 		switch env.Subscription.Type {
 		case core.EventTypeChannelSubscribe:
 			if err := c.store.AddCreatorSubscriber(ctx, env.Subscription.Condition.BroadcasterUserID, env.Event.UserID); err != nil {
-				result = "notification_subscribe_store_failed"
+				result = eventStatusNotificationSubscribeStoreFailed
 				WriteHTTPError(w, BadGatewayError("store error", err))
 				return
 			}
-			result = "notification_subscribe"
+			result = eventStatusNotificationSubscribe
 		case core.EventTypeChannelSubEnd:
 			if err := c.subEnd(
 				ctx,
@@ -114,17 +134,17 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 				env.Event.UserID,
 				env.Event.UserLogin,
 			); err != nil {
-				result = "notification_subscription_end_failed"
+				result = eventStatusNotificationSubEndFailed
 				WriteHTTPError(w, BadGatewayError("processing failed", err))
 				return
 			}
-			result = "notification_subscription_end"
+			result = eventStatusNotificationSubEnd
 		default:
-			result = "notification_other"
+			result = eventStatusNotificationOther
 		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
-		result = "ignored_message_type"
+		result = eventStatusIgnoredMessageType
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

@@ -14,6 +14,11 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
+var (
+	errBotNotInitialized = errors.New("telegram bot not initialized")
+	errEmptyInviteLink   = errors.New("telegram returned empty invite link")
+)
+
 type limiter interface {
 	Wait(ctx context.Context, chatID int64) error
 }
@@ -47,13 +52,13 @@ func New(bot *telego.Bot, lim limiter, logger *slog.Logger, store creatorStore) 
 // groupChatID that expires in 10 minutes.
 func (c *Client) CreateInviteLink(ctx context.Context, groupChatID int64, telegramUserID int64, name string) (string, error) {
 	if c == nil || c.bot == nil {
-		return "", errors.New("telegram bot not initialized")
+		return "", errBotNotInitialized
 	}
 	expire := time.Now().Add(10 * time.Minute).Unix()
 	linkName := fmt.Sprintf("imsub-%d-%s", telegramUserID, name)
 	if c.limiter != nil {
 		if err := c.limiter.Wait(ctx, groupChatID); err != nil {
-			return "", err
+			return "", fmt.Errorf("limiter wait: %w", err)
 		}
 	}
 	result, err := c.bot.CreateChatInviteLink(ctx, &telego.CreateChatInviteLinkParams{
@@ -63,10 +68,10 @@ func (c *Client) CreateInviteLink(ctx context.Context, groupChatID int64, telegr
 		Name:               linkName,
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("create chat invite link: %w", err)
 	}
 	if result == nil || result.InviteLink == "" {
-		return "", errors.New("telegram returned empty invite link")
+		return "", errEmptyInviteLink
 	}
 	return result.InviteLink, nil
 }
@@ -103,7 +108,7 @@ func (c *Client) KickFromGroup(ctx context.Context, groupChatID int64, telegramU
 	until := time.Now().Add(60 * time.Second).Unix()
 	if c.limiter != nil {
 		if err := c.limiter.Wait(ctx, groupChatID); err != nil {
-			return err
+			return fmt.Errorf("limiter wait for ban: %w", err)
 		}
 	}
 	err := c.bot.BanChatMember(ctx, &telego.BanChatMemberParams{
@@ -115,11 +120,11 @@ func (c *Client) KickFromGroup(ctx context.Context, groupChatID int64, telegramU
 		if tgerr.IsForbidden(err) || tgerr.IsBadRequest(err) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("ban chat member: %w", err)
 	}
 	if c.limiter != nil {
 		if err := c.limiter.Wait(ctx, groupChatID); err != nil {
-			return err
+			return fmt.Errorf("limiter wait for unban: %w", err)
 		}
 	}
 	err = c.bot.UnbanChatMember(ctx, &telego.UnbanChatMemberParams{
@@ -127,7 +132,10 @@ func (c *Client) KickFromGroup(ctx context.Context, groupChatID int64, telegramU
 		UserID:       telegramUserID,
 		OnlyIfBanned: true,
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("unban chat member: %w", err)
+	}
+	return nil
 }
 
 // KickDisplacedUser removes telegramUserID from every active creator group.

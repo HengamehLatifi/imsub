@@ -35,8 +35,8 @@ type Creator struct {
 	OwnerTelegramID int64
 	GroupChatID     int64
 	GroupName       string
-	AccessToken     string
-	RefreshToken    string
+	AccessToken     string `json:"access_token"`  //nolint:gosec
+	RefreshToken    string `json:"refresh_token"` //nolint:gosec
 	UpdatedAt       time.Time
 }
 

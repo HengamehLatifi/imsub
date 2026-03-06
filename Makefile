@@ -2,7 +2,7 @@ SHELL := /bin/bash
 APP := imsub
 GO ?= go
 
-.PHONY: help fmt fmt-check vet test test-integration build check ci-check deploy status logs lint cover cover-open vuln secrets-scan
+.PHONY: help fmt fmt-check vet test test-integration build check ci-check deploy status logs lint style-check cover cover-open vuln secrets-scan
 
 help:
 	@echo "Targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  make test-integration - run integration-tagged tests"
 	@echo "  make build    - build all packages"
 	@echo "  make lint     - run golangci-lint"
+	@echo "  make style-check - run local style checks aligned with google-go-styleguide.md"
 	@echo "  make cover    - generate coverage.out + coverage.html"
 	@echo "  make cover-open - open interactive coverage HTML view"
 	@echo "  make vuln     - run govulncheck against all packages"
@@ -42,7 +43,9 @@ build:
 	$(GO) build ./...
 
 lint:
-	golangci-lint run ./...
+	GOCACHE=/tmp/gocache GOLANGCI_LINT_CACHE=/tmp/golangci-lint golangci-lint run
+
+style-check: fmt-check lint
 
 cover:
 	$(GO) test -race -coverprofile=coverage.out ./...

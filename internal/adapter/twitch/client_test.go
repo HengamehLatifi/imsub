@@ -138,7 +138,7 @@ func TestEnabledEventSubTypesPagination(t *testing.T) {
 				}`), nil
 			default:
 				t.Errorf("EnabledEventSubTypes request call count = %d, want <= 2", call)
-				return nil, nil
+				return nil, errors.New("unexpected call")
 			}
 		}),
 	})

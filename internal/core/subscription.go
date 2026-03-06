@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 
 	"imsub/internal/platform/i18n"
 )
@@ -46,12 +47,12 @@ type PreparedEnd struct {
 // ProcessEnd applies subscriber-end effects and returns raw domain outcomes.
 func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID string) (EndResult, error) {
 	if err := s.store.RemoveCreatorSubscriber(ctx, broadcasterID, twitchUserID); err != nil {
-		return EndResult{}, err
+		return EndResult{}, fmt.Errorf("remove creator subscriber: %w", err)
 	}
 
 	creator, creatorFound, err := s.store.Creator(ctx, broadcasterID)
 	if err != nil {
-		return EndResult{}, err
+		return EndResult{}, fmt.Errorf("load creator: %w", err)
 	}
 	if broadcasterLogin == "" && creatorFound {
 		broadcasterLogin = creator.Name
@@ -59,7 +60,7 @@ func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcaste
 
 	telegramUserID, found, err := s.store.RemoveUserCreatorByTwitch(ctx, twitchUserID, broadcasterID)
 	if err != nil {
-		return EndResult{}, err
+		return EndResult{}, fmt.Errorf("remove user creator by twitch: %w", err)
 	}
 	if !found {
 		return EndResult{Found: false}, nil
@@ -67,7 +68,7 @@ func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcaste
 
 	identity, hasIdentity, err := s.store.UserIdentity(ctx, telegramUserID)
 	if err != nil {
-		return EndResult{}, err
+		return EndResult{}, fmt.Errorf("load user identity: %w", err)
 	}
 	out := EndResult{
 		TelegramUserID:   telegramUserID,
@@ -86,7 +87,7 @@ func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcaste
 func (s *Subscription) PrepareEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) (PreparedEnd, error) {
 	res, err := s.ProcessEnd(ctx, broadcasterID, broadcasterLogin, twitchUserID)
 	if err != nil {
-		return PreparedEnd{}, err
+		return PreparedEnd{}, fmt.Errorf("process end: %w", err)
 	}
 	if !res.Found {
 		return PreparedEnd{Found: false}, nil

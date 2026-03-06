@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -58,7 +59,7 @@ func (l *RateLimiter) Wait(ctx context.Context, chatID int64) error {
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("context done: %w", ctx.Err())
 	case <-l.globalTicker.C:
 	}
 
@@ -75,7 +76,7 @@ func (l *RateLimiter) Wait(ctx context.Context, chatID int64) error {
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("context done: %w", ctx.Err())
 	case <-timer.C:
 		return nil
 	}

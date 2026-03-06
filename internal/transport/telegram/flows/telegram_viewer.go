@@ -25,8 +25,8 @@ func (c *Controller) handleViewerStart(ctx context.Context, telegramUserID int64
 func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserID int64, editMsgID int, lang, userName string) string {
 	identity, hasIdentity, err := c.viewerSvc.LoadIdentity(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_load_status"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-		return i18n.Translate(lang, "err_load_status")
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrLoadStatus)
 	}
 
 	if !hasIdentity {
@@ -38,18 +38,18 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 		}
 		state, err := c.createOAuthState(ctx, payload, 10*time.Minute)
 		if err != nil {
-			c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_load_status"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-			return i18n.Translate(lang, "err_load_status")
+			c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+			return i18n.Translate(lang, msgErrLoadStatus)
 		}
 		authURL := c.oauthStartURL(state)
 		markup := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(ui.URLButton(i18n.Translate(lang, "btn_link_twitch"), authURL)),
+			tu.InlineKeyboardRow(ui.URLButton(i18n.Translate(lang, btnLinkTwitch), authURL)),
 		)
 		displayName := strings.TrimSpace(userName)
 		if displayName == "" {
-			displayName = i18n.Translate(lang, "user_generic_name")
+			displayName = i18n.Translate(lang, msgUserGenericName)
 		}
-		promptText := fmt.Sprintf(i18n.Translate(lang, "link_prompt_html"), html.EscapeString(displayName), html.EscapeString(authURL))
+		promptText := fmt.Sprintf(i18n.Translate(lang, msgLinkPromptHTML), html.EscapeString(displayName), html.EscapeString(authURL))
 		if editMsgID != 0 {
 			c.reply(ctx, telegramUserID, editMsgID, promptText, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 			return ""
@@ -67,8 +67,8 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 	joinRows, activeNames, err := c.buildJoinButtons(ctx, telegramUserID, identity.TwitchUserID, lang)
 	if err != nil {
 		c.log().Warn("buildJoinButtons failed", "telegram_user_id", telegramUserID, "error", err)
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_load_status"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-		return i18n.Translate(lang, "err_load_status")
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrLoadStatus)
 	}
 	c.replyLinkedStatus(ctx, telegramUserID, editMsgID, lang, identity.TwitchLogin, joinRows, activeNames)
 	return ""
@@ -87,13 +87,13 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 func (c *Controller) buildJoinButtons(ctx context.Context, telegramUserID int64, twitchUserID, lang string) ([][]telego.InlineKeyboardButton, []string, error) {
 	targets, err := c.viewerSvc.BuildJoinTargets(ctx, telegramUserID, twitchUserID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("build join targets: %w", err)
 	}
 
 	rows := make([][]telego.InlineKeyboardButton, 0, len(targets.JoinLinks))
 	for _, link := range targets.JoinLinks {
 		btnText := link.CreatorName + " - " + link.GroupName
-		rows = append(rows, tu.InlineKeyboardRow(ui.URLButton(fmt.Sprintf(i18n.Translate(lang, "btn_join"), btnText), link.InviteLink)))
+		rows = append(rows, tu.InlineKeyboardRow(ui.URLButton(fmt.Sprintf(i18n.Translate(lang, btnJoin), btnText), link.InviteLink)))
 	}
 	return rows, targets.ActiveCreatorNames, nil
 }

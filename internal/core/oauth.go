@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var errMissingScope = errors.New("missing required scope")
+
 // Kind identifies a user-visible OAuth flow failure mode.
 type Kind string
 
@@ -117,7 +119,7 @@ func (o *OAuth) LinkCreator(ctx context.Context, code string, payload OAuthState
 		return CreatorResult{}, &FlowError{Kind: KindTokenExchange, Cause: err}
 	}
 	if !slices.Contains(tok.Scope, ScopeChannelReadSubscriptions) {
-		return CreatorResult{}, &FlowError{Kind: KindScopeMissing, Cause: errors.New("missing required scope")}
+		return CreatorResult{}, &FlowError{Kind: KindScopeMissing, Cause: errMissingScope}
 	}
 
 	broadcasterID, broadcasterLogin, broadcasterDisplayName, err := o.api.FetchUser(ctx, tok.AccessToken)

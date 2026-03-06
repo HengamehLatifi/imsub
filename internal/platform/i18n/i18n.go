@@ -29,6 +29,11 @@ var (
 	// ErrNilService indicates an operation was attempted on a nil Service.
 	ErrNilService = errors.New("i18n: nil service")
 
+	errMissingBaseLang = errors.New("i18n: missing base language")
+	errMissingKey      = errors.New("i18n: missing key in language")
+	errExtraKey        = errors.New("i18n: extra key in language")
+	errMissingDict     = errors.New("i18n: supported language has no dictionary")
+
 	defaultService = NewService()
 )
 
@@ -189,7 +194,7 @@ func loadBundle() (*goi18n.Bundle, error) {
 func ValidateMessageCatalogs(all map[string]map[string]string, baseLang string) error {
 	base, ok := all[baseLang]
 	if !ok {
-		return fmt.Errorf("i18n: missing base language %q", baseLang)
+		return fmt.Errorf("%w %q", errMissingBaseLang, baseLang)
 	}
 
 	baseKeys := make(map[string]struct{}, len(base))
@@ -200,19 +205,19 @@ func ValidateMessageCatalogs(all map[string]map[string]string, baseLang string) 
 	for lang, dict := range all {
 		for key := range baseKeys {
 			if _, exists := dict[key]; !exists {
-				return fmt.Errorf("i18n: missing key %q in language %q", key, lang)
+				return fmt.Errorf("%w: key %q in lang %q", errMissingKey, key, lang)
 			}
 		}
 		for key := range dict {
 			if _, exists := baseKeys[key]; !exists {
-				return fmt.Errorf("i18n: extra key %q in language %q", key, lang)
+				return fmt.Errorf("%w: key %q in lang %q", errExtraKey, key, lang)
 			}
 		}
 	}
 
 	for lang := range supportedLanguages {
 		if _, exists := all[lang]; !exists {
-			return fmt.Errorf("i18n: supported language %q has no dictionary", lang)
+			return fmt.Errorf("%w: %q", errMissingDict, lang)
 		}
 	}
 	return nil

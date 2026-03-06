@@ -18,9 +18,9 @@ const (
 
 // TokenResponse represents a Twitch OAuth token exchange or refresh response.
 type TokenResponse struct {
-	AccessToken  string   `json:"access_token"`
+	AccessToken  string   `json:"access_token"` //nolint:gosec // Not a secret literal, just a struct field
 	TokenType    string   `json:"token_type"`
-	RefreshToken string   `json:"refresh_token"`
+	RefreshToken string   `json:"refresh_token"` //nolint:gosec // Not a secret literal, just a struct field
 	ExpiresIn    int      `json:"expires_in"`
 	Scope        []string `json:"scope"`
 }

@@ -21,8 +21,8 @@ import (
 func (c *Controller) handleCreatorRegistrationStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	owned, ok, err := c.creatorSvc.LoadOwnedCreator(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_load_status"), nil)
-		return i18n.Translate(lang, "err_load_status")
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), nil)
+		return i18n.Translate(lang, msgErrLoadStatus)
 	}
 	if ok {
 		c.replyCreatorStatus(ctx, telegramUserID, editMsgID, lang, owned)
@@ -37,18 +37,18 @@ func (c *Controller) handleCreatorRegistrationStart(ctx context.Context, telegra
 	}
 	state, err := c.createOAuthState(ctx, payload, 10*time.Minute)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_creator_link"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-		return i18n.Translate(lang, "err_creator_link")
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrCreatorLink), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrCreatorLink)
 	}
 	url := c.oauthStartURL(state)
 	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.URLButton(i18n.Translate(lang, "btn_register_creator_open"), url)),
+		tu.InlineKeyboardRow(ui.URLButton(i18n.Translate(lang, btnRegisterCreatorOpen), url)),
 	)
 	if editMsgID != 0 {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "creator_register_info"), &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgCreatorRegisterInfo), &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 		return ""
 	}
-	messageID := c.sendMsg(ctx, telegramUserID, i18n.Translate(lang, "creator_register_info"), &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
+	messageID := c.sendMsg(ctx, telegramUserID, i18n.Translate(lang, msgCreatorRegisterInfo), &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	if messageID != 0 {
 		payload.PromptMessageID = messageID
 		if err := c.store.SaveOAuthState(ctx, state, payload, 10*time.Minute); err != nil {
@@ -63,7 +63,7 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 	groupLines := CreatorGroupLine(lang, creator)
 	if creator.GroupChatID == 0 {
 		text := fmt.Sprintf(
-			i18n.Translate(lang, "creator_registered_no_group_html"),
+			i18n.Translate(lang, msgCreatorRegisteredNoGroup),
 			profileDisplay,
 			groupLines,
 		)
@@ -79,7 +79,7 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 	eventSubStatus := creatorEventSubStatusText(status, lang)
 	subscriberStatus := creatorSubscriberStatusText(status, lang)
 	text := fmt.Sprintf(
-		i18n.Translate(lang, "creator_registered_html"),
+		i18n.Translate(lang, msgCreatorRegistered),
 		profileDisplay,
 		eventSubStatus,
 		subscriberStatus,
@@ -97,25 +97,27 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 func creatorEventSubStatusText(status core.Status, lang string) string {
 	switch status.EventSub {
 	case core.EventSubActive:
-		return i18n.Translate(lang, "creator_eventsub_active")
+		return i18n.Translate(lang, msgCreatorEventSubActive)
 	case core.EventSubInactive:
-		return i18n.Translate(lang, "creator_eventsub_inactive")
+		return i18n.Translate(lang, msgCreatorEventSubInactive)
+	case core.EventSubUnknown:
+		return i18n.Translate(lang, msgCreatorEventSubUnknown)
 	default:
-		return i18n.Translate(lang, "creator_eventsub_unknown")
+		return i18n.Translate(lang, msgCreatorEventSubUnknown)
 	}
 }
 
 func creatorSubscriberStatusText(status core.Status, lang string) string {
 	if !status.HasSubscriberCount {
-		return i18n.Translate(lang, "creator_subscribers_pending")
+		return i18n.Translate(lang, msgCreatorSubscribersPending)
 	}
-	return fmt.Sprintf(i18n.Translate(lang, "creator_subscribers_ready"), status.SubscriberCount)
+	return fmt.Sprintf(i18n.Translate(lang, msgCreatorSubscribersReady), status.SubscriberCount)
 }
 
 // CreatorGroupLine returns one HTML bullet line describing creator-to-group binding.
 func CreatorGroupLine(lang string, creator core.Creator) string {
 	if creator.GroupChatID == 0 {
-		return i18n.Translate(lang, "creator_groups_none")
+		return i18n.Translate(lang, msgCreatorGroupsNone)
 	}
 	groupName := strings.TrimSpace(creator.GroupName)
 	if groupName == "" {

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -108,7 +109,7 @@ func Run(ctx context.Context, deps Dependencies) error {
 	select {
 	case err := <-serveErrCh:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
+			return fmt.Errorf("listen and serve: %w", err)
 		}
 		return nil
 	case <-ctx.Done():
@@ -117,10 +118,10 @@ func Run(ctx context.Context, deps Dependencies) error {
 		shutdownErr := srv.Shutdown(shutdownCtx)
 		serveErr := <-serveErrCh
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			return serveErr
+			return fmt.Errorf("listen and serve on shutdown: %w", serveErr)
 		}
 		if shutdownErr != nil {
-			return shutdownErr
+			return fmt.Errorf("shutdown server: %w", shutdownErr)
 		}
 		return nil
 	}

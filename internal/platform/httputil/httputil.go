@@ -1,12 +1,13 @@
 // Package httputil provides shared HTTP utilities used across platform and
 // transport layers: request ID propagation, client IP extraction, response
 // status recording, route labeling, and label helpers for metrics.
-package httputil //nolint:revive // intentional naming
+package httputil //nolint:revive,nolintlint // var-naming: intentional
 
 import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net"
 	"net/http"
 	"strconv"
@@ -75,7 +76,7 @@ func ClientIP(r *http.Request) string {
 	if r == nil {
 		return unknownLabel
 	}
-	if ip := strings.TrimSpace(r.Header.Get("Fly-Client-IP")); ip != "" {
+	if ip := strings.TrimSpace(r.Header.Get("Fly-Client-Ip")); ip != "" {
 		return ip
 	}
 	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
@@ -114,7 +115,10 @@ func (r *StatusRecorder) WriteHeader(code int) {
 func (r *StatusRecorder) Write(p []byte) (int, error) {
 	n, err := r.ResponseWriter.Write(p)
 	r.Bytes += n
-	return n, err
+	if err != nil {
+		return n, fmt.Errorf("write response: %w", err)
+	}
+	return n, nil
 }
 
 // Unwrap returns the underlying ResponseWriter for middleware compatibility.

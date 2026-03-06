@@ -33,13 +33,21 @@ const (
 	ActionResetDoCreator = "action:reset_do_creator"
 	// ActionResetDoBoth confirms combined reset.
 	ActionResetDoBoth = "action:reset_do_both"
+
+	btnRefresh   = "btn_refresh"
+	btnReset     = "btn_reset"
+	btnSubscribe = "btn_subscribe"
+
+	msgLinkedStatusNoSubsHTML           = "linked_status_no_subs_html"
+	msgLinkedStatusWithSubsHTML         = "linked_status_with_subs_html"
+	msgLinkedStatusWithSubsNoGroupsHTML = "linked_status_with_subs_no_groups_html"
 )
 
 // MainMenuMarkup builds the shared main-menu inline keyboard.
 func MainMenuMarkup(lang string) *telego.InlineKeyboardMarkup {
 	return tu.InlineKeyboard(
-		tu.InlineKeyboardRow(CallbackButton(i18n.Translate(lang, "btn_refresh"), ActionRefresh)),
-		tu.InlineKeyboardRow(CallbackButton(i18n.Translate(lang, "btn_reset"), ActionResetConfirm)),
+		tu.InlineKeyboardRow(CallbackButton(i18n.Translate(lang, btnRefresh), ActionRefresh)),
+		tu.InlineKeyboardRow(CallbackButton(i18n.Translate(lang, btnReset), ActionResetConfirm)),
 	)
 }
 
@@ -55,15 +63,15 @@ func WithMainMenu(lang string, rows ...[]telego.InlineKeyboardButton) *telego.In
 func LinkedStatusWithJoinStateHTML(lang, twitchLogin string, activeNames []string, hasJoinButtons bool) string {
 	profileDisplay := TwitchProfileHTML(twitchLogin)
 	if len(activeNames) == 0 {
-		return fmt.Sprintf(i18n.Translate(lang, "linked_status_no_subs_html"), profileDisplay)
+		return fmt.Sprintf(i18n.Translate(lang, msgLinkedStatusNoSubsHTML), profileDisplay)
 	}
 	items := make([]string, 0, len(activeNames))
 	for _, name := range activeNames {
 		items = append(items, "• "+html.EscapeString(name))
 	}
-	key := "linked_status_with_subs_html"
+	key := msgLinkedStatusWithSubsHTML
 	if !hasJoinButtons {
-		key = "linked_status_with_subs_no_groups_html"
+		key = msgLinkedStatusWithSubsNoGroupsHTML
 	}
 	return fmt.Sprintf(
 		i18n.Translate(lang, key),
@@ -101,6 +109,6 @@ func SubEndSubscribeMarkup(lang, creatorLogin string) *telego.InlineKeyboardMark
 	}
 	subscribeURL := "https://www.twitch.tv/subs/" + url.PathEscape(login)
 	return tu.InlineKeyboard(
-		tu.InlineKeyboardRow(URLButton(i18n.Translate(lang, "btn_subscribe"), subscribeURL)),
+		tu.InlineKeyboardRow(URLButton(i18n.Translate(lang, btnSubscribe), subscribeURL)),
 	)
 }

@@ -22,13 +22,13 @@ import (
 // when the bot receives an unrecognized message or command.
 func (c *Controller) onUnknownMessage(ctx *tghandler.Context, message telego.Message) error {
 	lang := i18n.NormalizeLanguage(message.From.LanguageCode)
-	key := "cmd_help"
+	key := msgCmdHelp
 	if message.From != nil {
 		var err error
 		key, err = c.helpMessageKey(ctx, message.From.ID)
 		if err != nil {
 			c.log().Warn("resolve help message key failed", "telegram_user_id", message.From.ID, "error", err)
-			key = "cmd_help"
+			key = msgCmdHelp
 		}
 	}
 	c.sendMsg(ctx, message.Chat.ID, i18n.Translate(lang, key), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
@@ -39,22 +39,22 @@ func (c *Controller) onUnknownMessage(ctx *tghandler.Context, message telego.Mes
 func (c *Controller) helpMessageKey(ctx context.Context, telegramUserID int64) (string, error) {
 	_, hasViewer, err := c.viewerSvc.LoadIdentity(ctx, telegramUserID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("load viewer identity for help message: %w", err)
 	}
 	_, hasCreator, err := c.creatorSvc.LoadOwnedCreator(ctx, telegramUserID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("load owned creator for help message: %w", err)
 	}
 
 	switch {
 	case hasViewer && hasCreator:
-		return "cmd_help_both", nil
+		return msgCmdHelpBoth, nil
 	case hasCreator:
-		return "cmd_help_creator", nil
+		return msgCmdHelpCreator, nil
 	case hasViewer:
-		return "cmd_help_viewer", nil
+		return msgCmdHelpViewer, nil
 	default:
-		return "cmd_help", nil
+		return msgCmdHelp, nil
 	}
 }
 
@@ -126,13 +126,13 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 	replyOpts := &client.MessageOptions{ReplyToMessageID: msg.MessageID}
 
 	if msg.Chat.Type == telego.ChatTypePrivate {
-		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, "group_not_group"), replyOpts)
+		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, msgGroupNotGroup), replyOpts)
 		return nil
 	}
 
 	if waitErr := c.tgLimiter.Wait(ctx, msg.Chat.ID); waitErr != nil {
 		c.log().Warn("get chat member rate limit wait failed", "error", waitErr)
-		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, "group_not_admin"), replyOpts)
+		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, msgGroupNotAdmin), replyOpts)
 		return nil
 	}
 	member, err := c.tg.GetChatMember(ctx, &telego.GetChatMemberParams{
@@ -140,7 +140,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		UserID: msg.From.ID,
 	})
 	if err != nil || !IsAdmin(member) {
-		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, "group_not_admin"), replyOpts)
+		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, msgGroupNotAdmin), replyOpts)
 		return nil //nolint:nilerr // Ignore error to prevent telegram refetch
 	}
 
@@ -150,7 +150,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		return nil
 	}
 	if !ok {
-		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, "group_not_creator"), replyOpts)
+		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, msgGroupNotCreator), replyOpts)
 		return nil
 	}
 
@@ -171,7 +171,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		// request context being canceled.
 		go c.activateCreatorOnFirstGroupRegistration(ctx, matched, msg.Chat.ID, lang)
 	}
-	successText := fmt.Sprintf(i18n.Translate(lang, "group_registered"), html.EscapeString(matched.Name))
+	successText := fmt.Sprintf(i18n.Translate(lang, msgGroupRegistered), html.EscapeString(matched.Name))
 	c.sendMsg(ctx, msg.Chat.ID, successText, &client.MessageOptions{
 		ReplyToMessageID: msg.MessageID,
 		ParseMode:        telego.ModeHTML,
@@ -189,7 +189,7 @@ func (c *Controller) activateCreatorOnFirstGroupRegistration(parent context.Cont
 	defer cancel()
 	if err := c.eventSubSvc.EnsureEventSubForCreators(ctx, []core.Creator{creator}); err != nil {
 		c.log().Warn("ensureEventSubForCreators failed after first group registration", "creator_id", creator.ID, "error", err)
-		c.sendMsg(baseCtx, groupChatID, i18n.Translate(lang, "creator_eventsub_fail"), nil)
+		c.sendMsg(baseCtx, groupChatID, i18n.Translate(lang, msgCreatorEventSubFail), nil)
 		return
 	}
 	count, err := c.eventSubSvc.DumpCurrentSubscribers(ctx, creator)

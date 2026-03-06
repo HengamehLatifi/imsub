@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"slices"
 	"strings"
@@ -26,7 +25,7 @@ func newTestStore(t *testing.T) *Store {
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := slog.New(slog.DiscardHandler)
 	return &Store{rdb: client, logger: logger}
 }
 
@@ -342,11 +341,11 @@ func TestSubscriberCache(t *testing.T) {
 	}
 }
 
-type fakeRedisErr string
+type fakeRedisError string
 
-func (e fakeRedisErr) Error() string { return string(e) }
+func (e fakeRedisError) Error() string { return string(e) }
 
-func (e fakeRedisErr) RedisError() {}
+func (e fakeRedisError) RedisError() {}
 
 func TestIsDifferentTwitchLinkError(t *testing.T) {
 	t.Parallel()
@@ -358,9 +357,9 @@ func TestIsDifferentTwitchLinkError(t *testing.T) {
 	}{
 		{name: "nil", err: nil, want: false},
 		{name: "non redis error", err: context.DeadlineExceeded, want: false},
-		{name: "redis exact code", err: fakeRedisErr("DIFFERENT_TWITCH"), want: true},
-		{name: "redis err prefix", err: fakeRedisErr("ERR DIFFERENT_TWITCH"), want: true},
-		{name: "redis other code", err: fakeRedisErr("ERR SOME_OTHER"), want: false},
+		{name: "redis exact code", err: fakeRedisError("DIFFERENT_TWITCH"), want: true},
+		{name: "redis err prefix", err: fakeRedisError("ERR DIFFERENT_TWITCH"), want: true},
+		{name: "redis other code", err: fakeRedisError("ERR SOME_OTHER"), want: false},
 	}
 
 	for _, tc := range tests {

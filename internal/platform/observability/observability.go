@@ -143,7 +143,7 @@ func (m *Metrics) BackgroundJob(job, result string, d time.Duration) {
 }
 
 // Middleware returns HTTP middleware that records request metrics and
-// logs each request. quietRoutes lists route patterns that should be
+// logs each request. QuietRoutes lists route patterns that should be
 // logged at Debug level instead of Info. If logger is nil, slog.Default()
 // is used. If next is nil, http.NotFoundHandler() is used.
 func (m *Metrics) Middleware(logger *slog.Logger, quietRoutes []string, next http.Handler) http.Handler {

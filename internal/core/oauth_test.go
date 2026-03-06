@@ -59,11 +59,11 @@ func (f *fakeAPI) CreateEventSub(_ context.Context, _, _, _, _ string) error {
 }
 
 func (f *fakeAPI) EnabledEventSubTypes(_ context.Context, _, _ string) (map[string]bool, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func (f *fakeAPI) ListSubscriberPage(_ context.Context, _, _, _ string) (userIDs []string, nextCursor string, err error) {
-	return nil, "", nil
+	return nil, "", errors.New("not implemented")
 }
 
 func TestLinkViewerSuccess(t *testing.T) {

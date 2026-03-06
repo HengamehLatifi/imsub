@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"slices"
 )
@@ -70,11 +71,11 @@ func NewResetter(store resetStore, kick kickFunc, logger *slog.Logger) *Resetter
 func (r *Resetter) LoadScopes(ctx context.Context, telegramUserID int64) (ScopeState, error) {
 	identity, hasIdentity, err := r.store.UserIdentity(ctx, telegramUserID)
 	if err != nil {
-		return ScopeState{}, err
+		return ScopeState{}, fmt.Errorf("load user identity: %w", err)
 	}
 	creator, hasCreator, err := r.store.OwnedCreatorForUser(ctx, telegramUserID)
 	if err != nil {
-		return ScopeState{}, err
+		return ScopeState{}, fmt.Errorf("load owned creator: %w", err)
 	}
 	return ScopeState{
 		Identity:    identity,
@@ -93,14 +94,14 @@ func (r *Resetter) CountViewerGroups(ctx context.Context, telegramUserID int64) 
 func (r *Resetter) ExecuteViewerReset(ctx context.Context, telegramUserID int64) (ViewerResetResult, error) {
 	identity, hasIdentity, err := r.store.UserIdentity(ctx, telegramUserID)
 	if err != nil {
-		return ViewerResetResult{}, err
+		return ViewerResetResult{}, fmt.Errorf("load user identity: %w", err)
 	}
 	if !hasIdentity {
 		return ViewerResetResult{HasIdentity: false}, nil
 	}
 	groupCount, err := r.ResetViewerDataAndRevokeGroupAccess(ctx, telegramUserID)
 	if err != nil {
-		return ViewerResetResult{}, err
+		return ViewerResetResult{}, fmt.Errorf("reset viewer data and revoke: %w", err)
 	}
 	return ViewerResetResult{
 		HasIdentity: true,
@@ -113,7 +114,7 @@ func (r *Resetter) ExecuteViewerReset(ctx context.Context, telegramUserID int64)
 func (r *Resetter) ExecuteCreatorReset(ctx context.Context, telegramUserID int64) (CreatorResetResult, error) {
 	deletedCount, deletedNames, err := r.DeleteCreatorData(ctx, telegramUserID)
 	if err != nil {
-		return CreatorResetResult{}, err
+		return CreatorResetResult{}, fmt.Errorf("delete creator data: %w", err)
 	}
 	return CreatorResetResult{
 		DeletedCount: deletedCount,
@@ -125,20 +126,20 @@ func (r *Resetter) ExecuteCreatorReset(ctx context.Context, telegramUserID int64
 func (r *Resetter) ExecuteBothReset(ctx context.Context, telegramUserID int64) (BothResetResult, error) {
 	identity, hasIdentity, err := r.store.UserIdentity(ctx, telegramUserID)
 	if err != nil {
-		return BothResetResult{}, err
+		return BothResetResult{}, fmt.Errorf("load user identity: %w", err)
 	}
 
 	groupCount := 0
 	if hasIdentity {
 		groupCount, err = r.ResetViewerDataAndRevokeGroupAccess(ctx, telegramUserID)
 		if err != nil {
-			return BothResetResult{}, err
+			return BothResetResult{}, fmt.Errorf("reset viewer data and revoke: %w", err)
 		}
 	}
 
 	deletedCount, deletedNames, err := r.DeleteCreatorData(ctx, telegramUserID)
 	if err != nil {
-		return BothResetResult{}, err
+		return BothResetResult{}, fmt.Errorf("delete creator data: %w", err)
 	}
 
 	return BothResetResult{
@@ -154,7 +155,7 @@ func (r *Resetter) ExecuteBothReset(ctx context.Context, telegramUserID int64) (
 func (r *Resetter) CountSubLinkedGroupsForUser(ctx context.Context, telegramUserID int64) (int, error) {
 	groupIDs, err := r.SubLinkedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("sub linked group ids: %w", err)
 	}
 	return len(groupIDs), nil
 }
@@ -163,7 +164,7 @@ func (r *Resetter) CountSubLinkedGroupsForUser(ctx context.Context, telegramUser
 func (r *Resetter) SubLinkedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, error) {
 	creatorIDs, err := r.store.UserCreatorIDs(ctx, telegramUserID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("user creator ids: %w", err)
 	}
 	if len(creatorIDs) == 0 {
 		return nil, nil
@@ -173,7 +174,7 @@ func (r *Resetter) SubLinkedGroupIDsForUser(ctx context.Context, telegramUserID 
 		return c.GroupChatID != 0
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load creators by ids: %w", err)
 	}
 
 	out := make([]int64, 0, len(creators))
@@ -188,7 +189,7 @@ func (r *Resetter) SubLinkedGroupIDsForUser(ctx context.Context, telegramUserID 
 func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, telegramUserID int64) (int, error) {
 	groupIDs, err := r.SubLinkedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("sub linked group ids: %w", err)
 	}
 	for _, groupID := range groupIDs {
 		if err := r.kick(ctx, groupID, telegramUserID); err != nil {
@@ -196,12 +197,16 @@ func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, tele
 		}
 	}
 	if err := r.store.DeleteAllUserData(ctx, telegramUserID); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("delete all user data: %w", err)
 	}
 	return len(groupIDs), nil
 }
 
 // DeleteCreatorData removes creator data owned by ownerTelegramID.
 func (r *Resetter) DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (deletedCount int, deletedNames []string, err error) {
-	return r.store.DeleteCreatorData(ctx, ownerTelegramID)
+	deletedCount, deletedNames, err = r.store.DeleteCreatorData(ctx, ownerTelegramID)
+	if err != nil {
+		return 0, nil, fmt.Errorf("delete creator data: %w", err)
+	}
+	return deletedCount, deletedNames, nil
 }

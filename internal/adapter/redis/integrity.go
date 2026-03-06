@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 
@@ -26,14 +27,14 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 		memberCmds[i] = memberPipe.SMembers(ctx, keyCreatorMembers(creatorID))
 	}
 	if _, err := memberPipe.Exec(ctx); err != nil {
-		return 0, 0, 0, 0, err
+		return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit member cmds: %w", err)
 	}
 
 	wantedByUser := make(map[string]map[string]struct{})
 	for i, creatorID := range creatorIDs {
 		memberIDs, cmdErr := memberCmds[i].Result()
 		if cmdErr != nil {
-			return 0, 0, 0, 0, cmdErr
+			return 0, 0, 0, 0, fmt.Errorf("redis result integrity audit member cmds: %w", cmdErr)
 		}
 		for _, memberID := range memberIDs {
 			if _, parseErr := strconv.ParseInt(memberID, 10, 64); parseErr != nil {
@@ -51,7 +52,7 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 
 	usersSet, err := s.rdb.SMembers(ctx, keyUsersSet()).Result()
 	if err != nil {
-		return 0, 0, 0, 0, err
+		return 0, 0, 0, 0, fmt.Errorf("redis smembers users set: %w", err)
 	}
 	userIDs := make([]string, 0, len(usersSet)+len(wantedByUser))
 	seenUsers := make(map[string]struct{}, len(usersSet)+len(wantedByUser))
@@ -87,7 +88,7 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 	}
 	if len(reverseCmds) > 0 {
 		if _, err := reversePipe.Exec(ctx); err != nil {
-			return 0, 0, 0, 0, err
+			return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit reverse cmds: %w", err)
 		}
 	}
 
@@ -96,7 +97,7 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 	for i, userIDRaw := range validUserIDRaw {
 		currentCreators, cmdErr := reverseCmds[i].Result()
 		if cmdErr != nil {
-			return 0, 0, 0, 0, cmdErr
+			return 0, 0, 0, 0, fmt.Errorf("redis result integrity audit reverse cmds: %w", cmdErr)
 		}
 		current := make(map[string]struct{}, len(currentCreators))
 		for _, creatorID := range currentCreators {
@@ -136,7 +137,7 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 	}
 	if needsWrite {
 		if _, err := writePipe.Exec(ctx); err != nil {
-			return 0, 0, 0, 0, err
+			return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit repair writes: %w", err)
 		}
 	}
 
@@ -147,7 +148,7 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 func (s *Store) ActiveCreatorIDsWithoutGroup(ctx context.Context, creators []core.Creator) (int, error) {
 	activeIDs, err := s.rdb.SMembers(ctx, keyActiveCreatorsSet()).Result()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("redis smembers active creators: %w", err)
 	}
 	activeSet := make(map[string]struct{}, len(activeIDs))
 	for _, id := range activeIDs {

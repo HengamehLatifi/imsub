@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+var errNilContext = errors.New("nil context")
+
 type eventSubStore interface {
 	ListActiveCreators(ctx context.Context) ([]Creator, error)
 	NewSubscriberDumpKey(creatorID string) string
@@ -110,7 +112,7 @@ func (e *EventSub) EnsureEventSubForCreators(ctx context.Context, creators []Cre
 	}
 	appToken, err := e.twitch.AppToken(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("app token for ensure eventsub: %w", err)
 	}
 	for _, c := range creators {
 		for _, eventType := range []string{EventTypeChannelSubscribe, EventTypeChannelSubEnd} {
@@ -127,7 +129,7 @@ func (e *EventSub) EnsureEventSubForCreators(ctx context.Context, creators []Cre
 func (e *EventSub) IsEventSubActiveForCreator(ctx context.Context, creatorID string) (bool, error) {
 	appToken, err := e.twitch.AppToken(ctx)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("app token for active eventsub check: %w", err)
 	}
 	return e.IsEventSubActiveForCreatorWithToken(ctx, appToken, creatorID)
 }
@@ -136,7 +138,7 @@ func (e *EventSub) IsEventSubActiveForCreator(ctx context.Context, creatorID str
 func (e *EventSub) IsEventSubActiveForCreatorWithToken(ctx context.Context, appToken, creatorID string) (bool, error) {
 	foundTypes, err := e.twitch.EnabledEventSubTypes(ctx, appToken, creatorID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("fetch enabled eventsub types: %w", err)
 	}
 	if !foundTypes[EventTypeChannelSubscribe] {
 		e.log.Debug("eventsub active check missing type", "type", EventTypeChannelSubscribe, "creator_id", creatorID)
@@ -153,7 +155,7 @@ func (e *EventSub) IsEventSubActiveForCreatorWithToken(ctx context.Context, appT
 // DumpCurrentSubscribers refreshes the cached subscriber set for creator and returns count.
 func (e *EventSub) DumpCurrentSubscribers(ctx context.Context, creator Creator) (int, error) {
 	if ctx == nil {
-		return 0, errors.New("nil context")
+		return 0, errNilContext
 	}
 	total := 0
 	var cursor string
@@ -167,20 +169,20 @@ func (e *EventSub) DumpCurrentSubscribers(ctx context.Context, creator Creator) 
 		if err != nil && !refreshed && isUnauthorized(err) {
 			updated, refreshErr := e.refreshCreatorAccessToken(ctx, creator)
 			if refreshErr != nil {
-				return total, refreshErr
+				return total, fmt.Errorf("refresh access token on dump: %w", refreshErr)
 			}
 			creator = updated
 			refreshed = true
 			continue
 		}
 		if err != nil {
-			return total, err
+			return total, fmt.Errorf("list subscriber page: %w", err)
 		}
 
 		total += len(userIDs)
 		if len(userIDs) > 0 {
 			if err := e.store.AddToSubscriberDump(ctx, tmpKey, userIDs); err != nil {
-				return total, err
+				return total, fmt.Errorf("add to subscriber dump: %w", err)
 			}
 			wroteAny = true
 		}
@@ -191,7 +193,7 @@ func (e *EventSub) DumpCurrentSubscribers(ctx context.Context, creator Creator) 
 		cursor = nextCursor
 	}
 	if err := e.store.FinalizeSubscriberDump(ctx, creator.ID, tmpKey, wroteAny); err != nil {
-		return total, err
+		return total, fmt.Errorf("finalize subscriber dump: %w", err)
 	}
 	return total, nil
 }
@@ -199,10 +201,10 @@ func (e *EventSub) DumpCurrentSubscribers(ctx context.Context, creator Creator) 
 func (e *EventSub) refreshCreatorAccessToken(ctx context.Context, creator Creator) (Creator, error) {
 	tok, err := e.twitch.RefreshToken(ctx, creator.RefreshToken)
 	if err != nil {
-		return creator, err
+		return creator, fmt.Errorf("refresh token call: %w", err)
 	}
 	if err := e.store.UpdateCreatorTokens(ctx, creator.ID, tok.AccessToken, tok.RefreshToken); err != nil {
-		return creator, err
+		return creator, fmt.Errorf("update creator tokens in store: %w", err)
 	}
 	creator.AccessToken = tok.AccessToken
 	if tok.RefreshToken != "" {

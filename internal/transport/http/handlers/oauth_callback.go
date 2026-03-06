@@ -64,8 +64,8 @@ var (
 func (c *Controller) TwitchCallback(w http.ResponseWriter, r *http.Request) {
 	logger := c.logCtx(r.Context())
 	logger.Debug("twitch callback received", "method", r.Method, "path", r.URL.Path, "has_state", r.URL.Query().Get("state") != "", "has_code", r.URL.Query().Get("code") != "")
-	modeLabel := "unknown"
-	resultLabel := "error"
+	modeLabel := eventStatusUnknown
+	resultLabel := eventStatusError
 	defer func() {
 		if c.obs != nil {
 			c.obs.OAuthCallback(modeLabel, resultLabel)
@@ -105,7 +105,7 @@ func (c *Controller) TwitchCallback(w http.ResponseWriter, r *http.Request) {
 				switch fe.Kind {
 				case core.KindSave:
 					renderOAuthError(w, oauthErrorViewerSaveFailed)
-				default:
+				case core.KindTokenExchange, core.KindUserInfo, core.KindScopeMissing, core.KindStore:
 					renderOAuthError(w, oauthErrorVerificationFailed)
 				}
 			} else {

@@ -2,6 +2,7 @@ package flows
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"imsub/internal/core"
@@ -34,7 +35,11 @@ func (c *Controller) deleteMessage(ctx context.Context, chatID int64, messageID 
 // createInviteLink creates a single-use, join-request invite link for
 // groupChatID that expires in 10 minutes.
 func (c *Controller) createInviteLink(ctx context.Context, groupChatID int64, telegramUserID int64, name string) (string, error) {
-	return c.tgGroupOps().CreateInviteLink(ctx, groupChatID, telegramUserID, name)
+	link, err := c.tgGroupOps().CreateInviteLink(ctx, groupChatID, telegramUserID, name)
+	if err != nil {
+		return "", fmt.Errorf("create invite link from group ops: %w", err)
+	}
+	return link, nil
 }
 
 // kickDisplacedUser removes telegramUserID from every active creator's group.
@@ -53,7 +58,10 @@ func (c *Controller) isGroupMember(ctx context.Context, groupChatID, telegramUse
 // KickFromGroup bans and immediately unbans telegramUserID from groupChatID.
 // The short ban duration (60s) ensures the user is removed without a permanent ban.
 func (c *Controller) KickFromGroup(ctx context.Context, groupChatID int64, telegramUserID int64) error {
-	return c.tgGroupOps().KickFromGroup(ctx, groupChatID, telegramUserID)
+	if err := c.tgGroupOps().KickFromGroup(ctx, groupChatID, telegramUserID); err != nil {
+		return fmt.Errorf("kick from group via group ops: %w", err)
+	}
+	return nil
 }
 
 func (c *Controller) replyLinkedStatus(
@@ -89,10 +97,10 @@ func (c *Controller) answerCallbackOpts(ctx context.Context, callbackID, text st
 func (c *Controller) createOAuthState(ctx context.Context, payload core.OAuthStatePayload, ttl time.Duration) (string, error) {
 	state, err := NewSecureToken(24)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("generate secure token: %w", err)
 	}
 	if err := c.store.SaveOAuthState(ctx, state, payload, ttl); err != nil {
-		return "", err
+		return "", fmt.Errorf("save oauth state: %w", err)
 	}
 	return state, nil
 }

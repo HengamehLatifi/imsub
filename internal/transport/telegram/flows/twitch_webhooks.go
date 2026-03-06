@@ -13,6 +13,16 @@ import (
 	"github.com/mymmrac/telego"
 )
 
+const (
+	resultSaveFailed          = "save_failed"
+	resultStoreFailed         = "store_failed"
+	resultTokenExchangeFailed = "token_exchange_failed"
+	resultUserInfoFailed      = "userinfo_failed"
+	resultLoadStatusFailed    = "load_status_failed"
+	resultScopeMissing        = "scope_missing"
+	resultSuccess             = "success"
+)
+
 // --- Viewer OAuth callback ---
 
 // HandleViewerOAuthCallback executes viewer OAuth callback side effects and notifications.
@@ -23,18 +33,21 @@ func (c *Controller) HandleViewerOAuthCallback(ctx context.Context, code string,
 		if errors.As(flowErr, &fe) {
 			switch fe.Kind {
 			case core.KindTokenExchange:
-				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "oauth_exchange_fail"), nil)
-				return "token_exchange_failed", "", flowErr
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgOAuthExchangeFail), nil)
+				return resultTokenExchangeFailed, "", fmt.Errorf("viewer token exchange failed: %w", flowErr)
 			case core.KindUserInfo:
-				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "oauth_userinfo_fail"), nil)
-				return "userinfo_failed", "", flowErr
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgOAuthUserInfoFail), nil)
+				return resultUserInfoFailed, "", fmt.Errorf("viewer user info failed: %w", flowErr)
 			case core.KindSave:
-				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "oauth_save_fail"), nil)
-				return "save_failed", "", flowErr
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgOAuthSaveFail), nil)
+				return resultSaveFailed, "", fmt.Errorf("viewer save failed: %w", flowErr)
+			case core.KindScopeMissing, core.KindStore:
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgOAuthSaveFail), nil)
+				return resultSaveFailed, "", fmt.Errorf("viewer other fail: %w", flowErr)
 			}
 		}
-		c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "oauth_save_fail"), nil)
-		return "save_failed", "", flowErr
+		c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgOAuthSaveFail), nil)
+		return resultSaveFailed, "", fmt.Errorf("viewer unexpected fail: %w", flowErr)
 	}
 	if res.DisplacedUserID != 0 {
 		c.kickDisplacedUser(ctx, res.DisplacedUserID)
@@ -46,12 +59,12 @@ func (c *Controller) HandleViewerOAuthCallback(ctx context.Context, code string,
 	joinRows, activeNames, buildErr := c.buildJoinButtons(ctx, payload.TelegramUserID, res.TwitchUserID, lang)
 	if buildErr != nil {
 		c.log().Warn("buildJoinButtons failed after viewer oauth callback", "telegram_user_id", payload.TelegramUserID, "error", buildErr)
-		c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "err_load_status"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-		return "load_status_failed", res.TwitchDisplayName, buildErr
+		c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return resultLoadStatusFailed, res.TwitchDisplayName, buildErr
 	}
 	c.replyLinkedStatus(ctx, payload.TelegramUserID, 0, lang, res.TwitchLogin, joinRows, activeNames)
 
-	return "success", res.TwitchDisplayName, nil
+	return resultSuccess, res.TwitchDisplayName, nil
 }
 
 // --- Creator OAuth callback ---
@@ -64,21 +77,24 @@ func (c *Controller) HandleCreatorOAuthCallback(ctx context.Context, code string
 		if errors.As(flowErr, &fe) {
 			switch fe.Kind {
 			case core.KindTokenExchange:
-				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "creator_exchange_fail"), nil)
-				return "token_exchange_failed", "", flowErr
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgCreatorExchangeFail), nil)
+				return resultTokenExchangeFailed, "", fmt.Errorf("creator token exchange: %w", flowErr)
 			case core.KindScopeMissing:
-				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "creator_scope_missing"), nil)
-				return "scope_missing", "", flowErr
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgCreatorScopeMissing), nil)
+				return resultScopeMissing, "", fmt.Errorf("creator scope missing: %w", flowErr)
 			case core.KindUserInfo:
-				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "creator_userinfo_fail"), nil)
-				return "userinfo_failed", "", flowErr
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgCreatorUserInfoFail), nil)
+				return resultUserInfoFailed, "", fmt.Errorf("creator user info: %w", flowErr)
 			case core.KindStore:
-				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "creator_store_fail"), nil)
-				return "store_failed", "", flowErr
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgCreatorStoreFail), nil)
+				return resultStoreFailed, "", fmt.Errorf("creator store fail: %w", flowErr)
+			case core.KindSave:
+				c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgCreatorStoreFail), nil)
+				return resultStoreFailed, "", fmt.Errorf("creator save fail: %w", flowErr)
 			}
 		}
-		c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, "creator_store_fail"), nil)
-		return "store_failed", "", flowErr
+		c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgCreatorStoreFail), nil)
+		return resultStoreFailed, "", fmt.Errorf("creator unexpected fail: %w", flowErr)
 	}
 	creator := res.Creator
 	c.log().Debug("creator oauth exchange success", "creator_id", creator.ID, "creator_login", creator.Name, "owner_telegram_id", creator.OwnerTelegramID)
@@ -88,7 +104,7 @@ func (c *Controller) HandleCreatorOAuthCallback(ctx context.Context, code string
 	profileDisplay := ui.TwitchProfileHTML(creator.Name)
 	groupLines := CreatorGroupLine(lang, creator)
 	text := fmt.Sprintf(
-		i18n.Translate(lang, "creator_registered_no_group_html"),
+		i18n.Translate(lang, msgCreatorRegisteredNoGroup),
 		profileDisplay,
 		groupLines,
 	)
@@ -101,7 +117,7 @@ func (c *Controller) HandleSubscriptionEnd(ctx context.Context, broadcasterID, b
 	res, err := c.subscriptionSvc.PrepareEnd(ctx, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin)
 	if err != nil {
 		c.log().Warn("process subscription end failed", "error", err)
-		return err
+		return fmt.Errorf("prepare subscription end: %w", err)
 	}
 	if !res.Found {
 		return nil
@@ -113,7 +129,7 @@ func (c *Controller) HandleSubscriptionEnd(ctx context.Context, broadcasterID, b
 		}
 	}
 
-	c.sendMsg(ctx, res.TelegramUserID, fmt.Sprintf(i18n.Translate(res.Language, "sub_end_partial"), res.ViewerLogin), &client.MessageOptions{
+	c.sendMsg(ctx, res.TelegramUserID, fmt.Sprintf(i18n.Translate(res.Language, msgSubEndPartial), res.ViewerLogin), &client.MessageOptions{
 		Markup: ui.SubEndSubscribeMarkup(res.Language, res.BroadcasterLogin),
 	})
 	return nil

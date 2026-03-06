@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 	"time"
@@ -48,7 +49,7 @@ func (s *Store) parseCreatorHash(vals map[string]string, fallbackID string) core
 func (s *Store) Creator(ctx context.Context, creatorID string) (core.Creator, bool, error) {
 	vals, err := s.rdb.HGetAll(ctx, keyCreator(creatorID)).Result()
 	if err != nil {
-		return core.Creator{}, false, err
+		return core.Creator{}, false, fmt.Errorf("redis hgetall creator: %w", err)
 	}
 	if len(vals) == 0 {
 		return core.Creator{}, false, nil
@@ -59,7 +60,7 @@ func (s *Store) Creator(ctx context.Context, creatorID string) (core.Creator, bo
 func (s *Store) loadCreatorsBySet(ctx context.Context, setKey string, filter func(core.Creator) bool) ([]core.Creator, error) {
 	ids, err := s.rdb.SMembers(ctx, setKey).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis smembers %s: %w", setKey, err)
 	}
 	if len(ids) == 0 {
 		return nil, nil
@@ -79,7 +80,7 @@ func (s *Store) LoadCreatorsByIDs(ctx context.Context, ids []string, filter func
 		cmds[i] = pipe.HGetAll(ctx, keyCreator(id))
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis exec load creators by ids: %w", err)
 	}
 
 	out := make([]core.Creator, 0, len(ids))
@@ -113,7 +114,7 @@ func (s *Store) ListActiveCreators(ctx context.Context) ([]core.Creator, error) 
 func (s *Store) OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (core.Creator, bool, error) {
 	ids, err := s.rdb.SMembers(ctx, keyCreatorByOwner(ownerTelegramID)).Result()
 	if err != nil {
-		return core.Creator{}, false, err
+		return core.Creator{}, false, fmt.Errorf("redis smembers creator by owner: %w", err)
 	}
 	if len(ids) == 0 {
 		return core.Creator{}, false, nil
@@ -170,7 +171,10 @@ func (s *Store) UpsertCreator(ctx context.Context, c core.Creator) error {
 	}
 
 	_, err = pipe.Exec(ctx)
-	return err
+	if err != nil {
+		return fmt.Errorf("redis exec upsert creator: %w", err)
+	}
+	return nil
 }
 
 // DeleteCreatorData removes a creator and cleans up member reverse-index entries.
@@ -184,7 +188,7 @@ func (s *Store) DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (d
 	}
 	memberIDs, err := s.rdb.SMembers(ctx, keyCreatorMembers(c.ID)).Result()
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, fmt.Errorf("redis smembers creator members: %w", err)
 	}
 
 	pipe := s.rdb.TxPipeline()
@@ -204,7 +208,7 @@ func (s *Store) DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (d
 	pipe.SRem(ctx, keyCreatorByOwner(ownerTelegramID), c.ID)
 
 	if _, err := pipe.Exec(ctx); err != nil {
-		return 0, nil, err
+		return 0, nil, fmt.Errorf("redis exec delete creator data: %w", err)
 	}
 
 	return 1, []string{c.Name}, nil
@@ -222,8 +226,10 @@ func (s *Store) UpdateCreatorGroup(ctx context.Context, creatorID string, groupC
 	} else {
 		pipe.SRem(ctx, keyActiveCreatorsSet(), creatorID)
 	}
-	_, err := pipe.Exec(ctx)
-	return err
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("redis exec update creator group: %w", err)
+	}
+	return nil
 }
 
 // UpdateCreatorTokens replaces the creator's OAuth access and refresh tokens.
@@ -235,5 +241,8 @@ func (s *Store) UpdateCreatorTokens(ctx context.Context, creatorID, accessToken,
 	if refreshToken != "" {
 		fields["refresh_token"] = refreshToken
 	}
-	return s.rdb.HSet(ctx, keyCreator(creatorID), fields).Err()
+	if err := s.rdb.HSet(ctx, keyCreator(creatorID), fields).Err(); err != nil {
+		return fmt.Errorf("redis hset update creator tokens: %w", err)
+	}
+	return nil
 }

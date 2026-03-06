@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 )
@@ -37,7 +36,7 @@ func TestReconcileSubscribersOnceOK(t *testing.T) {
 			calls++
 			return 1, nil
 		},
-		slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		slog.New(slog.DiscardHandler),
 	)
 
 	if err := svc.ReconcileSubscribersOnce(t.Context()); err != nil {

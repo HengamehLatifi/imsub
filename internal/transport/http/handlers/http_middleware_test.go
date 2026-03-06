@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,10 +26,10 @@ func TestClientIPResolution(t *testing.T) {
 	}
 
 	req3 := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req3.Header.Set("Fly-Client-IP", "192.0.2.44")
+	req3.Header.Set("Fly-Client-Ip", "192.0.2.44")
 	req3.Header.Set("X-Forwarded-For", "203.0.113.10")
 	if got := httputil.ClientIP(req3); got != "192.0.2.44" {
-		t.Fatalf("expected Fly-Client-IP precedence, got %q", got)
+		t.Fatalf("expected Fly-Client-Ip precedence, got %q", got)
 	}
 }
 
@@ -123,7 +124,8 @@ func TestRequestIDContextHelpers(t *testing.T) {
 	if httputil.RequestIDFromContext(ctx2) != "abc123" {
 		t.Fatal("expected stored request_id")
 	}
-	if httputil.WithRequestID(nil, "x") != nil { //nolint:staticcheck // SA1012: testing explicit nil support
+	var nilCtx context.Context
+	if httputil.WithRequestID(nilCtx, "x") != nil {
 		t.Fatal("nil context should return nil")
 	}
 	if ctx3 := httputil.WithRequestID(ctx, ""); ctx3 != ctx {

@@ -55,7 +55,11 @@ func NewViewer(store viewerStore, group GroupOps, logger *slog.Logger) *Viewer {
 
 // LoadIdentity returns viewer identity for telegramUserID, if linked.
 func (v *Viewer) LoadIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error) {
-	return v.store.UserIdentity(ctx, telegramUserID)
+	identity, found, err := v.store.UserIdentity(ctx, telegramUserID)
+	if err != nil {
+		return UserIdentity{}, false, fmt.Errorf("load user identity: %w", err)
+	}
+	return identity, found, nil
 }
 
 // BuildJoinTargets resolves active subscriptions and invite links for a viewer.

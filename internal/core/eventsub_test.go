@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"slices"
 	"testing"
@@ -138,7 +137,7 @@ func TestEnsureEventSubForCreators(t *testing.T) {
 				return nil
 			},
 		},
-		slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		slog.New(slog.DiscardHandler),
 	)
 
 	err := svc.EnsureEventSubForCreators(t.Context(), []Creator{
@@ -204,7 +203,7 @@ func TestDumpCurrentSubscribersRefreshOnUnauthorized(t *testing.T) {
 				return TokenResponse{AccessToken: "fresh", RefreshToken: "fresh-r"}, nil
 			},
 		},
-		slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		slog.New(slog.DiscardHandler),
 	)
 
 	total, err := svc.DumpCurrentSubscribers(t.Context(), Creator{

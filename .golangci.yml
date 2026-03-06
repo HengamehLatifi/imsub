@@ -5,8 +5,12 @@ run:
 
 linters:
   enable:
+    - asciicheck
     - bodyclose
+    - canonicalheader
     - copyloopvar
+    - durationcheck
+    - dupword
     - errcheck
     - errorlint
     - gocritic
@@ -20,6 +24,47 @@ linters:
     - unconvert
     - unparam
     - unused
+    - errname
+    - nolintlint
+    - nosprintfhostport
+    - godot
+    - whitespace
+    - importas
+    - usestdlibvars
+    - thelper
+    - tparallel
+    - exhaustive
+    - nilnil
+    - fatcontext
+    - gosec
+    - sqlclosecheck
+    - makezero
+    - gocheckcompilerdirectives
+    - perfsprint
+    - promlinter
+    - testifylint
+    - sloglint
+    - loggercheck
+    - contextcheck
+    - noctx
+    - forcetypeassert
+    - intrange
+    - modernize
+    - exptostd
+    - usetesting
+    - goconst
+    - predeclared
+    - recvcheck
+    - err113
+    - wrapcheck
+    - nilnesserr
+    - bidichk
+
+  settings:
+    revive:
+      config: revive.toml
+    godot:
+      capital: true
 
   exclusions:
     rules:
@@ -27,3 +72,6 @@ linters:
         linters:
           - errcheck
           - unparam
+          - goconst
+          - err113
+          - wrapcheck

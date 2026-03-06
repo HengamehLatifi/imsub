@@ -164,7 +164,10 @@ func Run() error {
 		return jobsSvc.RunIntegrityAudits(gctx, 20*time.Minute)
 	})
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("errgroup wait: %w", err)
+	}
+	return nil
 }
 
 type telegramRuntimeDeps struct {
@@ -225,16 +228,19 @@ func initTelegramRuntime(ctx context.Context, deps telegramRuntimeDeps) (*telego
 
 func configureBotCommands(ctx context.Context, bot *telego.Bot, tgLimiter *ratelimit.RateLimiter) error {
 	if err := tgLimiter.Wait(ctx, 0); err != nil {
-		return err
+		return fmt.Errorf("limiter wait for bot commands: %w", err)
 	}
-	return bot.SetMyCommands(ctx, &telego.SetMyCommandsParams{
+	if err := bot.SetMyCommands(ctx, &telego.SetMyCommandsParams{
 		Commands: []telego.BotCommand{
 			{Command: "start", Description: "Open user dashboard"},
 			{Command: "creator", Description: "Register creator account"},
 			{Command: "registergroup", Description: "Bind this group to creator"},
 			{Command: "reset", Description: "Clear your linked data"},
 		},
-	})
+	}); err != nil {
+		return fmt.Errorf("set my commands: %w", err)
+	}
+	return nil
 }
 
 func setTelegramWebhook(ctx context.Context, deps telegramWebhookDeps) error {

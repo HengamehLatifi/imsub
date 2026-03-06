@@ -22,13 +22,13 @@ import (
 func (c *Controller) handleResetPrompt(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_reset"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-		return i18n.Translate(lang, "err_reset")
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrReset)
 	}
 
 	// Nothing to reset: return a clean informational message and stop the flow.
 	if !scopes.HasIdentity && !scopes.HasCreator {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "reset_nothing_html"), &client.MessageOptions{ParseMode: telego.ModeHTML})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgResetNothingHTML), &client.MessageOptions{ParseMode: telego.ModeHTML})
 		return ""
 	}
 
@@ -36,12 +36,12 @@ func (c *Controller) handleResetPrompt(ctx context.Context, telegramUserID int64
 	if scopes.HasIdentity && scopes.HasCreator {
 		viewerName := html.EscapeString(scopes.Identity.TwitchLogin)
 		creatorList := html.EscapeString(scopes.Creator.Name)
-		text := fmt.Sprintf(i18n.Translate(lang, "reset_choose_scope_html"), viewerName, creatorList)
+		text := fmt.Sprintf(i18n.Translate(lang, msgResetChooseScopeHTML), viewerName, creatorList)
 		markup := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_reset_viewer_data"), ui.ActionResetPickViewer)),
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_reset_creator_data"), ui.ActionResetPickCreator)),
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_reset_all_data"), ui.ActionResetPickBoth)),
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_cancel"), ui.ActionRefresh)),
+			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetViewerData), ui.ActionResetPickViewer)),
+			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetCreatorData), ui.ActionResetPickCreator)),
+			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetAllData), ui.ActionResetPickBoth)),
+			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnCancel), ui.ActionRefresh)),
 		)
 		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 		return ""
@@ -61,12 +61,12 @@ func (c *Controller) handleResetPrompt(ctx context.Context, telegramUserID int64
 func (c *Controller) handleResetViewerConfirmPrompt(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_reset"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-		return i18n.Translate(lang, "err_reset")
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrReset)
 	}
 	// If viewer data disappeared meanwhile, degrade to "nothing to reset".
 	if !scopes.HasIdentity {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "reset_nothing_html"), &client.MessageOptions{ParseMode: telego.ModeHTML})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgResetNothingHTML), &client.MessageOptions{ParseMode: telego.ModeHTML})
 		return ""
 	}
 	// Estimate downstream impact (how many groups might revoke access).
@@ -77,13 +77,13 @@ func (c *Controller) handleResetViewerConfirmPrompt(ctx context.Context, telegra
 	}
 	// Render a destructive-action confirmation with explicit cancel path.
 	text := fmt.Sprintf(
-		i18n.Translate(lang, "reset_confirm_viewer_html"),
+		i18n.Translate(lang, msgResetConfirmViewerHTML),
 		html.EscapeString(scopes.Identity.TwitchLogin),
 		groupCount,
 	)
 	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_reset_confirm"), ui.ActionResetDoViewer)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_back"), ui.ActionResetBack)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoViewer)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""
@@ -94,20 +94,20 @@ func (c *Controller) handleResetViewerConfirmPrompt(ctx context.Context, telegra
 func (c *Controller) handleResetCreatorConfirmPrompt(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_reset"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-		return i18n.Translate(lang, "err_reset")
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrReset)
 	}
 	// If no creator record exists, exit with informational message.
 	if !scopes.HasCreator {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "reset_nothing_html"), &client.MessageOptions{ParseMode: telego.ModeHTML})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgResetNothingHTML), &client.MessageOptions{ParseMode: telego.ModeHTML})
 		return ""
 	}
 	// Render creator-only destructive confirmation.
 	creatorList := html.EscapeString(scopes.Creator.Name)
-	text := fmt.Sprintf(i18n.Translate(lang, "reset_confirm_creator_html"), creatorList, 1)
+	text := fmt.Sprintf(i18n.Translate(lang, msgResetConfirmCreatorHTML), creatorList, 1)
 	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_reset_confirm"), ui.ActionResetDoCreator)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_back"), ui.ActionResetBack)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoCreator)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""
@@ -118,12 +118,12 @@ func (c *Controller) handleResetCreatorConfirmPrompt(ctx context.Context, telegr
 func (c *Controller) handleResetBothConfirmPrompt(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "err_reset"), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
-		return i18n.Translate(lang, "err_reset")
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrReset)
 	}
 	// If both scopes are already absent, there is nothing actionable.
 	if !scopes.HasIdentity && !scopes.HasCreator {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, "reset_nothing_html"), &client.MessageOptions{ParseMode: telego.ModeHTML})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgResetNothingHTML), &client.MessageOptions{ParseMode: telego.ModeHTML})
 		return ""
 	}
 	// Count possible group-side effects; degrade gracefully if counting fails.
@@ -145,15 +145,15 @@ func (c *Controller) handleResetBothConfirmPrompt(ctx context.Context, telegramU
 	}
 	// Render the final full-reset confirmation.
 	text := fmt.Sprintf(
-		i18n.Translate(lang, "reset_confirm_both_html"),
+		i18n.Translate(lang, msgResetConfirmBothHTML),
 		viewerName,
 		creatorList,
 		creatorCount,
 		groupCount,
 	)
 	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_reset_confirm"), ui.ActionResetDoBoth)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, "btn_back"), ui.ActionResetBack)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoBoth)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""

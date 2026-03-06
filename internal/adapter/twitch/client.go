@@ -15,6 +15,21 @@ import (
 	"imsub/internal/platform/config"
 )
 
+var (
+	errTokenExchange       = errors.New("token exchange failed")
+	errEmptyToken          = errors.New("empty access token in response")
+	errEmptyRefresh        = errors.New("empty refresh token")
+	errTokenRefresh        = errors.New("refresh token failed")
+	errEmptyRefreshedToken = errors.New("empty refreshed access token")
+	errUsersEndpoint       = errors.New("users endpoint failed")
+	errNoUserData          = errors.New("no user data returned by Twitch")
+	errAppToken            = errors.New("app token failed")
+	errEmptyAppToken       = errors.New("empty app access token")
+	errEventSubCreate      = errors.New("eventsub create failed")
+	errEventSubList        = errors.New("eventsub list failed")
+	errSubList             = errors.New("subscriptions list failed")
+)
+
 var _ core.TwitchAPI = (*Client)(nil)
 
 // Client is the production Twitch API client that makes real HTTP calls.
@@ -31,7 +46,7 @@ func NewClient(cfg config.Config, client *http.Client) *Client {
 func responseBodyString(resp *http.Response) (string, error) {
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read response body: %w", err)
 	}
 	return string(b), nil
 }
@@ -47,30 +62,30 @@ func (c *Client) ExchangeCode(ctx context.Context, code string) (core.TokenRespo
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://id.twitch.tv/oauth2/token", strings.NewReader(values.Encode()))
 	if err != nil {
-		return core.TokenResponse{}, err
+		return core.TokenResponse{}, fmt.Errorf("create token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
 	if err != nil {
-		return core.TokenResponse{}, err
+		return core.TokenResponse{}, fmt.Errorf("do token request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := responseBodyString(resp)
 		if readErr != nil {
-			return core.TokenResponse{}, fmt.Errorf("token exchange status %d: read response body: %w", resp.StatusCode, readErr)
+			return core.TokenResponse{}, fmt.Errorf("%w: status %d: read body: %w", errTokenExchange, resp.StatusCode, readErr)
 		}
-		return core.TokenResponse{}, fmt.Errorf("token exchange status %d: %s", resp.StatusCode, body)
+		return core.TokenResponse{}, fmt.Errorf("%w: status %d: %s", errTokenExchange, resp.StatusCode, body)
 	}
 
 	var tr core.TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
-		return core.TokenResponse{}, err
+		return core.TokenResponse{}, fmt.Errorf("decode token response: %w", err)
 	}
 	if tr.AccessToken == "" {
-		return core.TokenResponse{}, errors.New("empty access_token in response")
+		return core.TokenResponse{}, errEmptyToken
 	}
 	return tr, nil
 }
@@ -78,7 +93,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code string) (core.TokenRespo
 // RefreshToken implements the core.TwitchAPI interface.
 func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (core.TokenResponse, error) {
 	if refreshToken == "" {
-		return core.TokenResponse{}, errors.New("empty refresh token")
+		return core.TokenResponse{}, errEmptyRefresh
 	}
 
 	values := url.Values{}
@@ -89,30 +104,30 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (core.To
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://id.twitch.tv/oauth2/token", strings.NewReader(values.Encode()))
 	if err != nil {
-		return core.TokenResponse{}, err
+		return core.TokenResponse{}, fmt.Errorf("create refresh request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
 	if err != nil {
-		return core.TokenResponse{}, err
+		return core.TokenResponse{}, fmt.Errorf("do refresh request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := responseBodyString(resp)
 		if readErr != nil {
-			return core.TokenResponse{}, fmt.Errorf("refresh token status %d: read response body: %w", resp.StatusCode, readErr)
+			return core.TokenResponse{}, fmt.Errorf("%w: status %d: read body: %w", errTokenRefresh, resp.StatusCode, readErr)
 		}
-		return core.TokenResponse{}, fmt.Errorf("refresh token status %d: %s", resp.StatusCode, body)
+		return core.TokenResponse{}, fmt.Errorf("%w: status %d: %s", errTokenRefresh, resp.StatusCode, body)
 	}
 
 	var tr core.TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
-		return core.TokenResponse{}, err
+		return core.TokenResponse{}, fmt.Errorf("decode refresh response: %w", err)
 	}
 	if tr.AccessToken == "" {
-		return core.TokenResponse{}, errors.New("empty refreshed access token")
+		return core.TokenResponse{}, errEmptyRefreshedToken
 	}
 	return tr, nil
 }
@@ -121,31 +136,31 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (core.To
 func (c *Client) FetchUser(ctx context.Context, userToken string) (id, login, displayName string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.twitch.tv/helix/users", nil)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", fmt.Errorf("create users request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+userToken)
 	req.Header.Set("Client-Id", c.cfg.TwitchClientID)
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", fmt.Errorf("do users request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := responseBodyString(resp)
 		if readErr != nil {
-			return "", "", "", fmt.Errorf("users endpoint status %d: read response body: %w", resp.StatusCode, readErr)
+			return "", "", "", fmt.Errorf("%w: status %d: read body: %w", errUsersEndpoint, resp.StatusCode, readErr)
 		}
-		return "", "", "", fmt.Errorf("users endpoint status %d: %s", resp.StatusCode, body)
+		return "", "", "", fmt.Errorf("%w: status %d: %s", errUsersEndpoint, resp.StatusCode, body)
 	}
 
 	var ur UsersResponse
 	if err := json.NewDecoder(resp.Body).Decode(&ur); err != nil {
-		return "", "", "", err
+		return "", "", "", fmt.Errorf("decode users response: %w", err)
 	}
 	if len(ur.Data) == 0 {
-		return "", "", "", errors.New("no user data returned by Twitch")
+		return "", "", "", errNoUserData
 	}
 	return ur.Data[0].ID, ur.Data[0].Login, ur.Data[0].DisplayName, nil
 }
@@ -159,30 +174,30 @@ func (c *Client) AppToken(ctx context.Context) (string, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://id.twitch.tv/oauth2/token", strings.NewReader(values.Encode()))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("create app token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("do app token request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := responseBodyString(resp)
 		if readErr != nil {
-			return "", fmt.Errorf("app token status %d: read response body: %w", resp.StatusCode, readErr)
+			return "", fmt.Errorf("%w: status %d: read body: %w", errAppToken, resp.StatusCode, readErr)
 		}
-		return "", fmt.Errorf("app token status %d: %s", resp.StatusCode, body)
+		return "", fmt.Errorf("%w: status %d: %s", errAppToken, resp.StatusCode, body)
 	}
 
 	var out core.TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", err
+		return "", fmt.Errorf("decode app token response: %w", err)
 	}
 	if out.AccessToken == "" {
-		return "", errors.New("empty app access token")
+		return "", errEmptyAppToken
 	}
 	return out.AccessToken, nil
 }
@@ -203,20 +218,20 @@ func (c *Client) CreateEventSub(ctx context.Context, appToken, broadcasterID, ev
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal eventsub payload: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.twitch.tv/helix/eventsub/subscriptions", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("create eventsub request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+appToken)
 	req.Header.Set("Client-Id", c.cfg.TwitchClientID)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
 	if err != nil {
-		return err
+		return fmt.Errorf("do eventsub request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -225,9 +240,9 @@ func (c *Client) CreateEventSub(ctx context.Context, appToken, broadcasterID, ev
 	}
 	respBody, readErr := responseBodyString(resp)
 	if readErr != nil {
-		return fmt.Errorf("eventsub create status %d: read response body: %w", resp.StatusCode, readErr)
+		return fmt.Errorf("%w: status %d: read body: %w", errEventSubCreate, resp.StatusCode, readErr)
 	}
-	return fmt.Errorf("eventsub create status %d: %s", resp.StatusCode, respBody)
+	return fmt.Errorf("%w: status %d: %s", errEventSubCreate, resp.StatusCode, respBody)
 }
 
 // EnabledEventSubTypes implements the core.TwitchAPI interface.
@@ -244,29 +259,29 @@ func (c *Client) EnabledEventSubTypes(ctx context.Context, appToken, creatorID s
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create eventsub list request: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+appToken)
 		req.Header.Set("Client-Id", c.cfg.TwitchClientID)
 
-		resp, err := c.client.Do(req)
+		resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("do eventsub list request: %w", err)
 		}
 		if resp.StatusCode != http.StatusOK {
 			body, readErr := responseBodyString(resp)
 			_ = resp.Body.Close()
 			if readErr != nil {
-				return nil, fmt.Errorf("eventsub list status %d: read response body: %w", resp.StatusCode, readErr)
+				return nil, fmt.Errorf("%w: status %d: read body: %w", errEventSubList, resp.StatusCode, readErr)
 			}
-			return nil, fmt.Errorf("eventsub list status %d: %s", resp.StatusCode, body)
+			return nil, fmt.Errorf("%w: status %d: %s", errEventSubList, resp.StatusCode, body)
 		}
 
 		var list EventSubListResponse
 		err = json.NewDecoder(resp.Body).Decode(&list)
 		_ = resp.Body.Close()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("decode eventsub list response: %w", err)
 		}
 		for _, sub := range list.Data {
 			if sub.Condition.BroadcasterUserID != creatorID {
@@ -294,14 +309,14 @@ func (c *Client) ListSubscriberPage(ctx context.Context, accessToken, broadcaste
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("create subscriptions request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Client-Id", c.cfg.TwitchClientID)
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("do subscriptions request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -311,14 +326,14 @@ func (c *Client) ListSubscriberPage(ctx context.Context, accessToken, broadcaste
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := responseBodyString(resp)
 		if readErr != nil {
-			return nil, "", fmt.Errorf("subscriptions list status %d: read response body: %w", resp.StatusCode, readErr)
+			return nil, "", fmt.Errorf("%w: status %d: read body: %w", errSubList, resp.StatusCode, readErr)
 		}
-		return nil, "", fmt.Errorf("subscriptions list status %d: %s", resp.StatusCode, body)
+		return nil, "", fmt.Errorf("%w: status %d: %s", errSubList, resp.StatusCode, body)
 	}
 
 	var sr SubscriptionsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&sr); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("decode subscriptions response: %w", err)
 	}
 	userIDs := make([]string, 0, len(sr.Data))
 	for _, sub := range sr.Data {

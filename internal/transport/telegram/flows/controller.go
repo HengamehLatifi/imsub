@@ -16,6 +16,73 @@ import (
 	tghandler "github.com/mymmrac/telego/telegohandler"
 )
 
+const (
+	// General.
+	msgErrLoadStatus   = "err_load_status"
+	msgErrReset        = "err_reset"
+	msgUserGenericName = "user_generic_name"
+
+	// Callbacks.
+	msgCbRefreshed = "cb_refreshed"
+
+	// Help commands.
+	msgCmdHelp        = "cmd_help"
+	msgCmdHelpBoth    = "cmd_help_both"
+	msgCmdHelpCreator = "cmd_help_creator"
+	msgCmdHelpViewer  = "cmd_help_viewer"
+
+	// Group registration.
+	msgGroupNotGroup   = "group_not_group"
+	msgGroupNotAdmin   = "group_not_admin"
+	msgGroupNotCreator = "group_not_creator"
+	msgGroupRegistered = "group_registered"
+
+	// Creator flow.
+	msgErrCreatorLink            = "err_creator_link"
+	msgCreatorRegisterInfo       = "creator_register_info"
+	msgCreatorRegisteredNoGroup  = "creator_registered_no_group_html"
+	msgCreatorRegistered         = "creator_registered_html"
+	msgCreatorEventSubActive     = "creator_eventsub_active"
+	msgCreatorEventSubInactive   = "creator_eventsub_inactive"
+	msgCreatorEventSubUnknown    = "creator_eventsub_unknown"
+	msgCreatorEventSubFail       = "creator_eventsub_fail"
+	msgCreatorSubscribersPending = "creator_subscribers_pending"
+	msgCreatorSubscribersReady   = "creator_subscribers_ready"
+	msgCreatorGroupsNone         = "creator_groups_none"
+	msgCreatorExchangeFail       = "creator_exchange_fail"
+	msgCreatorScopeMissing       = "creator_scope_missing"
+	msgCreatorUserInfoFail       = "creator_userinfo_fail"
+	msgCreatorStoreFail          = "creator_store_fail"
+
+	// Viewer flow.
+	msgLinkPromptHTML    = "link_prompt_html"
+	msgOAuthExchangeFail = "oauth_exchange_fail"
+	msgOAuthUserInfoFail = "oauth_userinfo_fail"
+	msgOAuthSaveFail     = "oauth_save_fail"
+	msgSubEndPartial     = "sub_end_partial"
+
+	// Reset flow.
+	msgResetNothingHTML        = "reset_nothing_html"
+	msgResetDoneViewerHTML     = "reset_done_viewer_html"
+	msgResetDoneCreatorHTML    = "reset_done_creator_html"
+	msgResetDoneBothHTML       = "reset_done_both_html"
+	msgResetChooseScopeHTML    = "reset_choose_scope_html"
+	msgResetConfirmViewerHTML  = "reset_confirm_viewer_html"
+	msgResetConfirmCreatorHTML = "reset_confirm_creator_html"
+	msgResetConfirmBothHTML    = "reset_confirm_both_html"
+
+	// Buttons.
+	btnRegisterCreatorOpen = "btn_register_creator_open"
+	btnLinkTwitch          = "btn_link_twitch"
+	btnJoin                = "btn_join"
+	btnResetViewerData     = "btn_reset_viewer_data"
+	btnResetCreatorData    = "btn_reset_creator_data"
+	btnResetAllData        = "btn_reset_all_data"
+	btnCancel              = "btn_cancel"
+	btnResetConfirm        = "btn_reset_confirm"
+	btnBack                = "btn_back"
+)
+
 // Dependencies configure Telegram flows controller construction.
 type Dependencies struct {
 	Config          config.Config
@@ -144,7 +211,7 @@ func (c *Controller) callbackHandler(ctx context.Context, q telego.CallbackQuery
 
 	callbackText := ""
 	if q.Data == ui.ActionRefresh {
-		callbackText = i18n.Translate(lang, "cb_refreshed")
+		callbackText = i18n.Translate(lang, msgCbRefreshed)
 	}
 	c.answerCallback(ctx, q.ID, callbackText)
 }

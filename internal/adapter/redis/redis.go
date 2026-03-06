@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -26,13 +27,13 @@ type Store struct {
 func NewStore(redisURL string, logger *slog.Logger) (*Store, error) {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis parse url: %w", err)
 	}
 	client := redis.NewClient(opts)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis ping: %w", err)
 	}
 	return &Store{rdb: client, logger: logger}, nil
 }
@@ -46,12 +47,18 @@ func (s *Store) log() *slog.Logger {
 
 // Ping verifies the Redis connection is alive.
 func (s *Store) Ping(ctx context.Context) error {
-	return s.rdb.Ping(ctx).Err()
+	if err := s.rdb.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("redis ping check: %w", err)
+	}
+	return nil
 }
 
 // Close terminates the Redis connection.
 func (s *Store) Close() error {
-	return s.rdb.Close()
+	if err := s.rdb.Close(); err != nil {
+		return fmt.Errorf("redis close: %w", err)
+	}
+	return nil
 }
 
 // EnsureSchema initializes the Redis schema version if absent.
@@ -59,18 +66,24 @@ func (s *Store) EnsureSchema(ctx context.Context) error {
 	val, err := s.rdb.Get(ctx, keySchemaVersion()).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return s.rdb.Set(ctx, keySchemaVersion(), strconv.Itoa(schemaVersionCurrent), 0).Err()
+			if setErr := s.rdb.Set(ctx, keySchemaVersion(), strconv.Itoa(schemaVersionCurrent), 0).Err(); setErr != nil {
+				return fmt.Errorf("redis set schema version (init): %w", setErr)
+			}
+			return nil
 		}
-		return err
+		return fmt.Errorf("redis get schema version: %w", err)
 	}
 	v, err := strconv.Atoi(val)
 	if err != nil {
-		return err
+		return fmt.Errorf("parse schema version: %w", err)
 	}
 	if v == schemaVersionCurrent {
 		return nil
 	}
-	return s.rdb.Set(ctx, keySchemaVersion(), strconv.Itoa(schemaVersionCurrent), 0).Err()
+	if setErr := s.rdb.Set(ctx, keySchemaVersion(), strconv.Itoa(schemaVersionCurrent), 0).Err(); setErr != nil {
+		return fmt.Errorf("redis set schema version (upgrade): %w", setErr)
+	}
+	return nil
 }
 
 // --- Redis key helpers ---

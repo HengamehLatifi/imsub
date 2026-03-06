@@ -1,4 +1,4 @@
-package httputil //nolint:revive // intentional naming
+package httputil //nolint:revive,nolintlint // var-naming: intentional
 
 import (
 	"context"
@@ -49,6 +49,7 @@ func TestRequestID(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := RequestID(tc.req); got != tc.want {
 				t.Errorf("RequestID(req) = %q, want %q", got, tc.want)
 			}
@@ -59,7 +60,7 @@ func TestRequestID(t *testing.T) {
 func TestNewRequestID(t *testing.T) {
 	t.Parallel()
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		got := NewRequestID()
 		if len(got) == 0 {
 			t.Fatalf("NewRequestID() = %q, want non-empty string", got)
@@ -83,7 +84,8 @@ func TestRequestIDContext(t *testing.T) {
 		t.Errorf("RequestIDFromContext(WithRequestID(ctx, %q)) = %q, want %q", "abc123", got, "abc123")
 	}
 
-	if got := WithRequestID(nil, "abc123"); got != nil { //nolint:staticcheck
+	var nilCtx context.Context
+	if got := WithRequestID(nilCtx, "abc123"); got != nil {
 		t.Errorf("WithRequestID(nil, %q) = %v, want nil", "abc123", got)
 	}
 }
@@ -105,7 +107,7 @@ func TestClientIP(t *testing.T) {
 			name: "fly_client_ip",
 			req: func() *http.Request {
 				r := httptest.NewRequest(http.MethodGet, "/", nil)
-				r.Header.Set("Fly-Client-IP", " 203.0.113.10 ")
+				r.Header.Set("Fly-Client-Ip", " 203.0.113.10 ")
 				return r
 			}(),
 			want: "203.0.113.10",
@@ -141,6 +143,7 @@ func TestClientIP(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := ClientIP(tc.req); got != tc.want {
 				t.Errorf("ClientIP(req) = %q, want %q", got, tc.want)
 			}
@@ -217,6 +220,7 @@ func TestRouteLabel(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := RouteLabel(tc.req); got != tc.want {
 				t.Errorf("RouteLabel(req) = %q, want %q", got, tc.want)
 			}
@@ -238,6 +242,7 @@ func TestLabelOrUnknown(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := LabelOrUnknown(tc.in); got != tc.want {
 				t.Errorf("LabelOrUnknown(%q) = %q, want %q", tc.in, got, tc.want)
 			}

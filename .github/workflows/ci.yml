@@ -89,6 +89,9 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      - name: Verify golangci-lint config
+        run: golangci-lint config verify
+
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.10

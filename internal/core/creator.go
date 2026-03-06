@@ -54,9 +54,13 @@ func NewCreator(store creatorStore, checker eventSubChecker, logger *slog.Logger
 	}
 }
 
-// LoadOwnedCreator returns the owned creator for the given telegram user
+// LoadOwnedCreator returns the owned creator for the given telegram user.
 func (c *CreatorService) LoadOwnedCreator(ctx context.Context, telegramUserID int64) (Creator, bool, error) {
-	return c.store.OwnedCreatorForUser(ctx, telegramUserID)
+	creator, found, err := c.store.OwnedCreatorForUser(ctx, telegramUserID)
+	if err != nil {
+		return Creator{}, false, fmt.Errorf("load owned creator for user: %w", err)
+	}
+	return creator, found, nil
 }
 
 // LoadStatus returns the current event sub and subscriber status.
