@@ -6,8 +6,8 @@ GO ?= go
 
 help:
 	@echo "Targets:"
-	@echo "  make fmt      - format Go files with golangci-lint fmt (goimports)"
-	@echo "  make fmt-check - fail if Go files need golangci-lint fmt (goimports)"
+	@echo "  make fmt      - format Go files with gofmt and golangci-lint fmt (goimports)"
+	@echo "  make fmt-check - fail if Go files need gofmt or golangci-lint fmt (goimports)"
 	@echo "  make vet      - run go vet"
 	@echo "  make test     - run unit tests"
 	@echo "  make test-integration - run integration-tagged tests"
@@ -25,9 +25,15 @@ help:
 	@echo "  make logs     - show recent Fly logs"
 
 fmt:
+	find . -type f -name '*.go' -not -path './vendor/*' -print0 | xargs -0 gofmt -w
 	GOCACHE=/tmp/gocache GOLANGCI_LINT_CACHE=/tmp/golangci-lint golangci-lint fmt
 
 fmt-check:
+	@out="$$(find . -type f -name '*.go' -not -path './vendor/*' -exec gofmt -l {} +)"; \
+	if [ -n "$$out" ]; then \
+		echo "$$out"; \
+		exit 1; \
+	fi
 	GOCACHE=/tmp/gocache GOLANGCI_LINT_CACHE=/tmp/golangci-lint golangci-lint fmt --diff
 
 vet:

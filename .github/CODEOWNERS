@@ -1,0 +1,9 @@
+# Require explicit review for automation, deployment, and dependency surface changes.
+* @ale-grassi
+
+.github/workflows/* @ale-grassi
+.github/dependabot.yml @ale-grassi
+Dockerfile @ale-grassi
+fly.toml @ale-grassi
+go.mod @ale-grassi
+go.sum @ale-grassi
