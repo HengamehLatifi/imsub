@@ -70,6 +70,7 @@ const (
 	msgResetConfirmViewerHTML  = "reset_confirm_viewer_html"
 	msgResetConfirmCreatorHTML = "reset_confirm_creator_html"
 	msgResetConfirmBothHTML    = "reset_confirm_both_html"
+	msgResetExitHTML           = "reset_exit_html"
 
 	// Buttons.
 	btnRegisterCreatorOpen = "btn_register_creator_open"
@@ -78,7 +79,6 @@ const (
 	btnResetViewerData     = "btn_reset_viewer_data"
 	btnResetCreatorData    = "btn_reset_creator_data"
 	btnResetAllData        = "btn_reset_all_data"
-	btnCancel              = "btn_cancel"
 	btnResetConfirm        = "btn_reset_confirm"
 	btnBack                = "btn_back"
 )
@@ -188,7 +188,9 @@ func (c *Controller) RegisterTelegramHandlers() {
 	registerCallback(ui.ActionResetPickViewer, c.handleResetViewerConfirmPrompt)
 	registerCallback(ui.ActionResetPickCreator, c.handleResetCreatorConfirmPrompt)
 	registerCallback(ui.ActionResetPickBoth, c.handleResetBothConfirmPrompt)
-	registerCallback(ui.ActionResetBack, c.handleResetPrompt)
+	registerCallback(ui.ActionResetPickerBack, c.handleResetBackToMenu)
+	registerCallback(ui.ActionResetPickerCancel, c.handleResetCancel)
+	registerCallback(ui.ActionResetConfirmBack, c.handleResetBack)
 	registerCallback(ui.ActionResetDoViewer, c.handleResetViewerCommand)
 	registerCallback(ui.ActionResetDoCreator, c.handleResetCreatorCommand)
 	registerCallback(ui.ActionResetDoBoth, c.handleResetBothCommand)

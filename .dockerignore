@@ -1,5 +1,55 @@
+# Binaries
+/imsub
+/bin/
+/dist/
+/out/
+*.exe
+
+# Build and test artifacts
+*.test
+*.out
+*.prof
+coverage.out
+
+# Dependency/vendor caches
+/vendor/
+
+# Environment files and secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs and temp files
+*.log
+tmp/
+data/
+
+# IDE/editor files
+.idea/
+.vscode/
+.devcontainer/
+.claude/
+.gemini/
+*.swp
+*.swo
+.editorconfig
+
+# OS files
+.DS_Store
+
+# Git
 .git
 .gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Docs and Configs
 README.md
-data.json
-*.log
+style.md
+.golangci.yml
+.pre-commit-config.yaml
+fly.toml
+Makefile

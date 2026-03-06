@@ -1,8 +1,5 @@
 [btn_back]
-other = "Back"
-
-[btn_cancel]
-other = "Cancel"
+other = "↩️ Back ↩️"
 
 [btn_join]
 other = "Join %s"
@@ -17,19 +14,19 @@ other = "Refresh"
 other = "Connect Creator Account"
 
 [btn_reset]
-other = "Delete linked data"
+other = "⚠️ Delete linked data ⚠️"
 
 [btn_reset_all_data]
-other = "Delete all data"
+other = "⚠️ Delete all data ⚠️"
 
 [btn_reset_confirm]
-other = "Delete"
+other = "⚠️ Delete ⚠️"
 
 [btn_reset_creator_data]
-other = "Delete creator data"
+other = "⚠️ Delete creator data ⚠️"
 
 [btn_reset_viewer_data]
-other = "Delete viewer data"
+other = "⚠️ Delete viewer data ⚠️"
 
 [btn_subscribe]
 other = "Subscribe on Twitch"
@@ -62,7 +59,7 @@ other = "• Subscriber sync: ⚠️ <b>Action needed</b> — open /creator in D
 other = "• Subscriber sync: ⚠️ <b>Status unavailable right now</b> — check /creator again shortly"
 
 [creator_exchange_fail]
-other = "⚠️ <b>Creator setup did not finish</b>\nTwitch authorization was interrupted.\nReturn here and run <code>/creator</code> again."
+other = "⚠️ <b>Creator setup did not finish</b>\nTwitch authorization was interrupted.\nReturn here and run /creator again."
 
 [creator_groups_none]
 other = "• No groups linked yet."
@@ -77,10 +74,10 @@ other = "✅ <b>Creator account connected</b>\n🎬 <b>Twitch:</b> %s\n\n<b>Setu
 other = "✅ <b>Creator account connected</b>\n🎬 <b>Twitch:</b> %s\n\n👉 <b>Next step</b>\nRun <code>/registergroup</code> in the Telegram group you want to protect.\nYou must be an <b>admin</b> there.\n\n⏳ Subscriber syncing will start automatically after the group is linked.\n\n<b>Current group status</b>\n%s"
 
 [creator_scope_missing]
-other = "⚠️ <b>Missing Twitch permission</b>\nThe required creator access was not granted.\nRun <code>/creator</code> again and approve access."
+other = "⚠️ <b>Missing Twitch permission</b>\nThe required creator access was not granted.\nRun /creator again and approve access."
 
 [creator_store_fail]
-other = "⚠️ <b>Could not save creator setup</b>\nTry <code>/creator</code> again."
+other = "⚠️ <b>Could not save creator setup</b>\nTry /creator again."
 
 [creator_subscribers_pending]
 other = "<b>⏳ syncing...</b>"
@@ -89,7 +86,7 @@ other = "<b>⏳ syncing...</b>"
 other = "<b>%d</b>"
 
 [creator_userinfo_fail]
-other = "⚠️ <b>Could not read Twitch account details</b>\nRun <code>/creator</code> again in a moment."
+other = "⚠️ <b>Could not read Twitch account details</b>\nRun /creator again in a moment."
 
 [err_creator_link]
 other = "I couldn't create the creator connection link right now. Try /creator again."
@@ -128,7 +125,7 @@ other = "✅ <b>Twitch connected</b>\n👤 <b>Account:</b> %s\n\n🎉 <b>Active 
 other = "⚠️ <b>Twitch authorization did not finish</b>\nReturn to Telegram and try again."
 
 [oauth_save_fail]
-other = "⚠️ <b>Could not save your Twitch link</b>\nIf the wrong Twitch account was used, run <code>/reset</code> and try again."
+other = "⚠️ <b>Could not save your Twitch link</b>\nIf the wrong Twitch account was used, run /reset and try again."
 
 [oauth_userinfo_fail]
 other = "⚠️ <b>Could not read Twitch account details</b>\nReturn to Telegram and try again in a moment."
@@ -137,28 +134,31 @@ other = "⚠️ <b>Could not read Twitch account details</b>\nReturn to Telegram
 other = "⚠️ <b>Choose What to Delete</b>\n\nYou currently have both viewer and creator data linked to this Telegram account.\n\n👤 <b>Viewer account:</b> %s\n🎬 <b>Creator account:</b> %s\n\nSelect the data you want to remove below."
 
 [reset_confirm_both_html]
-other = "⚠️ <b>Delete All Linked Data</b>\n\n👤 <b>Viewer account:</b> %s\n🎬 <b>Creator account:</b> %s\n📦 <b>Creator records to delete:</b> %d\n🚪 <b>Groups that may remove access:</b> %d\n\nIf you continue:\n• both viewer and creator data will be deleted\n• you may lose access to linked Telegram groups\n\n🔄 To connect again later, use <code>/start</code> or <code>/creator</code>."
+other = "⚠️ <b>Delete All Linked Data</b>\n\n👤 <b>Viewer account:</b> %s\n🎬 <b>Creator account:</b> %s\n📦 <b>Creator records to delete:</b> %d\n🚪 <b>Groups that may remove access:</b> %d\n\nIf you continue:\n• both viewer and creator data will be deleted\n• you may lose access to linked Telegram groups\n\n🔄 To connect again later, use /start or /creator."
 
 [reset_confirm_creator_html]
-other = "⚠️ <b>Delete Creator Data</b>\n\n🎬 <b>Creator account:</b> %s\n📦 <b>Creator records to delete:</b> %d\n\nIf you continue:\n• your creator setup will be deleted\n• linked creator registrations will be removed\n\n🔄 To set it up again later, use <code>/creator</code>."
+other = "⚠️ <b>Delete Creator Data</b>\n\n🎬 <b>Creator account:</b> %s\n📦 <b>Creator records to delete:</b> %d\n\nIf you continue:\n• your creator setup will be deleted\n• linked creator registrations will be removed\n\n🔄 To set it up again later, use /creator."
 
 [reset_confirm_viewer_html]
-other = "⚠️ <b>Delete Viewer Data</b>\n\n👤 <b>Twitch account:</b> %s\n🚪 <b>Groups that may remove access:</b> %d\n\nIf you continue:\n• your linked viewer account data will be deleted\n• you may lose access to those Telegram groups\n\n🔄 To connect again later, use <code>/start</code>."
+other = "⚠️ <b>Delete Viewer Data</b>\n\n👤 <b>Twitch account:</b> %s\n🚪 <b>Groups that may remove access:</b> %d\n\nIf you continue:\n• your linked viewer account data will be deleted\n• you may lose access to those Telegram groups\n\n🔄 To connect again later, use /start."
 
 [reset_done_both_html]
-other = "✅ <b>Linked data deleted</b>\n\n👤 <b>Removed viewer account:</b> %s\n🚪 <b>Groups processed:</b> %d\n🎬 <b>Removed creator account:</b> %s\n📦 <b>Creator records deleted:</b> %d\n\nIf you want to set things up again:\n• use <code>/start</code> for viewer access\n• use <code>/creator</code> for creator setup"
+other = "✅ <b>Linked data deleted</b>\n\n👤 <b>Removed viewer account:</b> %s\n🚪 <b>Groups processed:</b> %d\n🎬 <b>Removed creator account:</b> %s\n📦 <b>Creator records deleted:</b> %d\n\nIf you want to set things up again:\n• use /start for viewer access\n• use /creator for creator setup"
 
 [reset_done_creator_html]
-other = "✅ <b>Creator data deleted</b>\n\n🎬 <b>Removed creator account:</b> %s\n📦 <b>Creator records deleted:</b> %d\n\n🔄 To set it up again, use <code>/creator</code>."
+other = "✅ <b>Creator data deleted</b>\n\n🎬 <b>Removed creator account:</b> %s\n📦 <b>Creator records deleted:</b> %d\n\n🔄 To set it up again, use /creator."
 
 [reset_done_viewer_html]
-other = "✅ <b>Viewer data deleted</b>\n\n👤 <b>Removed Twitch account:</b> %s\n🚪 <b>Groups processed:</b> %d\n\n🔄 To connect again, use <code>/start</code>."
+other = "✅ <b>Viewer data deleted</b>\n\n👤 <b>Removed Twitch account:</b> %s\n🚪 <b>Groups processed:</b> %d\n\n🔄 To connect again, use /start."
+
+[reset_exit_html]
+other = "ℹ️ <b>No changes made</b>\n\nYour linked data is safe and remains untouched.\n\n🔄 Press /start to view and manage your data."
 
 [reset_nothing_html]
 other = "✅ <b>Nothing to reset right now.</b>\n\nI couldn't find linked viewer or creator data for your account."
 
 [sub_end_partial]
-other = "⚠️ <b>Subscription ended</b>\n\nYour subscription to <b>%s</b> is no longer active, so your Telegram group access was removed.\n\n🔁 After you resubscribe on Twitch, come back here and use <code>/start</code> to get a new join link."
+other = "⚠️ <b>Subscription ended</b>\n\nYour subscription to <b>%s</b> is no longer active, so your Telegram group access was removed.\n\n🔁 After you resubscribe on Twitch, come back here and use /start to get a new join link."
 
 [user_generic_name]
 other = "there"

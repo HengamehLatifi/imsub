@@ -17,21 +17,27 @@ const (
 	ActionRefresh = "action:refresh"
 	// ActionRegisterCreator starts creator registration.
 	ActionRegisterCreator = "action:register_creator"
-	// ActionResetConfirm opens reset scope selection.
+	// ActionResetConfirm opens the reset scope picker.
 	ActionResetConfirm = "action:reset_confirm"
+
 	// ActionResetPickViewer selects viewer reset scope.
 	ActionResetPickViewer = "action:reset_pick_viewer"
 	// ActionResetPickCreator selects creator reset scope.
 	ActionResetPickCreator = "action:reset_pick_creator"
 	// ActionResetPickBoth selects combined reset scope.
 	ActionResetPickBoth = "action:reset_pick_both"
-	// ActionResetBack returns to the reset scope selection.
-	ActionResetBack = "action:reset_back"
-	// ActionResetDoViewer confirms viewer reset.
+	// ActionResetPickerBack returns from the scope picker to the originating menu.
+	ActionResetPickerBack = "action:reset_back_menu"
+	// ActionResetPickerCancel exits the scope picker when entered from /reset.
+	ActionResetPickerCancel = "action:reset_cancel"
+
+	// ActionResetConfirmBack returns from the confirmation screen to the scope picker or menu.
+	ActionResetConfirmBack = "action:reset_back"
+	// ActionResetDoViewer confirms viewer data deletion.
 	ActionResetDoViewer = "action:reset_do_viewer"
-	// ActionResetDoCreator confirms creator reset.
+	// ActionResetDoCreator confirms creator data deletion.
 	ActionResetDoCreator = "action:reset_do_creator"
-	// ActionResetDoBoth confirms combined reset.
+	// ActionResetDoBoth confirms combined data deletion.
 	ActionResetDoBoth = "action:reset_do_both"
 
 	btnRefresh   = "btn_refresh"

@@ -67,7 +67,11 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 			profileDisplay,
 			groupLines,
 		)
-		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, DisablePreview: true})
+		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{
+			ParseMode:      telego.ModeHTML,
+			DisablePreview: true,
+			Markup:         ui.WithMainMenu(lang),
+		})
 		return
 	}
 	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -87,11 +91,19 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 	)
 
 	if editMsgID != 0 {
-		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, DisablePreview: true})
+		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{
+			ParseMode:      telego.ModeHTML,
+			DisablePreview: true,
+			Markup:         ui.WithMainMenu(lang),
+		})
 		return
 	}
 
-	c.sendMsg(ctx, telegramUserID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, DisablePreview: true})
+	c.sendMsg(ctx, telegramUserID, text, &client.MessageOptions{
+		ParseMode:      telego.ModeHTML,
+		DisablePreview: true,
+		Markup:         ui.WithMainMenu(lang),
+	})
 }
 
 func creatorEventSubStatusText(status core.Status, lang string) string {

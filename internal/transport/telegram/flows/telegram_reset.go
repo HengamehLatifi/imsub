@@ -37,11 +37,17 @@ func (c *Controller) handleResetPrompt(ctx context.Context, telegramUserID int64
 		viewerName := html.EscapeString(scopes.Identity.TwitchLogin)
 		creatorList := html.EscapeString(scopes.Creator.Name)
 		text := fmt.Sprintf(i18n.Translate(lang, msgResetChooseScopeHTML), viewerName, creatorList)
+		// When entered from /reset (editMsgID==0), "Back" exits to the cancelled screen.
+		// When entered from a menu callback, "Back" returns to the originating menu.
+		backAction := ui.ActionResetPickerBack
+		if editMsgID == 0 {
+			backAction = ui.ActionResetPickerCancel
+		}
 		markup := tu.InlineKeyboard(
 			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetViewerData), ui.ActionResetPickViewer)),
 			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetCreatorData), ui.ActionResetPickCreator)),
 			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetAllData), ui.ActionResetPickBoth)),
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnCancel), ui.ActionRefresh)),
+			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), backAction)),
 		)
 		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 		return ""
@@ -52,6 +58,51 @@ func (c *Controller) handleResetPrompt(ctx context.Context, telegramUserID int64
 		return c.handleResetViewerConfirmPrompt(ctx, telegramUserID, editMsgID, lang)
 	}
 	return c.handleResetCreatorConfirmPrompt(ctx, telegramUserID, editMsgID, lang)
+}
+
+// handleResetBack handles the back button from reset confirmation screens.
+// If the user has both scopes, it returns to the scope picker.
+// If they have only one scope, it returns to the originating menu.
+func (c *Controller) handleResetBack(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
+	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
+	if err != nil {
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrReset)
+	}
+
+	// If the user has both scopes, "Back" means go back to the picker.
+	if scopes.HasIdentity && scopes.HasCreator {
+		return c.handleResetPrompt(ctx, telegramUserID, editMsgID, lang)
+	}
+
+	// If the user is only a Creator, return to the Creator menu.
+	if !scopes.HasIdentity && scopes.HasCreator {
+		return c.handleCreatorRegistrationStart(ctx, telegramUserID, editMsgID, lang)
+	}
+
+	// Otherwise, return to the Viewer menu (the default /start behavior).
+	return c.handleViewerStart(ctx, telegramUserID, editMsgID, lang)
+}
+
+// handleResetBackToMenu returns from the reset scope picker to the originating menu.
+// If the user has creator data, it returns to the creator status screen;
+// otherwise it returns to the viewer/start screen.
+func (c *Controller) handleResetBackToMenu(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
+	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
+	if err != nil {
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		return i18n.Translate(lang, msgErrReset)
+	}
+	if scopes.HasCreator {
+		return c.handleCreatorRegistrationStart(ctx, telegramUserID, editMsgID, lang)
+	}
+	return c.handleViewerStart(ctx, telegramUserID, editMsgID, lang)
+}
+
+// handleResetCancel cleanly aborts the reset flow, removing buttons and showing a safe message.
+func (c *Controller) handleResetCancel(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
+	c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgResetExitHTML), &client.MessageOptions{ParseMode: telego.ModeHTML})
+	return ""
 }
 
 // handleResetViewerConfirmPrompt renders a confirmation screen for viewer data
@@ -83,7 +134,7 @@ func (c *Controller) handleResetViewerConfirmPrompt(ctx context.Context, telegra
 	)
 	markup := tu.InlineKeyboard(
 		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoViewer)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetBack)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""
@@ -107,7 +158,7 @@ func (c *Controller) handleResetCreatorConfirmPrompt(ctx context.Context, telegr
 	text := fmt.Sprintf(i18n.Translate(lang, msgResetConfirmCreatorHTML), creatorList, 1)
 	markup := tu.InlineKeyboard(
 		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoCreator)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetBack)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""
@@ -153,7 +204,7 @@ func (c *Controller) handleResetBothConfirmPrompt(ctx context.Context, telegramU
 	)
 	markup := tu.InlineKeyboard(
 		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoBoth)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetBack)),
+		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""
