@@ -176,8 +176,9 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		alreadyText := fmt.Sprintf(i18n.Translate(lang, msgGroupAlreadyLinked), html.EscapeString(matched.Name))
 		checking := i18n.Translate(lang, msgGroupCheckingSettings)
 		groupMsgID := c.sendMsg(ctx, msg.Chat.ID, alreadyText+"\n\n"+checking, &client.MessageOptions{
-			ReplyToMessageID: msg.MessageID,
-			ParseMode:        telego.ModeHTML,
+			ReplyToMessageID:  msg.MessageID,
+			ParseMode:         telego.ModeHTML,
+			EnableCustomEmoji: true,
 		})
 		go c.sendPostRegistrationSettingsCheck(context.WithoutCancel(ctx), msg.Chat.ID, groupMsgID, lang, alreadyText)
 		return nil
@@ -216,8 +217,9 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 	successText := fmt.Sprintf(i18n.Translate(lang, msgGroupRegistered), html.EscapeString(matched.Name))
 	checking := i18n.Translate(lang, msgGroupCheckingSettings)
 	groupMsgID := c.sendMsg(ctx, msg.Chat.ID, successText+"\n\n"+checking, &client.MessageOptions{
-		ReplyToMessageID: msg.MessageID,
-		ParseMode:        telego.ModeHTML,
+		ReplyToMessageID:  msg.MessageID,
+		ParseMode:         telego.ModeHTML,
+		EnableCustomEmoji: true,
 	})
 
 	// Check group settings asynchronously, then edit the group message
@@ -283,7 +285,10 @@ func (c *Controller) sendPostRegistrationSettingsCheck(ctx context.Context, grou
 		settingsResult = i18n.Translate(lang, msgGroupSettingsOK)
 	}
 	if groupMsgID != 0 {
-		c.reply(ctx, groupChatID, groupMsgID, groupBaseText+"\n\n"+settingsResult, &client.MessageOptions{ParseMode: telego.ModeHTML})
+		c.reply(ctx, groupChatID, groupMsgID, groupBaseText+"\n\n"+settingsResult, &client.MessageOptions{
+			ParseMode:         telego.ModeHTML,
+			EnableCustomEmoji: true,
+		})
 	}
 }
 
@@ -300,7 +305,10 @@ func (c *Controller) sendPostRegistrationMessages(ctx context.Context, opts post
 
 	// Stream partial DM with "checking..." status.
 	checking := i18n.Translate(opts.lang, msgGroupCheckingSettings)
-	c.sendDraft(ctx, opts.ownerUserID, draftID, dmBase+"\n\n"+checking, &client.MessageOptions{ParseMode: telego.ModeHTML})
+	c.sendDraft(ctx, opts.ownerUserID, draftID, dmBase+"\n\n"+checking, &client.MessageOptions{
+		ParseMode:         telego.ModeHTML,
+		EnableCustomEmoji: true,
+	})
 
 	warnings := c.checkGroupSettings(ctx, opts.groupChatID, opts.lang)
 
@@ -313,13 +321,22 @@ func (c *Controller) sendPostRegistrationMessages(ctx context.Context, opts post
 
 	dmText := dmBase + "\n\n" + settingsResult
 	// Update the draft with the result before sending the final message.
-	c.sendDraft(ctx, opts.ownerUserID, draftID, dmText, &client.MessageOptions{ParseMode: telego.ModeHTML})
+	c.sendDraft(ctx, opts.ownerUserID, draftID, dmText, &client.MessageOptions{
+		ParseMode:         telego.ModeHTML,
+		EnableCustomEmoji: true,
+	})
 
 	// Send the final message which replaces the draft.
-	c.sendMsg(ctx, opts.ownerUserID, dmText, &client.MessageOptions{ParseMode: telego.ModeHTML})
+	c.sendMsg(ctx, opts.ownerUserID, dmText, &client.MessageOptions{
+		ParseMode:         telego.ModeHTML,
+		EnableCustomEmoji: true,
+	})
 
 	if opts.groupMsgID != 0 {
-		c.reply(ctx, opts.groupChatID, opts.groupMsgID, opts.groupBaseText+"\n\n"+settingsResult, &client.MessageOptions{ParseMode: telego.ModeHTML})
+		c.reply(ctx, opts.groupChatID, opts.groupMsgID, opts.groupBaseText+"\n\n"+settingsResult, &client.MessageOptions{
+			ParseMode:         telego.ModeHTML,
+			EnableCustomEmoji: true,
+		})
 	}
 }
 

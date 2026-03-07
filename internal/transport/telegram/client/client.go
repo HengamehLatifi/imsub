@@ -16,11 +16,12 @@ type limiter interface {
 
 // MessageOptions configures send/edit operations.
 type MessageOptions struct {
-	ParseMode        string
-	Markup           *telego.InlineKeyboardMarkup
-	DisablePreview   bool
-	MessageThreadID  int
-	ReplyToMessageID int
+	ParseMode         string
+	EnableCustomEmoji bool
+	Markup            *telego.InlineKeyboardMarkup
+	DisablePreview    bool
+	MessageThreadID   int
+	ReplyToMessageID  int
 }
 
 // Client wraps Telegram send/edit/delete/callback operations with limiter and
@@ -48,6 +49,7 @@ func (c *Client) Send(ctx context.Context, chatID int64, text string, opts *Mess
 	if c == nil || c.bot == nil {
 		return 0
 	}
+	text = transformOutgoingText(text, opts)
 	params := tu.Message(tu.ID(chatID), text)
 	if opts != nil {
 		if opts.Markup != nil {
@@ -90,6 +92,7 @@ func (c *Client) Edit(ctx context.Context, chatID int64, messageID int, text str
 	if c == nil || c.bot == nil {
 		return
 	}
+	text = transformOutgoingText(text, opts)
 	params := tu.EditMessageText(tu.ID(chatID), messageID, text)
 	if opts != nil {
 		if opts.Markup != nil {
@@ -148,6 +151,7 @@ func (c *Client) SendDraft(ctx context.Context, chatID int64, draftID int, text 
 	if c == nil || c.bot == nil {
 		return
 	}
+	text = transformOutgoingText(text, opts)
 	if c.limiter != nil {
 		if err := c.limiter.Wait(ctx, chatID); err != nil {
 			c.logger.Warn("Send draft rate limit wait failed", "chat_id", chatID, "error", err)

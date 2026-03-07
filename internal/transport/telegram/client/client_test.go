@@ -82,6 +82,54 @@ func TestSendDraftIncludesMessageThreadID(t *testing.T) {
 	caller.assertJSONField(t, "sendMessageDraft", "parse_mode", telego.ModeHTML)
 }
 
+func TestSendTransformsConfiguredEmojiForHTML(t *testing.T) {
+	t.Parallel()
+
+	caller := &recordingCaller{
+		results: map[string]json.RawMessage{
+			"sendMessage": json.RawMessage(`{"message_id":99,"date":0,"chat":{"id":100,"type":"private"}}`),
+		},
+	}
+	c := newTestClient(t, caller)
+
+	c.Send(t.Context(), 100, "⏳ Checking", &MessageOptions{
+		ParseMode:         telego.ModeHTML,
+		EnableCustomEmoji: true,
+	})
+
+	caller.assertJSONFieldContains(t, "sendMessage", "text", `<tg-emoji emoji-id="5386367538735104399">⏳</tg-emoji>`)
+}
+
+func TestSendLeavesPlainTextEmojiUntouched(t *testing.T) {
+	t.Parallel()
+
+	caller := &recordingCaller{
+		results: map[string]json.RawMessage{
+			"sendMessage": json.RawMessage(`{"message_id":99,"date":0,"chat":{"id":100,"type":"private"}}`),
+		},
+	}
+	c := newTestClient(t, caller)
+
+	c.Send(t.Context(), 100, "⏳ Checking", nil)
+
+	caller.assertJSONField(t, "sendMessage", "text", "⏳ Checking")
+}
+
+func TestSendLeavesHTMLEmojiUntouchedWithoutOptIn(t *testing.T) {
+	t.Parallel()
+
+	caller := &recordingCaller{
+		results: map[string]json.RawMessage{
+			"sendMessage": json.RawMessage(`{"message_id":99,"date":0,"chat":{"id":100,"type":"private"}}`),
+		},
+	}
+	c := newTestClient(t, caller)
+
+	c.Send(t.Context(), 100, "⏳ Checking", &MessageOptions{ParseMode: telego.ModeHTML})
+
+	caller.assertJSONField(t, "sendMessage", "text", "⏳ Checking")
+}
+
 func newTestClient(t *testing.T, caller telegoapi.Caller) *Client {
 	t.Helper()
 
@@ -126,5 +174,21 @@ func (c *recordingCaller) assertJSONField(t *testing.T, method, field string, wa
 	}
 	if got, ok := payload[field]; !ok || got != want {
 		t.Fatalf("%s payload[%q] = %#v, want %#v", method, field, got, want)
+	}
+}
+
+func (c *recordingCaller) assertJSONFieldContains(t *testing.T, method, field, wantSubstring string) {
+	t.Helper()
+
+	payload, ok := c.request[method]
+	if !ok {
+		t.Fatalf("request for method %q not recorded", method)
+	}
+	got, ok := payload[field].(string)
+	if !ok {
+		t.Fatalf("%s payload[%q] = %#v, want string containing %q", method, field, payload[field], wantSubstring)
+	}
+	if !strings.Contains(got, wantSubstring) {
+		t.Fatalf("%s payload[%q] = %q, want substring %q", method, field, got, wantSubstring)
 	}
 }
