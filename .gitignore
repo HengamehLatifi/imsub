@@ -28,3 +28,6 @@ tmp/
 
 # OS files
 .DS_Store
+
+# Other
+style.md

@@ -23,8 +23,17 @@ import (
 	"imsub/internal/transport/telegram/flows"
 
 	"github.com/mymmrac/telego"
+	"github.com/mymmrac/telego/telegoapi"
 	"github.com/mymmrac/telego/telegohandler"
+	"github.com/valyala/fasthttp"
 	"golang.org/x/sync/errgroup"
+)
+
+const (
+	telegramRetryMaxAttempts = 3
+	telegramRetryExponent    = 2
+	telegramRetryStartDelay  = 250 * time.Millisecond
+	telegramRetryMaxDelay    = 3 * time.Second
 )
 
 func telegramAllowedUpdates() []string {
@@ -184,7 +193,7 @@ type telegramWebhookDeps struct {
 }
 
 func initTelegramRuntime(ctx context.Context, deps telegramRuntimeDeps) (*telego.Bot, *telegohandler.BotHandler, chan telego.Update, error) {
-	bot, err := telego.NewBot(deps.config.TelegramBotToken)
+	bot, err := telego.NewBot(deps.config.TelegramBotToken, telego.WithAPICaller(newTelegramAPICaller()))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("telegram init failed: %w", err)
 	}
@@ -224,6 +233,18 @@ func initTelegramRuntime(ctx context.Context, deps telegramRuntimeDeps) (*telego
 	}
 
 	return bot, tgHandler, tgUpdates, nil
+}
+
+func newTelegramAPICaller() telegoapi.Caller {
+	return &telegoapi.RetryCaller{
+		Caller:            telegoapi.FastHTTPCaller{Client: &fasthttp.Client{}},
+		MaxAttempts:       telegramRetryMaxAttempts,
+		ExponentBase:      telegramRetryExponent,
+		StartDelay:        telegramRetryStartDelay,
+		MaxDelay:          telegramRetryMaxDelay,
+		RateLimit:         telegoapi.RetryRateLimitWaitOrAbort,
+		BufferRequestData: true,
+	}
 }
 
 func configureBotCommands(ctx context.Context, bot *telego.Bot, tgLimiter *ratelimit.RateLimiter) error {

@@ -3,8 +3,11 @@ package app
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"imsub/internal/platform/config"
+
+	"github.com/mymmrac/telego/telegoapi"
 )
 
 func TestRunFailsFastOnMissingConfig(t *testing.T) {
@@ -21,5 +24,54 @@ func TestRunFailsFastOnMissingConfig(t *testing.T) {
 	}
 	if !errors.Is(err, config.ErrMissingEnv) {
 		t.Fatalf("Run() error = %v, want errors.Is(err, config.ErrMissingEnv)=true", err)
+	}
+}
+
+func TestNewTelegramAPICallerUsesRetryPolicy(t *testing.T) {
+	t.Parallel()
+
+	caller := newTelegramAPICaller()
+
+	retryCaller, ok := caller.(*telegoapi.RetryCaller)
+	if !ok {
+		t.Fatalf("newTelegramAPICaller() type = %T, want *telegoapi.RetryCaller", caller)
+	}
+	if retryCaller.MaxAttempts != telegramRetryMaxAttempts {
+		t.Errorf("RetryCaller.MaxAttempts = %d, want %d", retryCaller.MaxAttempts, telegramRetryMaxAttempts)
+	}
+	if retryCaller.ExponentBase != telegramRetryExponent {
+		t.Errorf("RetryCaller.ExponentBase = %v, want %v", retryCaller.ExponentBase, telegramRetryExponent)
+	}
+	if retryCaller.StartDelay != telegramRetryStartDelay {
+		t.Errorf("RetryCaller.StartDelay = %s, want %s", retryCaller.StartDelay, telegramRetryStartDelay)
+	}
+	if retryCaller.MaxDelay != telegramRetryMaxDelay {
+		t.Errorf("RetryCaller.MaxDelay = %s, want %s", retryCaller.MaxDelay, telegramRetryMaxDelay)
+	}
+	if retryCaller.RateLimit != telegoapi.RetryRateLimitWaitOrAbort {
+		t.Errorf("RetryCaller.RateLimit = %v, want %v", retryCaller.RateLimit, telegoapi.RetryRateLimitWaitOrAbort)
+	}
+	if !retryCaller.BufferRequestData {
+		t.Error("RetryCaller.BufferRequestData = false, want true")
+	}
+	if _, ok := retryCaller.Caller.(telegoapi.FastHTTPCaller); !ok {
+		t.Errorf("RetryCaller.Caller type = %T, want telegoapi.FastHTTPCaller", retryCaller.Caller)
+	}
+}
+
+func TestTelegramRetryConstantsStayConservative(t *testing.T) {
+	t.Parallel()
+
+	if telegramRetryMaxAttempts < 2 {
+		t.Fatalf("telegramRetryMaxAttempts = %d, want at least 2", telegramRetryMaxAttempts)
+	}
+	if telegramRetryStartDelay <= 0 {
+		t.Fatalf("telegramRetryStartDelay = %s, want positive", telegramRetryStartDelay)
+	}
+	if telegramRetryMaxDelay < telegramRetryStartDelay {
+		t.Fatalf("telegramRetryMaxDelay = %s, want >= %s", telegramRetryMaxDelay, telegramRetryStartDelay)
+	}
+	if telegramRetryMaxDelay > 10*time.Second {
+		t.Fatalf("telegramRetryMaxDelay = %s, want <= 10s", telegramRetryMaxDelay)
 	}
 }
