@@ -38,6 +38,17 @@ func TestProfileAndButtons(t *testing.T) {
 	if link.IconCustomEmojiID != linkButtonEmojiID {
 		t.Errorf("LinkButton(%q, %q) icon = %q, want %q", "Connect", "https://example.com", link.IconCustomEmojiID, linkButtonEmojiID)
 	}
+	if link.Style != "primary" {
+		t.Errorf("LinkButton(%q, %q) style = %q, want %q", "Connect", "https://example.com", link.Style, "primary")
+	}
+
+	copyButton := CopyLinkButton("Copy link", "https://example.com")
+	if copyButton.IconCustomEmojiID != "" {
+		t.Errorf("CopyLinkButton(%q, %q) icon = %q, want empty", "Copy link", "https://example.com", copyButton.IconCustomEmojiID)
+	}
+	if copyButton.CopyText == nil || copyButton.CopyText.Text != "https://example.com" {
+		t.Errorf("CopyLinkButton(%q, %q) copy_text = %+v, want text %q", "Copy link", "https://example.com", copyButton.CopyText, "https://example.com")
+	}
 
 	del := DeleteButton("Delete", "action:delete")
 	if del.IconCustomEmojiID != deleteButtonEmojiID {
@@ -70,6 +81,9 @@ func TestSubEndSubscribeMarkup(t *testing.T) {
 	}
 	if got.InlineKeyboard[0][0].IconCustomEmojiID != linkButtonEmojiID {
 		t.Errorf("SubEndSubscribeMarkup(%q, %q) icon = %q, want %q", "en", "name with spaces", got.InlineKeyboard[0][0].IconCustomEmojiID, linkButtonEmojiID)
+	}
+	if got.InlineKeyboard[0][0].Style != "primary" {
+		t.Errorf("SubEndSubscribeMarkup(%q, %q) style = %q, want %q", "en", "name with spaces", got.InlineKeyboard[0][0].Style, "primary")
 	}
 }
 

@@ -150,6 +150,13 @@ func IconURLButton(text, targetURL, iconCustomEmojiID string) telego.InlineKeybo
 	return button.WithIconCustomEmojiID(iconCustomEmojiID)
 }
 
+// CopyTextButton creates an inline copy-text button.
+func CopyTextButton(text, copyText string) telego.InlineKeyboardButton {
+	return tu.InlineKeyboardButton(text).WithCopyText(&telego.CopyTextButton{
+		Text: copyText,
+	})
+}
+
 // RefreshButton creates a refresh action button.
 func RefreshButton(text, data string) telego.InlineKeyboardButton {
 	return IconCallbackButton(text, data, refreshButtonEmojiID)
@@ -157,7 +164,12 @@ func RefreshButton(text, data string) telego.InlineKeyboardButton {
 
 // LinkButton creates a link/open/connect action button.
 func LinkButton(text, targetURL string) telego.InlineKeyboardButton {
-	return IconURLButton(text, targetURL, linkButtonEmojiID)
+	return IconURLButton(text, targetURL, linkButtonEmojiID).WithStyle("primary")
+}
+
+// CopyLinkButton creates a copy-link action button.
+func CopyLinkButton(text, copyText string) telego.InlineKeyboardButton {
+	return CopyTextButton(text, copyText)
 }
 
 // DeleteButton creates a destructive action button.

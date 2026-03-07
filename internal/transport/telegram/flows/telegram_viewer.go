@@ -44,12 +44,13 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 		authURL := c.oauthStartURL(state)
 		markup := tu.InlineKeyboard(
 			tu.InlineKeyboardRow(ui.LinkButton(i18n.Translate(lang, btnLinkTwitch), authURL)),
+			tu.InlineKeyboardRow(ui.CopyLinkButton(i18n.Translate(lang, btnCopyLink), authURL)),
 		)
 		displayName := strings.TrimSpace(userName)
 		if displayName == "" {
 			displayName = i18n.Translate(lang, msgUserGenericName)
 		}
-		promptText := fmt.Sprintf(i18n.Translate(lang, msgLinkPromptHTML), html.EscapeString(displayName), html.EscapeString(authURL))
+		promptText := fmt.Sprintf(i18n.Translate(lang, msgLinkPromptHTML), html.EscapeString(displayName))
 		if editMsgID != 0 {
 			c.reply(ctx, telegramUserID, editMsgID, promptText, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 			return ""

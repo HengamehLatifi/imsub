@@ -85,6 +85,7 @@ const (
 	// Buttons.
 	btnRegisterCreatorOpen = "btn_register_creator_open"
 	btnLinkTwitch          = "btn_link_twitch"
+	btnCopyLink            = "btn_copy_link"
 	btnJoin                = "btn_join"
 	btnResetViewerData     = "btn_reset_viewer_data"
 	btnResetCreatorData    = "btn_reset_creator_data"
