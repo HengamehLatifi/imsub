@@ -1,5 +1,5 @@
 [btn_back]
-other = "↩️ Back ↩️"
+other = "Back"
 
 [btn_join]
 other = "Join %s"
@@ -14,19 +14,19 @@ other = "Refresh"
 other = "Connect Creator Account"
 
 [btn_reset]
-other = "⚠️ Delete linked data ⚠️"
+other = "Delete linked data"
 
 [btn_reset_all_data]
-other = "⚠️ Delete all data ⚠️"
+other = "Delete all data"
 
 [btn_reset_confirm]
-other = "⚠️ Delete ⚠️"
+other = "Delete"
 
 [btn_reset_creator_data]
-other = "⚠️ Delete creator data ⚠️"
+other = "Delete creator data"
 
 [btn_reset_viewer_data]
-other = "⚠️ Delete viewer data ⚠️"
+other = "Delete viewer data"
 
 [btn_subscribe]
 other = "Subscribe on Twitch"

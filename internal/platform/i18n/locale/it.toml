@@ -1,5 +1,5 @@
 [btn_back]
-other = "↩️ Indietro ↩️"
+other = "Indietro"
 
 [btn_join]
 other = "Entra in %s"
@@ -14,19 +14,19 @@ other = "Aggiorna"
 other = "Collega account creator"
 
 [btn_reset]
-other = "⚠️ Elimina dati collegati ⚠️"
+other = "Elimina dati collegati"
 
 [btn_reset_all_data]
-other = "⚠️ Elimina tutti i dati ⚠️"
+other = "Elimina tutti i dati"
 
 [btn_reset_confirm]
-other = "⚠️ Elimina ⚠️"
+other = "Elimina"
 
 [btn_reset_creator_data]
-other = "⚠️ Elimina dati creator ⚠️"
+other = "Elimina dati creator"
 
 [btn_reset_viewer_data]
-other = "⚠️ Elimina dati viewer ⚠️"
+other = "Elimina dati viewer"
 
 [btn_subscribe]
 other = "Abbonati su Twitch"

@@ -44,10 +44,10 @@ func (c *Controller) handleResetPrompt(ctx context.Context, telegramUserID int64
 			backAction = ui.ActionResetPickerCancel
 		}
 		markup := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetViewerData), ui.ActionResetPickViewer)),
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetCreatorData), ui.ActionResetPickCreator)),
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetAllData), ui.ActionResetPickBoth)),
-			tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), backAction)),
+			tu.InlineKeyboardRow(ui.DeleteButton(i18n.Translate(lang, btnResetViewerData), ui.ActionResetPickViewer)),
+			tu.InlineKeyboardRow(ui.DeleteButton(i18n.Translate(lang, btnResetCreatorData), ui.ActionResetPickCreator)),
+			tu.InlineKeyboardRow(ui.DeleteButton(i18n.Translate(lang, btnResetAllData), ui.ActionResetPickBoth)),
+			tu.InlineKeyboardRow(ui.BackButton(i18n.Translate(lang, btnBack), backAction)),
 		)
 		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 		return ""
@@ -133,8 +133,8 @@ func (c *Controller) handleResetViewerConfirmPrompt(ctx context.Context, telegra
 		groupCount,
 	)
 	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoViewer)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
+		tu.InlineKeyboardRow(ui.DeleteButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoViewer)),
+		tu.InlineKeyboardRow(ui.BackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""
@@ -157,8 +157,8 @@ func (c *Controller) handleResetCreatorConfirmPrompt(ctx context.Context, telegr
 	creatorList := html.EscapeString(scopes.Creator.Name)
 	text := fmt.Sprintf(i18n.Translate(lang, msgResetConfirmCreatorHTML), creatorList, 1)
 	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoCreator)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
+		tu.InlineKeyboardRow(ui.DeleteButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoCreator)),
+		tu.InlineKeyboardRow(ui.BackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""
@@ -203,8 +203,8 @@ func (c *Controller) handleResetBothConfirmPrompt(ctx context.Context, telegramU
 		groupCount,
 	)
 	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoBoth)),
-		tu.InlineKeyboardRow(ui.CallbackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
+		tu.InlineKeyboardRow(ui.DeleteButton(i18n.Translate(lang, btnResetConfirm), ui.ActionResetDoBoth)),
+		tu.InlineKeyboardRow(ui.BackButton(i18n.Translate(lang, btnBack), ui.ActionResetConfirmBack)),
 	)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
 	return ""

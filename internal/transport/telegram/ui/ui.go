@@ -49,12 +49,17 @@ const (
 	msgLinkedStatusNoSubsHTML           = "linked_status_no_subs_html"
 	msgLinkedStatusWithSubsHTML         = "linked_status_with_subs_html"
 	msgLinkedStatusWithSubsNoGroupsHTML = "linked_status_with_subs_no_groups_html"
+
+	refreshButtonEmojiID = "5258420634785947640"
+	linkButtonEmojiID    = "5257991477358763590"
+	deleteButtonEmojiID  = "5258130763148172425"
+	backButtonEmojiID    = "5258236805890710909"
 )
 
 func buildMainMenuMarkup(lang, refreshAction string) *telego.InlineKeyboardMarkup {
 	return tu.InlineKeyboard(
-		tu.InlineKeyboardRow(CallbackButton(i18n.Translate(lang, btnRefresh), refreshAction)),
-		tu.InlineKeyboardRow(CallbackButton(i18n.Translate(lang, btnReset), ActionResetConfirm)),
+		tu.InlineKeyboardRow(RefreshButton(i18n.Translate(lang, btnRefresh), refreshAction)),
+		tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnReset), ActionResetConfirm)),
 	)
 }
 
@@ -122,9 +127,47 @@ func CallbackButton(text, data string) telego.InlineKeyboardButton {
 	return tu.InlineKeyboardButton(text).WithCallbackData(data)
 }
 
+// IconCallbackButton creates an inline callback button with a custom emoji icon.
+func IconCallbackButton(text, data, iconCustomEmojiID string) telego.InlineKeyboardButton {
+	button := CallbackButton(text, data)
+	if strings.TrimSpace(iconCustomEmojiID) == "" {
+		return button
+	}
+	return button.WithIconCustomEmojiID(iconCustomEmojiID)
+}
+
 // URLButton creates an inline URL button.
 func URLButton(text, targetURL string) telego.InlineKeyboardButton {
 	return tu.InlineKeyboardButton(text).WithURL(targetURL)
+}
+
+// IconURLButton creates an inline URL button with a custom emoji icon.
+func IconURLButton(text, targetURL, iconCustomEmojiID string) telego.InlineKeyboardButton {
+	button := URLButton(text, targetURL)
+	if strings.TrimSpace(iconCustomEmojiID) == "" {
+		return button
+	}
+	return button.WithIconCustomEmojiID(iconCustomEmojiID)
+}
+
+// RefreshButton creates a refresh action button.
+func RefreshButton(text, data string) telego.InlineKeyboardButton {
+	return IconCallbackButton(text, data, refreshButtonEmojiID)
+}
+
+// LinkButton creates a link/open/connect action button.
+func LinkButton(text, targetURL string) telego.InlineKeyboardButton {
+	return IconURLButton(text, targetURL, linkButtonEmojiID)
+}
+
+// DeleteButton creates a destructive action button.
+func DeleteButton(text, data string) telego.InlineKeyboardButton {
+	return IconCallbackButton(text, data, deleteButtonEmojiID)
+}
+
+// BackButton creates a back-navigation action button.
+func BackButton(text, data string) telego.InlineKeyboardButton {
+	return IconCallbackButton(text, data, backButtonEmojiID)
 }
 
 // SubEndSubscribeMarkup builds a Twitch subscribe CTA keyboard for sub-end messages.
@@ -135,6 +178,6 @@ func SubEndSubscribeMarkup(lang, creatorLogin string) *telego.InlineKeyboardMark
 	}
 	subscribeURL := "https://www.twitch.tv/subs/" + url.PathEscape(login)
 	return tu.InlineKeyboard(
-		tu.InlineKeyboardRow(URLButton(i18n.Translate(lang, btnSubscribe), subscribeURL)),
+		tu.InlineKeyboardRow(LinkButton(i18n.Translate(lang, btnSubscribe), subscribeURL)),
 	)
 }

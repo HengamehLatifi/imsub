@@ -42,7 +42,7 @@ func (c *Controller) handleCreatorRegistrationStart(ctx context.Context, telegra
 	}
 	url := c.oauthStartURL(state)
 	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.URLButton(i18n.Translate(lang, btnRegisterCreatorOpen), url)),
+		tu.InlineKeyboardRow(ui.LinkButton(i18n.Translate(lang, btnRegisterCreatorOpen), url)),
 	)
 	if editMsgID != 0 {
 		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgCreatorRegisterInfo), &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})

@@ -28,6 +28,26 @@ func TestProfileAndButtons(t *testing.T) {
 	if ub.URL != "https://example.com" || ub.Text != "Open" {
 		t.Errorf("URLButton(%q, %q) = %+v, want Text=%q URL=%q", "Open", "https://example.com", ub, "Open", "https://example.com")
 	}
+
+	refresh := RefreshButton("Refresh", "action:refresh_viewer")
+	if refresh.IconCustomEmojiID != refreshButtonEmojiID {
+		t.Errorf("RefreshButton(%q, %q) icon = %q, want %q", "Refresh", "action:refresh_viewer", refresh.IconCustomEmojiID, refreshButtonEmojiID)
+	}
+
+	link := LinkButton("Connect", "https://example.com")
+	if link.IconCustomEmojiID != linkButtonEmojiID {
+		t.Errorf("LinkButton(%q, %q) icon = %q, want %q", "Connect", "https://example.com", link.IconCustomEmojiID, linkButtonEmojiID)
+	}
+
+	del := DeleteButton("Delete", "action:delete")
+	if del.IconCustomEmojiID != deleteButtonEmojiID {
+		t.Errorf("DeleteButton(%q, %q) icon = %q, want %q", "Delete", "action:delete", del.IconCustomEmojiID, deleteButtonEmojiID)
+	}
+
+	back := BackButton("Back", "action:back")
+	if back.IconCustomEmojiID != backButtonEmojiID {
+		t.Errorf("BackButton(%q, %q) icon = %q, want %q", "Back", "action:back", back.IconCustomEmojiID, backButtonEmojiID)
+	}
 }
 
 func TestSubEndSubscribeMarkup(t *testing.T) {
@@ -48,6 +68,9 @@ func TestSubEndSubscribeMarkup(t *testing.T) {
 	if !strings.Contains(url, "https://www.twitch.tv/subs/name%20with%20spaces") {
 		t.Errorf("SubEndSubscribeMarkup(%q, %q) URL = %q, want escaped subscribe URL", "en", "name with spaces", url)
 	}
+	if got.InlineKeyboard[0][0].IconCustomEmojiID != linkButtonEmojiID {
+		t.Errorf("SubEndSubscribeMarkup(%q, %q) icon = %q, want %q", "en", "name with spaces", got.InlineKeyboard[0][0].IconCustomEmojiID, linkButtonEmojiID)
+	}
 }
 
 func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
@@ -64,8 +87,14 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	if menu.InlineKeyboard[0][0].CallbackData != ActionRefreshViewer {
 		t.Errorf("MainMenuMarkup(%q) first callback = %+v, want CallbackData=%q", "en", menu.InlineKeyboard[0][0], ActionRefreshViewer)
 	}
+	if menu.InlineKeyboard[0][0].IconCustomEmojiID != refreshButtonEmojiID {
+		t.Errorf("MainMenuMarkup(%q) first icon = %q, want %q", "en", menu.InlineKeyboard[0][0].IconCustomEmojiID, refreshButtonEmojiID)
+	}
 	if menu.InlineKeyboard[1][0].CallbackData != ActionResetConfirm {
 		t.Errorf("MainMenuMarkup(%q) second callback = %+v, want CallbackData=%q", "en", menu.InlineKeyboard[1][0], ActionResetConfirm)
+	}
+	if menu.InlineKeyboard[1][0].IconCustomEmojiID != deleteButtonEmojiID {
+		t.Errorf("MainMenuMarkup(%q) second icon = %q, want %q", "en", menu.InlineKeyboard[1][0].IconCustomEmojiID, deleteButtonEmojiID)
 	}
 
 	creatorMenu := CreatorMainMenuMarkup("en")
@@ -75,8 +104,14 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	if creatorMenu.InlineKeyboard[0][0].CallbackData != ActionRefreshCreator {
 		t.Errorf("CreatorMainMenuMarkup(%q) first callback = %+v, want CallbackData=%q", "en", creatorMenu.InlineKeyboard[0][0], ActionRefreshCreator)
 	}
+	if creatorMenu.InlineKeyboard[0][0].IconCustomEmojiID != refreshButtonEmojiID {
+		t.Errorf("CreatorMainMenuMarkup(%q) first icon = %q, want %q", "en", creatorMenu.InlineKeyboard[0][0].IconCustomEmojiID, refreshButtonEmojiID)
+	}
 	if creatorMenu.InlineKeyboard[1][0].CallbackData != ActionResetConfirm {
 		t.Errorf("CreatorMainMenuMarkup(%q) second callback = %+v, want CallbackData=%q", "en", creatorMenu.InlineKeyboard[1][0], ActionResetConfirm)
+	}
+	if creatorMenu.InlineKeyboard[1][0].IconCustomEmojiID != deleteButtonEmojiID {
+		t.Errorf("CreatorMainMenuMarkup(%q) second icon = %q, want %q", "en", creatorMenu.InlineKeyboard[1][0].IconCustomEmojiID, deleteButtonEmojiID)
 	}
 
 	extra := WithMainMenu("en", []telego.InlineKeyboardButton{CallbackButton("X", "x")})

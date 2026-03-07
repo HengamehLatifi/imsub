@@ -43,7 +43,7 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 		}
 		authURL := c.oauthStartURL(state)
 		markup := tu.InlineKeyboard(
-			tu.InlineKeyboardRow(ui.URLButton(i18n.Translate(lang, btnLinkTwitch), authURL)),
+			tu.InlineKeyboardRow(ui.LinkButton(i18n.Translate(lang, btnLinkTwitch), authURL)),
 		)
 		displayName := strings.TrimSpace(userName)
 		if displayName == "" {
@@ -93,7 +93,7 @@ func (c *Controller) buildJoinButtons(ctx context.Context, telegramUserID int64,
 	rows := make([][]telego.InlineKeyboardButton, 0, len(targets.JoinLinks))
 	for _, link := range targets.JoinLinks {
 		btnText := link.CreatorName + " - " + link.GroupName
-		rows = append(rows, tu.InlineKeyboardRow(ui.URLButton(fmt.Sprintf(i18n.Translate(lang, btnJoin), btnText), link.InviteLink)))
+		rows = append(rows, tu.InlineKeyboardRow(ui.LinkButton(fmt.Sprintf(i18n.Translate(lang, btnJoin), btnText), link.InviteLink)))
 	}
 	return rows, targets.ActiveCreatorNames, nil
 }
