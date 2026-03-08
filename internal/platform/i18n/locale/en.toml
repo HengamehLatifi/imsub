@@ -154,6 +154,18 @@ other = "• The group has <b>%d non-admin member(s)</b> who are not tracked by 
 [group_warn_join_by_request]
 other = "• <b>Approve new members</b> is not enabled. If an admin shares a different invite link, users could join without subscription verification. Enable <b>Approve new members</b> in the group settings so that all join attempts require admin approval, not just those from ImSub links."
 
+[group_warn_bot_not_admin]
+other = "• ImSub is not a <b>group administrator</b>. Promote the bot to administrator before registering this group."
+
+[group_warn_bot_no_invite]
+other = "• ImSub is missing the <b>Invite Users</b> administrator permission. This is required to create join-request invite links."
+
+[group_warn_bot_no_restrict]
+other = "• ImSub is missing the <b>Ban Users</b> administrator permission. This is required to remove users whose subscription ends."
+
+[group_bot_status_changed]
+other = "⏳ ImSub detected a bot status change in this group. Checking setup..."
+
 [group_already_linked]
 other = "❗️ This group is already linked to <b>%s</b>.\n\nUse <code>/unregister</code> to unlink it first if you want to make changes."
 

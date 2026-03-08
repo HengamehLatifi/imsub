@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -168,6 +169,42 @@ func TestRegisterTelegramHandlersDeclinesMismatchedJoinRequest(t *testing.T) {
 	h.caller.assertExactMethods(t, "declineChatJoinRequest")
 }
 
+func TestRegisterTelegramHandlersRegisterGroupBlocksWhenBotLacksRequiredPermissions(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		Name:            "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.caller.setBotUserID(999)
+	h.caller.setChatMember(77, routeTestAdminMemberJSON(77, false, true, true))
+	h.caller.setChatMember(999, routeTestAdminMemberJSON(999, true, false, false))
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 6,
+		Message: &telego.Message{
+			MessageID: 12,
+			Text:      "/registergroup",
+			Chat: telego.Chat{
+				ID:    -10077,
+				Type:  telego.ChatTypeSupergroup,
+				Title: "VIP",
+			},
+			From: &telego.User{
+				ID:           77,
+				LanguageCode: "en",
+			},
+		},
+	})
+
+	if got := h.store.updateCreatorGroupCallCount(); got != 0 {
+		t.Fatalf("UpdateCreatorGroup call count = %d, want 0", got)
+	}
+	h.caller.assertExactMethods(t, "getChatMember", "getMe", "getChatMember", "sendMessage")
+}
+
 type routeTestHarness struct {
 	bot       *telego.Bot
 	baseGroup *telegohandler.HandlerGroup
@@ -248,15 +285,58 @@ func (h routeTestHarness) assertOAuthPromptSaved(t *testing.T, wantCalls int, wa
 }
 
 type routeTestCaller struct {
-	mu      sync.Mutex
-	methods []string
+	mu                  sync.Mutex
+	methods             []string
+	botUserID           int64
+	chatMembersByUserID map[int64]json.RawMessage
+	getChatResult       json.RawMessage
+	getChatMemberCount  int
+	getChatAdminsResult json.RawMessage
 }
 
-func (c *routeTestCaller) Call(_ context.Context, url string, _ *telegoapi.RequestData) (*telegoapi.Response, error) {
+func (c *routeTestCaller) setBotUserID(id int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.botUserID = id
+}
+
+func (c *routeTestCaller) setChatMember(userID int64, raw json.RawMessage) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.chatMembersByUserID == nil {
+		c.chatMembersByUserID = make(map[int64]json.RawMessage)
+	}
+	c.chatMembersByUserID[userID] = raw
+}
+
+func (c *routeTestCaller) setChatResult(raw json.RawMessage) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.getChatResult = raw
+}
+
+func (c *routeTestCaller) setChatMemberCount(count int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.getChatMemberCount = count
+}
+
+func (c *routeTestCaller) setChatAdminsResult(raw json.RawMessage) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.getChatAdminsResult = raw
+}
+
+func (c *routeTestCaller) Call(_ context.Context, url string, data *telegoapi.RequestData) (*telegoapi.Response, error) {
 	method := url[strings.LastIndex(url, "/")+1:]
 
 	c.mu.Lock()
 	c.methods = append(c.methods, method)
+	botUserID := c.botUserID
+	chatMembersByUserID := c.chatMembersByUserID
+	getChatResult := c.getChatResult
+	getChatMemberCount := c.getChatMemberCount
+	getChatAdminsResult := c.getChatAdminsResult
 	c.mu.Unlock()
 
 	switch method {
@@ -274,6 +354,57 @@ func (c *routeTestCaller) Call(_ context.Context, url string, _ *telegoapi.Reque
 			Ok:     true,
 			Result: json.RawMessage(`true`),
 		}, nil
+	case "getMe":
+		if botUserID == 0 {
+			botUserID = 999
+		}
+		return &telegoapi.Response{
+			Ok: true,
+			Result: json.RawMessage(fmt.Sprintf(`{
+				"id": %d,
+				"is_bot": true,
+				"first_name": "ImSub",
+				"username": "imsub_bot"
+			}`, botUserID)),
+		}, nil
+	case "getChatMember":
+		var params struct {
+			UserID int64 `json:"user_id"`
+		}
+		if err := json.Unmarshal(data.BodyRaw, &params); err != nil {
+			return nil, fmt.Errorf("decode getChatMember request: %w", err)
+		}
+		if raw, ok := chatMembersByUserID[params.UserID]; ok {
+			return &telegoapi.Response{Ok: true, Result: raw}, nil
+		}
+		return &telegoapi.Response{
+			Ok: true,
+			Result: json.RawMessage(`{
+				"status": "member",
+				"user": {"id": 1, "is_bot": false, "first_name": "Member"}
+			}`),
+		}, nil
+	case "getChat":
+		if len(getChatResult) == 0 {
+			getChatResult = json.RawMessage(`{
+				"id": -100,
+				"type": "supergroup",
+				"title": "VIP",
+				"join_by_request": true
+			}`)
+		}
+		return &telegoapi.Response{Ok: true, Result: getChatResult}, nil
+	case "getChatMemberCount":
+		count := getChatMemberCount
+		if count == 0 {
+			count = 1
+		}
+		return &telegoapi.Response{Ok: true, Result: json.RawMessage(strconv.Itoa(count))}, nil
+	case "getChatAdministrators":
+		if len(getChatAdminsResult) == 0 {
+			getChatAdminsResult = json.RawMessage(`[]`)
+		}
+		return &telegoapi.Response{Ok: true, Result: getChatAdminsResult}, nil
 	default:
 		return nil, fmt.Errorf("unexpected Telegram method %q", method)
 	}
@@ -299,9 +430,19 @@ func (c *routeTestCaller) assertExactMethods(t *testing.T, want ...string) {
 type routeTestStore struct {
 	routeTestStoreStub
 
-	mu                   sync.Mutex
-	saveOAuthStateCalls  int
-	savedOAuthStateCalls []core.OAuthStatePayload
+	mu                      sync.Mutex
+	saveOAuthStateCalls     int
+	savedOAuthStateCalls    []core.OAuthStatePayload
+	ownedCreator            core.Creator
+	ownedCreatorOK          bool
+	updateCreatorGroupCalls int
+}
+
+func (s *routeTestStore) setOwnedCreator(creator core.Creator) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ownedCreator = creator
+	s.ownedCreatorOK = true
 }
 
 func (s *routeTestStore) saveOAuthStateCallCount() int {
@@ -325,6 +466,47 @@ func (s *routeTestStore) SaveOAuthState(_ context.Context, _ string, payload cor
 	s.saveOAuthStateCalls++
 	s.savedOAuthStateCalls = append(s.savedOAuthStateCalls, payload)
 	return nil
+}
+
+func (s *routeTestStore) OwnedCreatorForUser(_ context.Context, ownerTelegramID int64) (core.Creator, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.ownedCreatorOK || s.ownedCreator.OwnerTelegramID != ownerTelegramID {
+		return core.Creator{}, false, nil
+	}
+	return s.ownedCreator, true, nil
+}
+
+func (s *routeTestStore) UpdateCreatorGroup(_ context.Context, _ string, _ int64, _ string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.updateCreatorGroupCalls++
+	return nil
+}
+
+func (s *routeTestStore) updateCreatorGroupCallCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.updateCreatorGroupCalls
+}
+
+func routeTestAdminMemberJSON(userID int64, isBot bool, canInviteUsers bool, canRestrictMembers bool) json.RawMessage {
+	return json.RawMessage(fmt.Sprintf(`{
+		"status": "administrator",
+		"user": {"id": %d, "is_bot": %t, "first_name": "Member"},
+		"can_be_edited": false,
+		"is_anonymous": false,
+		"can_manage_chat": true,
+		"can_delete_messages": true,
+		"can_manage_video_chats": false,
+		"can_restrict_members": %t,
+		"can_promote_members": false,
+		"can_change_info": false,
+		"can_invite_users": %t,
+		"can_post_stories": false,
+		"can_edit_stories": false,
+		"can_delete_stories": false
+	}`, userID, isBot, canRestrictMembers, canInviteUsers))
 }
 
 type routeTestStoreStub struct{}
@@ -359,18 +541,12 @@ func (routeTestStoreStub) ListCreators(context.Context) ([]core.Creator, error) 
 func (routeTestStoreStub) ListActiveCreators(context.Context) ([]core.Creator, error) {
 	return nil, nil
 }
-func (routeTestStoreStub) OwnedCreatorForUser(context.Context, int64) (core.Creator, bool, error) {
-	return core.Creator{}, false, nil
-}
 func (routeTestStoreStub) LoadCreatorsByIDs(context.Context, []string, func(core.Creator) bool) ([]core.Creator, error) {
 	return nil, nil
 }
 func (routeTestStoreStub) UpsertCreator(context.Context, core.Creator) error { return nil }
 func (routeTestStoreStub) DeleteCreatorData(context.Context, int64) (int, []string, error) {
 	return 0, nil, nil
-}
-func (routeTestStoreStub) UpdateCreatorGroup(context.Context, string, int64, string) error {
-	return nil
 }
 func (routeTestStoreStub) UpdateCreatorTokens(context.Context, string, string, string) error {
 	return nil

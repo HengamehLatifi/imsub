@@ -2,6 +2,7 @@ package flows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"strconv"
@@ -17,6 +18,29 @@ import (
 	tghandler "github.com/mymmrac/telego/telegohandler"
 	"github.com/mymmrac/telego/telegoutil"
 )
+
+type botGroupCapabilities struct {
+	isAdmin            bool
+	canInviteUsers     bool
+	canRestrictMembers bool
+}
+
+var errTelegramBotNotConfigured = errors.New("telegram bot not configured")
+
+func (c botGroupCapabilities) validationIssues(lang string) []string {
+	if !c.isAdmin {
+		return []string{i18n.Translate(lang, msgGroupWarnBotNotAdmin)}
+	}
+
+	var issues []string
+	if !c.canInviteUsers {
+		issues = append(issues, i18n.Translate(lang, msgGroupWarnBotNoInvite))
+	}
+	if !c.canRestrictMembers {
+		issues = append(issues, i18n.Translate(lang, msgGroupWarnBotNoRestrict))
+	}
+	return issues
+}
 
 // onUnknownMessage replies with a generic help message and the main menu
 // when the bot receives an unrecognized message or command.
@@ -159,6 +183,14 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		c.sendMsg(ctx, msg.Chat.ID, i18n.Translate(lang, msgGroupNotCreator), replyOpts)
 		return nil
 	}
+	if issues := c.requiredBotCapabilityIssues(ctx, msg.Chat.ID, lang); len(issues) > 0 {
+		c.sendMsg(ctx, msg.Chat.ID, formatGroupSettingWarnings(lang, issues), &client.MessageOptions{
+			ReplyToMessageID:  msg.MessageID,
+			ParseMode:         telego.ModeHTML,
+			EnableCustomEmoji: true,
+		})
+		return nil
+	}
 
 	// Check if another creator already owns this group.
 	otherName, taken := c.groupTakenByOtherCreator(ctx, msg.Chat.ID, matched.ID)
@@ -254,6 +286,31 @@ func (c *Controller) activateCreatorOnFirstGroupRegistration(parent context.Cont
 		return
 	}
 	c.log().Info("creator activated on first group registration", "creator_id", creator.ID, "group_chat_id", groupChatID, "subscriber_count", count)
+}
+
+func (c *Controller) onMyChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMemberUpdated) error {
+	if update.Chat.Type == telego.ChatTypePrivate {
+		return nil
+	}
+
+	switch update.NewChatMember.MemberStatus() {
+	case telego.MemberStatusMember, telego.MemberStatusAdministrator, telego.MemberStatusCreator:
+		lang := i18n.NormalizeLanguage(update.From.LanguageCode)
+		baseText := i18n.Translate(lang, msgGroupBotStatusChanged)
+		groupMsgID := c.sendMsg(ctx, update.Chat.ID, baseText, &client.MessageOptions{
+			ParseMode:         telego.ModeHTML,
+			EnableCustomEmoji: true,
+		})
+		if groupMsgID != 0 {
+			go c.sendPostRegistrationSettingsCheck(context.WithoutCancel(ctx), update.Chat.ID, groupMsgID, lang, baseText)
+		}
+	case telego.MemberStatusLeft, telego.MemberStatusBanned:
+		if c.groupMatchesActiveCreator(ctx, update.Chat.ID) {
+			c.log().Info("bot removed from registered group; auto-unregister should be the next step", "chat_id", update.Chat.ID, "new_status", update.NewChatMember.MemberStatus())
+		}
+	}
+
+	return nil
 }
 
 // groupTakenByOtherCreator checks if any other creator already has this group linked.
@@ -359,6 +416,7 @@ func (c *Controller) checkGroupSettings(ctx context.Context, chatID int64, lang 
 	}
 
 	var issues []string
+	issues = append(issues, c.requiredBotCapabilityIssues(ctx, chatID, lang)...)
 	if chat.Username != "" || len(chat.ActiveUsernames) > 0 {
 		issues = append(issues, i18n.Translate(lang, msgGroupWarnPublic))
 	}
@@ -369,6 +427,70 @@ func (c *Controller) checkGroupSettings(ctx context.Context, chatID int64, lang 
 		issues = append(issues, fmt.Sprintf(i18n.Translate(lang, msgGroupWarnUntrackedUsers), untrackedCount))
 	}
 	return issues
+}
+
+func (c *Controller) requiredBotCapabilityIssues(ctx context.Context, chatID int64, lang string) []string {
+	caps, err := c.loadBotGroupCapabilities(ctx, chatID)
+	if err != nil {
+		c.log().Warn("load bot group capabilities failed", "chat_id", chatID, "error", err)
+		return []string{i18n.Translate(lang, msgGroupWarnBotNotAdmin)}
+	}
+	return caps.validationIssues(lang)
+}
+
+func (c *Controller) loadBotGroupCapabilities(ctx context.Context, chatID int64) (botGroupCapabilities, error) {
+	if c.tg == nil {
+		return botGroupCapabilities{}, errTelegramBotNotConfigured
+	}
+
+	me, err := c.tg.GetMe(ctx)
+	if err != nil {
+		return botGroupCapabilities{}, fmt.Errorf("get bot profile: %w", err)
+	}
+
+	if c.tgLimiter != nil {
+		if waitErr := c.tgLimiter.Wait(ctx, chatID); waitErr != nil {
+			return botGroupCapabilities{}, fmt.Errorf("wait get chat member: %w", waitErr)
+		}
+	}
+	member, err := c.tg.GetChatMember(ctx, &telego.GetChatMemberParams{
+		ChatID: telegoutil.ID(chatID),
+		UserID: me.ID,
+	})
+	if err != nil {
+		return botGroupCapabilities{}, fmt.Errorf("get bot chat member: %w", err)
+	}
+
+	switch m := member.(type) {
+	case *telego.ChatMemberOwner:
+		return botGroupCapabilities{
+			isAdmin:            true,
+			canInviteUsers:     true,
+			canRestrictMembers: true,
+		}, nil
+	case *telego.ChatMemberAdministrator:
+		return botGroupCapabilities{
+			isAdmin:            true,
+			canInviteUsers:     m.CanInviteUsers,
+			canRestrictMembers: m.CanRestrictMembers,
+		}, nil
+	default:
+		return botGroupCapabilities{}, nil
+	}
+}
+
+func (c *Controller) groupMatchesActiveCreator(ctx context.Context, chatID int64) bool {
+	creators, err := c.store.ListActiveCreators(ctx)
+	if err != nil {
+		c.log().Warn("ListActiveCreators for my_chat_member check failed", "chat_id", chatID, "error", err)
+		return false
+	}
+	for _, creator := range creators {
+		if creator.GroupChatID == chatID {
+			return true
+		}
+	}
+	return false
 }
 
 func formatGroupSettingWarnings(lang string, issues []string) string {

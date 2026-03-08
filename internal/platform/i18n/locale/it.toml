@@ -154,6 +154,18 @@ other = "• Il gruppo ha <b>%d membro/i non admin</b> che non sono tracciati da
 [group_warn_join_by_request]
 other = "• <b>Approva nuovi membri</b> non e' abilitato. Se un admin condivide un altro link di invito, gli utenti potrebbero entrare senza verifica dell'abbonamento. Abilita <b>Approva nuovi membri</b> nelle impostazioni del gruppo, cosi' tutti i tentativi di accesso richiederanno l'approvazione, non solo quelli dai link di ImSub."
 
+[group_warn_bot_not_admin]
+other = "• ImSub non e' un <b>amministratore del gruppo</b>. Promuovi il bot ad amministratore prima di registrare questo gruppo."
+
+[group_warn_bot_no_invite]
+other = "• A ImSub manca il permesso admin <b>Invita utenti</b>. Serve per creare link di invito con richiesta di approvazione."
+
+[group_warn_bot_no_restrict]
+other = "• A ImSub manca il permesso admin <b>Ban utenti</b>. Serve per rimuovere gli utenti quando l'abbonamento termina."
+
+[group_bot_status_changed]
+other = "⏳ ImSub ha rilevato un cambio di stato del bot in questo gruppo. Controllo setup..."
+
 [group_already_linked]
 other = "❗️ Questo gruppo e' gia' collegato a <b>%s</b>.\n\nUsa <code>/unregister</code> per scollegarlo prima di apportare modifiche."
 

@@ -43,9 +43,13 @@ const (
 	msgGroupWarnPublic         = "group_warn_public"          //nolint:gosec // i18n key, not a credential
 	msgGroupWarnJoinByReq      = "group_warn_join_by_request" //nolint:gosec // i18n key, not a credential
 	msgGroupWarnUntrackedUsers = "group_warn_untracked_users" //nolint:gosec // i18n key, not a credential
+	msgGroupWarnBotNotAdmin    = "group_warn_bot_not_admin"   //nolint:gosec // i18n key, not a credential
+	msgGroupWarnBotNoInvite    = "group_warn_bot_no_invite"   //nolint:gosec // i18n key, not a credential
+	msgGroupWarnBotNoRestrict  = "group_warn_bot_no_restrict" //nolint:gosec // i18n key, not a credential
 	msgGroupWarnSettingsIntro  = "group_warn_settings_intro"  //nolint:gosec // i18n key, not a credential
 	msgGroupCheckingSettings   = "group_checking_settings"
 	msgGroupSettingsOK         = "group_settings_ok"
+	msgGroupBotStatusChanged   = "group_bot_status_changed"
 
 	// Creator flow.
 	msgErrCreatorLink            = "err_creator_link"
@@ -215,6 +219,7 @@ func (c *Controller) RegisterTelegramHandlers() {
 	registerCallback(ui.ActionResetDoBoth, c.handleResetBothCommand)
 
 	c.tgHandler.HandleChatJoinRequest(c.onChatJoinRequest)
+	c.tgHandler.HandleMyChatMemberUpdated(c.onMyChatMemberUpdated)
 	c.tgHandler.HandleMessage(c.onUnknownMessage, tghandler.And(tghandler.AnyMessage(), privateOnly))
 }
 
