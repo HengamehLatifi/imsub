@@ -199,10 +199,61 @@ func TestRegisterTelegramHandlersRegisterGroupBlocksWhenBotLacksRequiredPermissi
 		},
 	})
 
-	if got := h.store.updateCreatorGroupCallCount(); got != 0 {
-		t.Fatalf("UpdateCreatorGroup call count = %d, want 0", got)
-	}
 	h.caller.assertExactMethods(t, "getChatMember", "getMe", "getChatMember", "sendMessage")
+}
+
+func TestRegisterTelegramHandlersChatMemberJoinTracksUntrackedUser(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setManagedGroup(core.ManagedGroup{ChatID: -10033, CreatorID: "creator-1", GroupName: "VIP"})
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 7,
+		ChatMember: &telego.ChatMemberUpdated{
+			Chat: telego.Chat{ID: -10033, Type: telego.ChatTypeSupergroup},
+			From: telego.User{ID: 700, IsBot: false},
+			OldChatMember: &telego.ChatMemberLeft{
+				Status: telego.MemberStatusLeft,
+				User:   telego.User{ID: 700, IsBot: false},
+			},
+			NewChatMember: &telego.ChatMemberMember{
+				Status: telego.MemberStatusMember,
+				User:   telego.User{ID: 700, IsBot: false},
+			},
+		},
+	})
+
+	if got := h.store.lastUntrackedMemberUpsert(); got.telegramUserID != 700 || got.source != "chat_member" {
+		t.Fatalf("last untracked upsert = %+v, want telegram_user_id=700 source=chat_member", got)
+	}
+}
+
+func TestRegisterTelegramHandlersGroupMessageTracksUntrackedUser(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setManagedGroup(core.ManagedGroup{ChatID: -10044, CreatorID: "creator-1", GroupName: "VIP"})
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 8,
+		Message: &telego.Message{
+			MessageID: 30,
+			Text:      "hello",
+			Chat: telego.Chat{
+				ID:   -10044,
+				Type: telego.ChatTypeSupergroup,
+			},
+			From: &telego.User{
+				ID:    701,
+				IsBot: false,
+			},
+		},
+	})
+
+	if got := h.store.lastUntrackedMemberUpsert(); got.telegramUserID != 701 || got.source != "message" {
+		t.Fatalf("last untracked upsert = %+v, want telegram_user_id=701 source=message", got)
+	}
 }
 
 type routeTestHarness struct {
@@ -430,12 +481,21 @@ func (c *routeTestCaller) assertExactMethods(t *testing.T, want ...string) {
 type routeTestStore struct {
 	routeTestStoreStub
 
-	mu                      sync.Mutex
-	saveOAuthStateCalls     int
-	savedOAuthStateCalls    []core.OAuthStatePayload
-	ownedCreator            core.Creator
-	ownedCreatorOK          bool
-	updateCreatorGroupCalls int
+	mu                    sync.Mutex
+	saveOAuthStateCalls   int
+	savedOAuthStateCalls  []core.OAuthStatePayload
+	ownedCreator          core.Creator
+	ownedCreatorOK        bool
+	managedGroupsByChatID map[int64]core.ManagedGroup
+	trackedMembersByGroup map[int64]map[int64]bool
+	untrackedUpserts      []routeTestUntrackedUpsert
+}
+
+type routeTestUntrackedUpsert struct {
+	chatID         int64
+	telegramUserID int64
+	source         string
+	status         string
 }
 
 func (s *routeTestStore) setOwnedCreator(creator core.Creator) {
@@ -443,6 +503,24 @@ func (s *routeTestStore) setOwnedCreator(creator core.Creator) {
 	defer s.mu.Unlock()
 	s.ownedCreator = creator
 	s.ownedCreatorOK = true
+}
+
+func (s *routeTestStore) setManagedGroup(group core.ManagedGroup) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.managedGroupsByChatID == nil {
+		s.managedGroupsByChatID = make(map[int64]core.ManagedGroup)
+	}
+	s.managedGroupsByChatID[group.ChatID] = group
+}
+
+func (s *routeTestStore) lastUntrackedMemberUpsert() routeTestUntrackedUpsert {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.untrackedUpserts) == 0 {
+		return routeTestUntrackedUpsert{}
+	}
+	return s.untrackedUpserts[len(s.untrackedUpserts)-1]
 }
 
 func (s *routeTestStore) saveOAuthStateCallCount() int {
@@ -477,17 +555,54 @@ func (s *routeTestStore) OwnedCreatorForUser(_ context.Context, ownerTelegramID 
 	return s.ownedCreator, true, nil
 }
 
-func (s *routeTestStore) UpdateCreatorGroup(_ context.Context, _ string, _ int64, _ string) error {
+func (s *routeTestStore) ManagedGroupByChatID(_ context.Context, chatID int64) (core.ManagedGroup, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.updateCreatorGroupCalls++
+	group, ok := s.managedGroupsByChatID[chatID]
+	return group, ok, nil
+}
+
+func (s *routeTestStore) IsTrackedGroupMember(_ context.Context, chatID, telegramUserID int64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.trackedMembersByGroup == nil || s.trackedMembersByGroup[chatID] == nil {
+		return false, nil
+	}
+	return s.trackedMembersByGroup[chatID][telegramUserID], nil
+}
+
+func (s *routeTestStore) AddTrackedGroupMember(_ context.Context, chatID, telegramUserID int64, _ string, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.trackedMembersByGroup == nil {
+		s.trackedMembersByGroup = make(map[int64]map[int64]bool)
+	}
+	if s.trackedMembersByGroup[chatID] == nil {
+		s.trackedMembersByGroup[chatID] = make(map[int64]bool)
+	}
+	s.trackedMembersByGroup[chatID][telegramUserID] = true
 	return nil
 }
 
-func (s *routeTestStore) updateCreatorGroupCallCount() int {
+func (s *routeTestStore) RemoveTrackedGroupMember(_ context.Context, chatID, telegramUserID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.updateCreatorGroupCalls
+	if s.trackedMembersByGroup[chatID] != nil {
+		delete(s.trackedMembersByGroup[chatID], telegramUserID)
+	}
+	return nil
+}
+
+func (s *routeTestStore) UpsertUntrackedGroupMember(_ context.Context, chatID, telegramUserID int64, source, status string, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.untrackedUpserts = append(s.untrackedUpserts, routeTestUntrackedUpsert{
+		chatID:         chatID,
+		telegramUserID: telegramUserID,
+		source:         source,
+		status:         status,
+	})
+	return nil
 }
 
 func routeTestAdminMemberJSON(userID int64, isBot bool, canInviteUsers bool, canRestrictMembers bool) json.RawMessage {
@@ -522,18 +637,38 @@ func (routeTestStoreStub) UserIdentity(context.Context, int64) (core.UserIdentit
 func (routeTestStoreStub) SaveUserIdentityOnly(context.Context, int64, string, string, string) (int64, error) {
 	return 0, nil
 }
-func (routeTestStoreStub) SaveUserCreator(context.Context, int64, string, string, string, string) (int64, error) {
-	return 0, nil
-}
-func (routeTestStoreStub) UserCreatorIDs(context.Context, int64) ([]string, error) { return nil, nil }
-func (routeTestStoreStub) RemoveUserCreatorByTelegram(context.Context, int64, string) error {
-	return nil
-}
-func (routeTestStoreStub) AddUserCreatorMembership(context.Context, int64, string) error { return nil }
 func (routeTestStoreStub) RemoveUserCreatorByTwitch(context.Context, string, string) (int64, bool, error) {
 	return 0, false, nil
 }
 func (routeTestStoreStub) DeleteAllUserData(context.Context, int64) error { return nil }
+func (routeTestStoreStub) ManagedGroupByChatID(context.Context, int64) (core.ManagedGroup, bool, error) {
+	return core.ManagedGroup{}, false, nil
+}
+func (routeTestStoreStub) ListManagedGroups(context.Context) ([]core.ManagedGroup, error) {
+	return nil, nil
+}
+func (routeTestStoreStub) ListManagedGroupsByCreator(context.Context, string) ([]core.ManagedGroup, error) {
+	return nil, nil
+}
+func (routeTestStoreStub) ListTrackedGroupIDsForUser(context.Context, int64) ([]int64, error) {
+	return nil, nil
+}
+func (routeTestStoreStub) UpsertManagedGroup(context.Context, core.ManagedGroup) error { return nil }
+func (routeTestStoreStub) DeleteManagedGroup(context.Context, int64) error             { return nil }
+func (routeTestStoreStub) AddTrackedGroupMember(context.Context, int64, int64, string, time.Time) error {
+	return nil
+}
+func (routeTestStoreStub) RemoveTrackedGroupMember(context.Context, int64, int64) error { return nil }
+func (routeTestStoreStub) IsTrackedGroupMember(context.Context, int64, int64) (bool, error) {
+	return false, nil
+}
+func (routeTestStoreStub) UpsertUntrackedGroupMember(context.Context, int64, int64, string, string, time.Time) error {
+	return nil
+}
+func (routeTestStoreStub) RemoveUntrackedGroupMember(context.Context, int64, int64) error { return nil }
+func (routeTestStoreStub) CountUntrackedGroupMembers(context.Context, int64) (int, error) {
+	return 0, nil
+}
 func (routeTestStoreStub) Creator(context.Context, string) (core.Creator, bool, error) {
 	return core.Creator{}, false, nil
 }

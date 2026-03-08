@@ -77,7 +77,7 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 
 // buildJoinButtons returns join buttons and active subscription names for the
 // given viewer. The underlying viewer service computes active subscriptions and
-// required join links for creators with registered groups (GroupChatID != 0):
+// required join links for creators that currently own at least one managed group:
 //
 //   - Non-subscriber links are removed from the persisted viewer linkage state.
 //   - Subscribers already in the group are skipped.

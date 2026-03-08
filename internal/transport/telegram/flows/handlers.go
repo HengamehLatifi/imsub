@@ -185,16 +185,25 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 	}
 	if issues := c.requiredBotCapabilityIssues(ctx, msg.Chat.ID, lang); len(issues) > 0 {
 		c.sendMsg(ctx, msg.Chat.ID, formatGroupSettingWarnings(lang, issues), &client.MessageOptions{
-			ReplyToMessageID:  msg.MessageID,
-			ParseMode:         telego.ModeHTML,
-			EnableCustomEmoji: true,
+			ReplyToMessageID: msg.MessageID,
+			ParseMode:        telego.ModeHTML,
 		})
 		return nil
 	}
 
-	// Check if another creator already owns this group.
-	otherName, taken := c.groupTakenByOtherCreator(ctx, msg.Chat.ID, matched.ID)
-	if taken {
+	group, alreadyManaged, err := c.store.ManagedGroupByChatID(ctx, msg.Chat.ID)
+	if err != nil {
+		c.log().Warn("ManagedGroupByChatID failed", "chat_id", msg.Chat.ID, "error", err)
+		return nil
+	}
+	if alreadyManaged && group.CreatorID != matched.ID {
+		otherName, nameErr := c.creatorNameByID(ctx, group.CreatorID)
+		if nameErr != nil {
+			c.log().Warn("creatorNameByID failed", "creator_id", group.CreatorID, "error", nameErr)
+		}
+		if otherName == "" {
+			otherName = group.CreatorID
+		}
 		takenText := fmt.Sprintf(i18n.Translate(lang, msgGroupTakenByOther), html.EscapeString(otherName))
 		c.sendMsg(ctx, msg.Chat.ID, takenText, &client.MessageOptions{
 			ReplyToMessageID: msg.MessageID,
@@ -204,7 +213,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 	}
 
 	// Scenario 1: this group is already linked to this creator.
-	if matched.GroupChatID == msg.Chat.ID {
+	if alreadyManaged && group.CreatorID == matched.ID {
 		alreadyText := fmt.Sprintf(i18n.Translate(lang, msgGroupAlreadyLinked), html.EscapeString(matched.Name))
 		checking := i18n.Translate(lang, msgGroupCheckingSettings)
 		groupMsgID := c.sendMsg(ctx, msg.Chat.ID, alreadyText+"\n\n"+checking, &client.MessageOptions{
@@ -215,28 +224,18 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		return nil
 	}
 
-	// Scenario 2: creator already has a different group linked.
-	if matched.GroupChatID != 0 {
-		differentText := fmt.Sprintf(
-			i18n.Translate(lang, msgGroupDifferentLinked),
-			html.EscapeString(matched.Name),
-			html.EscapeString(matched.GroupName),
-		)
-		c.sendMsg(ctx, msg.Chat.ID, differentText, &client.MessageOptions{
-			ReplyToMessageID: msg.MessageID,
-			ParseMode:        telego.ModeHTML,
-		})
-		return nil
-	}
-
-	// First-time registration.
+	// First-time registration for this group.
 	groupName := msg.Chat.Title
-	if err := c.store.UpdateCreatorGroup(ctx, matched.ID, msg.Chat.ID, groupName); err != nil {
-		c.log().Warn("UpdateCreatorGroup failed", "error", err)
+	if err := c.store.UpsertManagedGroup(ctx, core.ManagedGroup{
+		ChatID:       msg.Chat.ID,
+		CreatorID:    matched.ID,
+		GroupName:    groupName,
+		Policy:       core.GroupPolicyObserve,
+		RegisteredAt: time.Now().UTC(),
+	}); err != nil {
+		c.log().Warn("UpsertManagedGroup failed", "error", err)
 		return nil
 	}
-	matched.GroupChatID = msg.Chat.ID
-	matched.GroupName = groupName
 	// Activation runs asynchronously to keep the command response fast.
 	// The goroutine terminates when either:
 	//  - all operations complete, or
@@ -298,8 +297,7 @@ func (c *Controller) onMyChatMemberUpdated(ctx *tghandler.Context, update telego
 		lang := i18n.NormalizeLanguage(update.From.LanguageCode)
 		baseText := i18n.Translate(lang, msgGroupBotStatusChanged)
 		groupMsgID := c.sendMsg(ctx, update.Chat.ID, baseText, &client.MessageOptions{
-			ParseMode:         telego.ModeHTML,
-			EnableCustomEmoji: true,
+			ParseMode: telego.ModeHTML,
 		})
 		if groupMsgID != 0 {
 			go c.sendPostRegistrationSettingsCheck(context.WithoutCancel(ctx), update.Chat.ID, groupMsgID, lang, baseText)
@@ -313,20 +311,62 @@ func (c *Controller) onMyChatMemberUpdated(ctx *tghandler.Context, update telego
 	return nil
 }
 
-// groupTakenByOtherCreator checks if any other creator already has this group linked.
-// Returns the other creator's name and true if taken, or empty and false otherwise.
-func (c *Controller) groupTakenByOtherCreator(ctx context.Context, groupChatID int64, currentCreatorID string) (string, bool) {
-	creators, err := c.store.ListActiveCreators(ctx)
+func (c *Controller) onChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMemberUpdated) error {
+	group, ok, err := c.store.ManagedGroupByChatID(ctx, update.Chat.ID)
 	if err != nil {
-		c.log().Warn("ListActiveCreators for group taken check failed", "error", err)
-		return "", false
+		c.log().Warn("ManagedGroupByChatID for chat_member failed", "chat_id", update.Chat.ID, "error", err)
+		return nil
 	}
-	for _, cr := range creators {
-		if cr.GroupChatID == groupChatID && cr.ID != currentCreatorID {
-			return cr.Name, true
-		}
+	if !ok {
+		return nil
 	}
-	return "", false
+
+	memberUser := update.NewChatMember.MemberUser()
+	if memberUser.IsBot {
+		return nil
+	}
+	if IsAdmin(update.NewChatMember) {
+		return nil
+	}
+
+	status := update.NewChatMember.MemberStatus()
+	switch status {
+	case telego.MemberStatusMember, telego.MemberStatusRestricted:
+		c.observeGroupMember(ctx, group.ChatID, memberUser.ID, "chat_member", status)
+	case telego.MemberStatusLeft, telego.MemberStatusBanned:
+		c.removeObservedGroupMember(ctx, group.ChatID, memberUser.ID)
+	}
+	return nil
+}
+
+func (c *Controller) onGroupMessage(ctx *tghandler.Context, msg telego.Message) error {
+	if msg.From == nil || msg.From.IsBot {
+		return nil
+	}
+	if strings.HasPrefix(msg.Text, "/") {
+		return nil
+	}
+	group, ok, err := c.store.ManagedGroupByChatID(ctx, msg.Chat.ID)
+	if err != nil {
+		c.log().Warn("ManagedGroupByChatID for group message failed", "chat_id", msg.Chat.ID, "error", err)
+		return nil
+	}
+	if !ok {
+		return nil
+	}
+	c.observeGroupMember(ctx, group.ChatID, msg.From.ID, "message", telego.MemberStatusMember)
+	return nil
+}
+
+func (c *Controller) creatorNameByID(ctx context.Context, creatorID string) (string, error) {
+	creator, ok, err := c.store.Creator(ctx, creatorID)
+	if err != nil {
+		return "", fmt.Errorf("load creator %s: %w", creatorID, err)
+	}
+	if !ok {
+		return "", nil
+	}
+	return creator.Name, nil
 }
 
 // sendPostRegistrationSettingsCheck runs group settings checks and edits the
@@ -480,17 +520,12 @@ func (c *Controller) loadBotGroupCapabilities(ctx context.Context, chatID int64)
 }
 
 func (c *Controller) groupMatchesActiveCreator(ctx context.Context, chatID int64) bool {
-	creators, err := c.store.ListActiveCreators(ctx)
+	_, ok, err := c.store.ManagedGroupByChatID(ctx, chatID)
 	if err != nil {
-		c.log().Warn("ListActiveCreators for my_chat_member check failed", "chat_id", chatID, "error", err)
+		c.log().Warn("ManagedGroupByChatID for my_chat_member check failed", "chat_id", chatID, "error", err)
 		return false
 	}
-	for _, creator := range creators {
-		if creator.GroupChatID == chatID {
-			return true
-		}
-	}
-	return false
+	return ok
 }
 
 func formatGroupSettingWarnings(lang string, issues []string) string {
@@ -504,6 +539,12 @@ func formatGroupSettingWarnings(lang string, issues []string) string {
 // admins nor bots. These users joined before the bot started managing access
 // and are not tracked.
 func (c *Controller) countUntrackedMembers(ctx context.Context, chatID int64) int {
+	count, err := c.store.CountUntrackedGroupMembers(ctx, chatID)
+	if err == nil {
+		return count
+	}
+	c.log().Warn("CountUntrackedGroupMembers failed, falling back to estimate", "chat_id", chatID, "error", err)
+
 	if waitErr := c.tgLimiter.Wait(ctx, chatID); waitErr != nil {
 		c.log().Warn("GetChatMemberCount rate limit wait failed", "error", waitErr)
 		return 0
@@ -533,6 +574,36 @@ func (c *Controller) countUntrackedMembers(ctx context.Context, chatID int64) in
 		return 0
 	}
 	return untracked
+}
+
+func (c *Controller) observeGroupMember(ctx context.Context, chatID, telegramUserID int64, source, status string) {
+	tracked, err := c.store.IsTrackedGroupMember(ctx, chatID, telegramUserID)
+	if err != nil {
+		c.log().Warn("IsTrackedGroupMember failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
+		return
+	}
+	now := time.Now().UTC()
+	if tracked {
+		if err := c.store.AddTrackedGroupMember(ctx, chatID, telegramUserID, source, now); err != nil {
+			c.log().Warn("AddTrackedGroupMember refresh failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
+		}
+		if err := c.store.RemoveUntrackedGroupMember(ctx, chatID, telegramUserID); err != nil {
+			c.log().Warn("RemoveUntrackedGroupMember refresh failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
+		}
+		return
+	}
+	if err := c.store.UpsertUntrackedGroupMember(ctx, chatID, telegramUserID, source, status, now); err != nil {
+		c.log().Warn("UpsertUntrackedGroupMember failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "source", source, "error", err)
+	}
+}
+
+func (c *Controller) removeObservedGroupMember(ctx context.Context, chatID, telegramUserID int64) {
+	if err := c.store.RemoveTrackedGroupMember(ctx, chatID, telegramUserID); err != nil {
+		c.log().Warn("RemoveTrackedGroupMember failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
+	}
+	if err := c.store.RemoveUntrackedGroupMember(ctx, chatID, telegramUserID); err != nil {
+		c.log().Warn("RemoveUntrackedGroupMember failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
+	}
 }
 
 // IsAdmin reports whether member has Administrator or Creator status.

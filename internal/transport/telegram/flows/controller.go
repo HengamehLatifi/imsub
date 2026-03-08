@@ -191,6 +191,9 @@ func (c *Controller) RegisterTelegramHandlers() {
 	privateOnly := func(_ context.Context, update telego.Update) bool {
 		return update.Message != nil && update.Message.Chat.Type == telego.ChatTypePrivate && update.Message.From != nil
 	}
+	groupOnly := func(_ context.Context, update telego.Update) bool {
+		return update.Message != nil && update.Message.Chat.Type != telego.ChatTypePrivate && update.Message.From != nil
+	}
 	registerCallback := func(action string, fn func(ctx context.Context, userID int64, editMsgID int, lang string) string) {
 		c.tgHandler.HandleCallbackQuery(func(ctx *tghandler.Context, query telego.CallbackQuery) error {
 			c.callbackHandler(ctx, query, fn)
@@ -219,7 +222,9 @@ func (c *Controller) RegisterTelegramHandlers() {
 	registerCallback(ui.ActionResetDoBoth, c.handleResetBothCommand)
 
 	c.tgHandler.HandleChatJoinRequest(c.onChatJoinRequest)
+	c.tgHandler.HandleChatMemberUpdated(c.onChatMemberUpdated)
 	c.tgHandler.HandleMyChatMemberUpdated(c.onMyChatMemberUpdated)
+	c.tgHandler.HandleMessage(c.onGroupMessage, tghandler.And(tghandler.AnyMessage(), groupOnly))
 	c.tgHandler.HandleMessage(c.onUnknownMessage, tghandler.And(tghandler.AnyMessage(), privateOnly))
 }
 
