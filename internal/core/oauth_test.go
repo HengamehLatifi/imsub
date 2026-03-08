@@ -74,6 +74,14 @@ func (f *fakeAPI) ListSubscriberPage(_ context.Context, _, _, _ string) (userIDs
 	return nil, "", errors.New("not implemented")
 }
 
+func (f *fakeAPI) ListEventSubs(_ context.Context, _ string, _ ListEventSubsOpts) ([]EventSubSubscription, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeAPI) DeleteEventSub(_ context.Context, _, _ string) error {
+	return errors.New("not implemented")
+}
+
 func TestLinkViewerSuccess(t *testing.T) {
 	t.Parallel()
 

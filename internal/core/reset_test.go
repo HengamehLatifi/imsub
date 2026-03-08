@@ -221,6 +221,65 @@ func TestExecuteViewerResetNoIdentity(t *testing.T) {
 	}
 }
 
+type resetFakeEventSubCleaner struct {
+	deletedCreatorIDs []string
+	err               error
+}
+
+func (f *resetFakeEventSubCleaner) DeleteEventSubsForCreator(_ context.Context, creatorID string) error {
+	f.deletedCreatorIDs = append(f.deletedCreatorIDs, creatorID)
+	return f.err
+}
+
+func TestDeleteCreatorDataCallsEventSubCleaner(t *testing.T) {
+	t.Parallel()
+
+	cleaner := &resetFakeEventSubCleaner{}
+	st := &resetFakeStore{
+		getCreatorFn: func(_ context.Context, _ int64) (Creator, bool, error) {
+			return Creator{ID: "c1"}, true, nil
+		},
+		deleteCreatorCount: 1,
+		deleteCreatorNames: []string{"creator-a"},
+	}
+	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
+	svc.SetEventSubCleaner(cleaner)
+
+	count, names, err := svc.DeleteCreatorData(t.Context(), 42)
+	if err != nil {
+		t.Fatalf("DeleteCreatorData(%d) returned error %v, want nil", 42, err)
+	}
+	if count != 1 || !slices.Equal(names, []string{"creator-a"}) {
+		t.Errorf("DeleteCreatorData(%d) = (count=%d, names=%v), want (count=%d, names=%v)", 42, count, names, 1, []string{"creator-a"})
+	}
+	if !slices.Equal(cleaner.deletedCreatorIDs, []string{"c1"}) {
+		t.Errorf("EventSub cleaner called with %v, want %v", cleaner.deletedCreatorIDs, []string{"c1"})
+	}
+}
+
+func TestDeleteCreatorDataContinuesOnCleanerError(t *testing.T) {
+	t.Parallel()
+
+	cleaner := &resetFakeEventSubCleaner{err: errors.New("twitch down")}
+	st := &resetFakeStore{
+		getCreatorFn: func(_ context.Context, _ int64) (Creator, bool, error) {
+			return Creator{ID: "c1"}, true, nil
+		},
+		deleteCreatorCount: 1,
+		deleteCreatorNames: []string{"creator-a"},
+	}
+	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, slog.New(slog.DiscardHandler))
+	svc.SetEventSubCleaner(cleaner)
+
+	count, _, err := svc.DeleteCreatorData(t.Context(), 42)
+	if err != nil {
+		t.Fatalf("DeleteCreatorData(%d) returned error %v, want nil (cleaner failure is non-fatal)", 42, err)
+	}
+	if count != 1 {
+		t.Errorf("DeleteCreatorData(%d) count = %d, want %d", 42, count, 1)
+	}
+}
+
 func TestLoadScopesPropagatesError(t *testing.T) {
 	t.Parallel()
 

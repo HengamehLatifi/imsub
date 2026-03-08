@@ -27,6 +27,7 @@ var (
 	errEmptyAppToken       = errors.New("empty app access token")
 	errEventSubCreate      = errors.New("eventsub create failed")
 	errEventSubList        = errors.New("eventsub list failed")
+	errEventSubDelete      = errors.New("eventsub delete failed")
 	errSubList             = errors.New("subscriptions list failed")
 )
 
@@ -254,7 +255,7 @@ func (c *Client) EnabledEventSubTypes(ctx context.Context, appToken, creatorID s
 	}
 	var cursor string
 	for {
-		endpoint := "https://api.twitch.tv/helix/eventsub/subscriptions?status=enabled"
+		endpoint := "https://api.twitch.tv/helix/eventsub/subscriptions?status=enabled&first=100"
 		if cursor != "" {
 			endpoint += "&after=" + url.QueryEscape(cursor)
 		}
@@ -300,6 +301,86 @@ func (c *Client) EnabledEventSubTypes(ctx context.Context, appToken, creatorID s
 		}
 		cursor = list.Pagination.Cursor
 	}
+}
+
+// ListEventSubs implements the core.TwitchAPI interface.
+func (c *Client) ListEventSubs(ctx context.Context, appToken string, opts core.ListEventSubsOpts) ([]core.EventSubSubscription, error) {
+	var all []core.EventSubSubscription
+	var cursor string
+	for {
+		endpoint := "https://api.twitch.tv/helix/eventsub/subscriptions?first=100"
+		if opts.UserID != "" {
+			endpoint += "&user_id=" + url.QueryEscape(opts.UserID)
+		}
+		if cursor != "" {
+			endpoint += "&after=" + url.QueryEscape(cursor)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create eventsub list request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+appToken)
+		req.Header.Set("Client-Id", c.cfg.TwitchClientID)
+
+		resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+		if err != nil {
+			return nil, fmt.Errorf("do eventsub list request: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			body, readErr := responseBodyString(resp)
+			_ = resp.Body.Close()
+			if readErr != nil {
+				return nil, fmt.Errorf("%w: status %d: read body: %w", errEventSubList, resp.StatusCode, readErr)
+			}
+			return nil, fmt.Errorf("%w: status %d: %s", errEventSubList, resp.StatusCode, body)
+		}
+
+		var list EventSubListResponse
+		err = json.NewDecoder(resp.Body).Decode(&list)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("decode eventsub list response: %w", err)
+		}
+		for _, sub := range list.Data {
+			all = append(all, core.EventSubSubscription{
+				ID:            sub.ID,
+				Status:        sub.Status,
+				Type:          sub.Type,
+				BroadcasterID: sub.Condition.BroadcasterUserID,
+			})
+		}
+		if list.Pagination.Cursor == "" {
+			break
+		}
+		cursor = list.Pagination.Cursor
+	}
+	return all, nil
+}
+
+// DeleteEventSub implements the core.TwitchAPI interface.
+func (c *Client) DeleteEventSub(ctx context.Context, appToken, subscriptionID string) error {
+	endpoint := "https://api.twitch.tv/helix/eventsub/subscriptions?id=" + url.QueryEscape(subscriptionID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("create eventsub delete request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+appToken)
+	req.Header.Set("Client-Id", c.cfg.TwitchClientID)
+
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+	if err != nil {
+		return fmt.Errorf("do eventsub delete request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	body, readErr := responseBodyString(resp)
+	if readErr != nil {
+		return fmt.Errorf("%w: status %d: read body: %w", errEventSubDelete, resp.StatusCode, readErr)
+	}
+	return fmt.Errorf("%w: status %d: %s", errEventSubDelete, resp.StatusCode, body)
 }
 
 // ListSubscriberPage implements the core.TwitchAPI interface.

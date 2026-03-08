@@ -18,6 +18,19 @@ const (
 	EventTypeChannelSubGift = "channel.subscription.gift"
 )
 
+// ListEventSubsOpts configures the ListEventSubs query.
+type ListEventSubsOpts struct {
+	UserID string // filter by condition user_id; empty = no filter
+}
+
+// EventSubSubscription represents a single Twitch EventSub subscription.
+type EventSubSubscription struct {
+	ID            string
+	Status        string
+	Type          string
+	BroadcasterID string
+}
+
 // TokenResponse represents a Twitch OAuth token exchange or refresh response.
 type TokenResponse struct {
 	AccessToken  string   `json:"access_token"` //nolint:gosec // Not a secret literal, just a struct field

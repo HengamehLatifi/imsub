@@ -39,12 +39,11 @@ const creatorAuthErrorTokenRefreshFailed = "token_refresh_failed"
 
 // EventSub manages EventSub lifecycle checks, creation, and subscriber dumps.
 type EventSub struct {
-	store          eventSubStore
-	twitch         TwitchAPI
-	log            *slog.Logger
-	bootstrapDelay time.Duration
-	notifier       creatorReconnectNotifier
-	observer       eventSubObserver
+	store    eventSubStore
+	twitch   TwitchAPI
+	log      *slog.Logger
+	notifier creatorReconnectNotifier
+	observer eventSubObserver
 }
 
 // NewEventSub creates an EventSub service with default timings.
@@ -53,10 +52,9 @@ func NewEventSub(store eventSubStore, twitchAPI TwitchAPI, logger *slog.Logger) 
 		logger = slog.Default()
 	}
 	return &EventSub{
-		store:          store,
-		twitch:         twitchAPI,
-		log:            logger,
-		bootstrapDelay: 3 * time.Second,
+		store:  store,
+		twitch: twitchAPI,
+		log:    logger,
 	}
 }
 
@@ -83,44 +81,114 @@ func (e *EventSub) SyncReconnectRequiredGauge(ctx context.Context) {
 	e.observer.CreatorsReconnectRequired(count)
 }
 
-// BootstrapEventSub verifies and repairs EventSub subscriptions for active creators.
-func (e *EventSub) BootstrapEventSub(ctx context.Context) {
-	select {
-	case <-time.After(e.bootstrapDelay):
-	case <-ctx.Done():
-		return
-	}
-
+// ReconcileEventSubsOnce performs a single reconciliation pass: removes orphaned
+// EventSub subscriptions and creates missing ones for active creators.
+func (e *EventSub) ReconcileEventSubsOnce(ctx context.Context) error {
 	creators, err := e.store.ListActiveCreators(ctx)
 	if err != nil {
-		e.log.Warn("eventsub bootstrap listActiveCreators failed", "error", err)
-		return
+		return fmt.Errorf("list active creators: %w", err)
 	}
+
+	appToken, err := e.twitch.AppToken(ctx)
+	if err != nil {
+		return fmt.Errorf("app token for reconcile: %w", err)
+	}
+
+	subs, err := e.twitch.ListEventSubs(ctx, appToken, ListEventSubsOpts{})
+	if err != nil {
+		return fmt.Errorf("list eventsubs: %w", err)
+	}
+
+	activeSet := make(map[string]struct{}, len(creators))
+	for _, c := range creators {
+		activeSet[c.ID] = struct{}{}
+	}
+
+	// Delete orphaned subscriptions.
+	for _, sub := range subs {
+		if _, ok := activeSet[sub.BroadcasterID]; ok {
+			continue
+		}
+		e.log.Info("deleting orphaned eventsub", "sub_id", sub.ID, "broadcaster_id", sub.BroadcasterID, "type", sub.Type)
+		if err := e.twitch.DeleteEventSub(ctx, appToken, sub.ID); err != nil {
+			e.log.Warn("delete orphaned eventsub failed", "sub_id", sub.ID, "error", err)
+		}
+	}
+
+	// Find active creators missing required subscriptions.
 	if len(creators) == 0 {
-		e.log.Info("eventsub bootstrap: no active creators to verify")
-		return
+		e.log.Info("eventsub reconcile: no active creators")
+		return nil
 	}
 
-	inactive := e.FindInactiveEventSubCreators(ctx, creators)
+	enabledByCreator := make(map[string]map[string]bool, len(creators))
+	for _, sub := range subs {
+		if sub.Status != "enabled" {
+			continue
+		}
+		if _, ok := activeSet[sub.BroadcasterID]; !ok {
+			continue
+		}
+		enabledTypes := enabledByCreator[sub.BroadcasterID]
+		if enabledTypes == nil {
+			enabledTypes = make(map[string]bool, 3)
+			enabledByCreator[sub.BroadcasterID] = enabledTypes
+		}
+		enabledTypes[sub.Type] = true
+	}
+
+	requiredTypes := []string{
+		EventTypeChannelSubscribe,
+		EventTypeChannelSubEnd,
+		EventTypeChannelSubGift,
+	}
+	inactive := make([]Creator, 0, len(creators))
+	for _, creator := range creators {
+		enabledTypes := enabledByCreator[creator.ID]
+		missing := false
+		for _, eventType := range requiredTypes {
+			if !enabledTypes[eventType] {
+				missing = true
+				break
+			}
+		}
+		if missing {
+			inactive = append(inactive, creator)
+		}
+	}
 	if len(inactive) == 0 {
-		e.log.Info("eventsub bootstrap verify: all active creators healthy", "count", len(creators))
-		return
+		e.log.Info("eventsub reconcile: all active creators healthy", "count", len(creators))
+		return nil
 	}
 
-	e.log.Info("eventsub bootstrap: inactive active-creators found, attempting repair", "inactive", len(inactive), "total", len(creators))
+	e.log.Info("eventsub reconcile: repairing inactive creators", "inactive", len(inactive), "total", len(creators))
 	if err := e.EnsureEventSubForCreators(ctx, inactive); err != nil {
-		e.log.Warn("eventsub bootstrap repair failed", "error", err)
-		return
+		return fmt.Errorf("ensure eventsubs: %w", err)
 	}
+	return nil
+}
 
-	afterRepairInactive := e.FindInactiveEventSubCreators(ctx, creators)
-	if len(afterRepairInactive) == 0 {
-		e.log.Info("eventsub bootstrap repair: all active creators healthy", "count", len(creators))
-		return
+// DeleteEventSubsForCreator removes all EventSub subscriptions for a given creator.
+// Best-effort: logs failures but continues.
+func (e *EventSub) DeleteEventSubsForCreator(ctx context.Context, creatorID string) error {
+	appToken, err := e.twitch.AppToken(ctx)
+	if err != nil {
+		return fmt.Errorf("app token for delete eventsubs: %w", err)
 	}
-	for _, c := range afterRepairInactive {
-		e.log.Warn("eventsub bootstrap: creator still inactive", "creator_id", c.ID, "creator_name", c.Name)
+	subs, err := e.twitch.ListEventSubs(ctx, appToken, ListEventSubsOpts{UserID: creatorID})
+	if err != nil {
+		return fmt.Errorf("list eventsubs for delete: %w", err)
 	}
+	for _, sub := range subs {
+		if sub.BroadcasterID != creatorID {
+			continue
+		}
+		e.log.Info("deleting eventsub for creator", "sub_id", sub.ID, "broadcaster_id", creatorID, "type", sub.Type)
+		if err := e.twitch.DeleteEventSub(ctx, appToken, sub.ID); err != nil {
+			e.log.Warn("delete eventsub for creator failed", "sub_id", sub.ID, "creator_id", creatorID, "error", err)
+		}
+	}
+	return nil
 }
 
 // FindInactiveEventSubCreators returns creators missing required EventSub subscriptions.

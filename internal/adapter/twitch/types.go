@@ -22,6 +22,7 @@ type SubscriptionsResponse struct {
 // EventSubListResponse is Twitch EventSub list response body.
 type EventSubListResponse struct {
 	Data []struct {
+		ID        string `json:"id"`
 		Type      string `json:"type"`
 		Status    string `json:"status"`
 		Condition struct {

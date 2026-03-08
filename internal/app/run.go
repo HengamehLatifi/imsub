@@ -93,6 +93,8 @@ func Run() error {
 	oauthSvc := core.NewOAuth(s, twitchAPI)
 	creatorSvc := core.NewCreator(s, eventSubSvc, logger)
 
+	jobsSvc.SetEventSubReconciler(eventSubSvc)
+
 	flowController := flows.New(flows.Dependencies{
 		Config:          cfg,
 		Store:           s,
@@ -111,7 +113,9 @@ func Run() error {
 				return core.NewViewer(s, groupOps, logger)
 			},
 			Reset: func(kick func(ctx context.Context, groupChatID, telegramUserID int64) error) *core.Resetter {
-				return core.NewResetter(s, kick, logger)
+				r := core.NewResetter(s, kick, logger)
+				r.SetEventSubCleaner(eventSubSvc)
+				return r
 			},
 		},
 	})
@@ -164,10 +168,7 @@ func Run() error {
 		})
 	})
 	g.Go(func() error {
-		bootstrapCtx, bootstrapCancel := context.WithTimeout(gctx, 2*time.Minute)
-		defer bootstrapCancel()
-		eventSubSvc.BootstrapEventSub(bootstrapCtx)
-		return nil
+		return jobsSvc.RunEventSubReconciler(gctx, 3*time.Second, 1*time.Hour)
 	})
 	g.Go(func() error {
 		return jobsSvc.RunSubscriberReconciler(gctx, 15*time.Minute)

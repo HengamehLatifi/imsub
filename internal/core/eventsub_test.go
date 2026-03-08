@@ -109,6 +109,8 @@ type eventSubFakeTwitch struct {
 	createEventSubFn     func(ctx context.Context, appToken, broadcasterID, eventType, version string) error
 	enabledEventSubFn    func(ctx context.Context, appToken, creatorID string) (map[string]bool, error)
 	listSubscriberPageFn func(ctx context.Context, accessToken, broadcasterID, cursor string) (userIDs []string, nextCursor string, err error)
+	listEventSubsFn      func(ctx context.Context, appToken string, opts ListEventSubsOpts) ([]EventSubSubscription, error)
+	deleteEventSubFn     func(ctx context.Context, appToken, subscriptionID string) error
 }
 
 type eventSubFakeNotifier struct {
@@ -191,6 +193,20 @@ func (m *eventSubFakeTwitch) ListSubscriberPage(ctx context.Context, accessToken
 		return m.listSubscriberPageFn(ctx, accessToken, broadcasterID, cursor)
 	}
 	return nil, "", nil
+}
+
+func (m *eventSubFakeTwitch) ListEventSubs(ctx context.Context, appToken string, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
+	if m.listEventSubsFn != nil {
+		return m.listEventSubsFn(ctx, appToken, opts)
+	}
+	return nil, nil
+}
+
+func (m *eventSubFakeTwitch) DeleteEventSub(ctx context.Context, appToken, subscriptionID string) error {
+	if m.deleteEventSubFn != nil {
+		return m.deleteEventSubFn(ctx, appToken, subscriptionID)
+	}
+	return nil
 }
 
 func TestEnsureEventSubForCreators(t *testing.T) {
@@ -424,5 +440,100 @@ func TestDumpCurrentSubscribersMarksReconnectRequiredOnceOnRefreshFailure(t *tes
 	}
 	if !slices.Equal(observer.reconnectGauge, []int{1}) {
 		t.Fatalf("reconnect gauge values = %v, want [1]", observer.reconnectGauge)
+	}
+}
+
+func TestDeleteEventSubsForCreator(t *testing.T) {
+	t.Parallel()
+
+	var deleted []string
+	svc := NewEventSub(
+		&eventsubFakeStore{},
+		&eventSubFakeTwitch{
+			listEventSubsFn: func(_ context.Context, _ string, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
+				if opts.UserID != "c1" {
+					t.Fatalf("listEventSubsFn() opts.UserID = %q, want %q", opts.UserID, "c1")
+				}
+				return []EventSubSubscription{
+					{ID: "sub1", Type: EventTypeChannelSubscribe, BroadcasterID: "c1"},
+					{ID: "sub2", Type: EventTypeChannelSubEnd, BroadcasterID: "c2"},
+					{ID: "sub3", Type: EventTypeChannelSubGift, BroadcasterID: "c1"},
+				}, nil
+			},
+			deleteEventSubFn: func(_ context.Context, _, subID string) error {
+				deleted = append(deleted, subID)
+				return nil
+			},
+		},
+		slog.New(slog.DiscardHandler),
+	)
+
+	err := svc.DeleteEventSubsForCreator(t.Context(), "c1")
+	if err != nil {
+		t.Fatalf("DeleteEventSubsForCreator(c1) returned error %v, want nil", err)
+	}
+	want := []string{"sub1", "sub3"}
+	if !slices.Equal(deleted, want) {
+		t.Errorf("DeleteEventSubsForCreator(c1) deleted = %v, want %v", deleted, want)
+	}
+}
+
+func TestReconcileEventSubsOnce(t *testing.T) {
+	t.Parallel()
+
+	var (
+		deleted []string
+		created []string
+	)
+	svc := NewEventSub(
+		&eventsubFakeStore{
+			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
+				return []Creator{{ID: "c1"}, {ID: "c2"}}, nil
+			},
+		},
+		&eventSubFakeTwitch{
+			listEventSubsFn: func(_ context.Context, _ string, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
+				if opts.UserID != "" {
+					t.Fatalf("listEventSubsFn() opts.UserID = %q, want empty", opts.UserID)
+				}
+				return []EventSubSubscription{
+					{ID: "sub1", Status: "enabled", Type: EventTypeChannelSubscribe, BroadcasterID: "c1"},
+					{ID: "sub2", Status: "enabled", Type: EventTypeChannelSubEnd, BroadcasterID: "c1"},
+					{ID: "sub3", Status: "enabled", Type: EventTypeChannelSubGift, BroadcasterID: "c1"},
+					{ID: "sub4", Status: "enabled", Type: EventTypeChannelSubscribe, BroadcasterID: "c2"},
+					{ID: "sub-pending", Status: "webhook_callback_verification_pending", Type: EventTypeChannelSubEnd, BroadcasterID: "c2"},
+					{ID: "sub-orphan", Status: "enabled", Type: EventTypeChannelSubscribe, BroadcasterID: "c-gone"},
+				}, nil
+			},
+			deleteEventSubFn: func(_ context.Context, _, subID string) error {
+				deleted = append(deleted, subID)
+				return nil
+			},
+			createEventSubFn: func(_ context.Context, _, broadcasterID, eventType, _ string) error {
+				created = append(created, broadcasterID+":"+eventType)
+				return nil
+			},
+		},
+		slog.New(slog.DiscardHandler),
+	)
+
+	err := svc.ReconcileEventSubsOnce(t.Context())
+	if err != nil {
+		t.Fatalf("ReconcileEventSubsOnce() returned error %v, want nil", err)
+	}
+
+	// Should delete orphaned sub for c-gone.
+	if !slices.Equal(deleted, []string{"sub-orphan"}) {
+		t.Errorf("ReconcileEventSubsOnce() deleted = %v, want %v", deleted, []string{"sub-orphan"})
+	}
+
+	// Should create missing subs for c2.
+	wantCreated := []string{
+		"c2:" + EventTypeChannelSubscribe,
+		"c2:" + EventTypeChannelSubEnd,
+		"c2:" + EventTypeChannelSubGift,
+	}
+	if !slices.Equal(created, wantCreated) {
+		t.Errorf("ReconcileEventSubsOnce() created = %v, want %v", created, wantCreated)
 	}
 }

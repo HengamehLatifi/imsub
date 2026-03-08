@@ -20,6 +20,10 @@ type reconciler interface {
 	ReconcileSubscribersOnce(ctx context.Context) error
 }
 
+type eventSubReconciler interface {
+	ReconcileEventSubsOnce(ctx context.Context) error
+}
+
 type observer interface {
 	BackgroundJob(job, result string, d time.Duration)
 }
@@ -29,10 +33,11 @@ var ErrInvalidInterval = errors.New("jobs: invalid interval")
 
 // Service runs periodic background maintenance and reconciliation jobs.
 type Service struct {
-	store     store
-	reconcile reconciler
-	log       *slog.Logger
-	obs       observer
+	store         store
+	reconcile     reconciler
+	log           *slog.Logger
+	obs           observer
+	eventSubRecon eventSubReconciler
 }
 
 // New creates a background jobs Service.
@@ -41,6 +46,11 @@ func New(store store, reconcile reconciler, logger *slog.Logger, obs observer) *
 		logger = slog.Default()
 	}
 	return &Service{store: store, reconcile: reconcile, log: logger, obs: obs}
+}
+
+// SetEventSubReconciler wires an EventSub reconciler into the jobs service.
+func (s *Service) SetEventSubReconciler(r eventSubReconciler) {
+	s.eventSubRecon = r
 }
 
 func (s *Service) logger() *slog.Logger {
@@ -183,4 +193,55 @@ func (s *Service) RunIntegrityAuditOnce(ctx context.Context) error {
 		"index_stale_links", staleLinks,
 	)
 	return nil
+}
+
+// RunEventSubReconciler runs EventSub reconciliation once after initialDelay and then on each interval until ctx is done.
+//
+// RunEventSubReconciler returns ErrInvalidInterval if interval <= 0.
+func (s *Service) RunEventSubReconciler(ctx context.Context, initialDelay, interval time.Duration) error {
+	if interval <= 0 {
+		if s != nil {
+			s.logger().Warn("eventsub reconciler not started: non-positive interval", "interval", interval)
+		}
+		return ErrInvalidInterval
+	}
+
+	if initialDelay > 0 {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(initialDelay):
+		}
+	}
+
+	s.ReconcileEventSubsOnce(ctx)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			s.ReconcileEventSubsOnce(ctx)
+		}
+	}
+}
+
+// ReconcileEventSubsOnce runs one EventSub reconciliation pass and records metrics.
+func (s *Service) ReconcileEventSubsOnce(ctx context.Context) {
+	if s == nil || s.eventSubRecon == nil {
+		return
+	}
+	start := time.Now()
+	result := "ok"
+	defer func() {
+		if s.obs != nil {
+			s.obs.BackgroundJob("reconcile_eventsubs", result, time.Since(start))
+		}
+	}()
+	if err := s.eventSubRecon.ReconcileEventSubsOnce(ctx); err != nil {
+		result = "failed"
+		s.logger().Warn("reconcile eventsubs failed", "error", err)
+	}
 }

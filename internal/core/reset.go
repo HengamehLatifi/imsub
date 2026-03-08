@@ -9,6 +9,10 @@ import (
 
 type kickFunc func(ctx context.Context, groupChatID int64, telegramUserID int64) error
 
+type eventSubCleaner interface {
+	DeleteEventSubsForCreator(ctx context.Context, creatorID string) error
+}
+
 type resetStore interface {
 	UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
@@ -20,9 +24,10 @@ type resetStore interface {
 
 // Resetter coordinates viewer and creator reset workflows.
 type Resetter struct {
-	store resetStore
-	kick  kickFunc
-	log   *slog.Logger
+	store         resetStore
+	kick          kickFunc
+	log           *slog.Logger
+	eventSubClean eventSubCleaner
 }
 
 // ScopeState describes which reset scopes currently exist for a user.
@@ -65,6 +70,11 @@ func NewResetter(store resetStore, kick kickFunc, logger *slog.Logger) *Resetter
 		kick:  kick,
 		log:   logger,
 	}
+}
+
+// SetEventSubCleaner wires an EventSub cleanup hook into creator reset flows.
+func (r *Resetter) SetEventSubCleaner(cleaner eventSubCleaner) {
+	r.eventSubClean = cleaner
 }
 
 // LoadScopes resolves whether viewer and/or creator state currently exists.
@@ -204,6 +214,18 @@ func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, tele
 
 // DeleteCreatorData removes creator data owned by ownerTelegramID.
 func (r *Resetter) DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (deletedCount int, deletedNames []string, err error) {
+	// Best-effort EventSub cleanup: load creator ID before deletion.
+	if r.eventSubClean != nil {
+		creator, hasCreator, loadErr := r.store.OwnedCreatorForUser(ctx, ownerTelegramID)
+		if loadErr != nil {
+			r.log.Warn("load creator for eventsub cleanup failed", "owner_telegram_id", ownerTelegramID, "error", loadErr)
+		} else if hasCreator {
+			if cleanErr := r.eventSubClean.DeleteEventSubsForCreator(ctx, creator.ID); cleanErr != nil {
+				r.log.Warn("eventsub cleanup during reset failed", "creator_id", creator.ID, "error", cleanErr)
+			}
+		}
+	}
+
 	deletedCount, deletedNames, err = r.store.DeleteCreatorData(ctx, ownerTelegramID)
 	if err != nil {
 		return 0, nil, fmt.Errorf("delete creator data: %w", err)
