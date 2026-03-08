@@ -1,12 +1,16 @@
 package twitch
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"imsub/internal/core"
 	"imsub/internal/platform/config"
@@ -102,8 +106,10 @@ func TestCreateEventSubAcceptedAndConflict(t *testing.T) {
 					return response(status, `{"ok":true}`), nil
 				}),
 			})
+			client.appToken = "app-token"
+			client.appTokenExpires = time.Now().Add(time.Hour)
 
-			err := client.CreateEventSub(t.Context(), "app-token", "b1", core.EventTypeChannelSubscribe, "1")
+			err := client.CreateEventSub(t.Context(), "b1", core.EventTypeChannelSubscribe, "1")
 			if err != nil {
 				t.Fatalf("CreateEventSub(%d) error: %v", status, err)
 			}
@@ -142,8 +148,10 @@ func TestEnabledEventSubTypesPagination(t *testing.T) {
 			}
 		}),
 	})
+	client.appToken = "app-token"
+	client.appTokenExpires = time.Now().Add(time.Hour)
 
-	got, err := client.EnabledEventSubTypes(t.Context(), "app-token", "111")
+	got, err := client.EnabledEventSubTypes(t.Context(), "111")
 	if err != nil {
 		t.Fatalf("EnabledEventSubTypes returned error: %v", err)
 	}
@@ -196,5 +204,183 @@ func TestListSubscriberPageSuccess(t *testing.T) {
 	}
 	if cursor != "next" {
 		t.Errorf("ListSubscriberPage(%q, %q, %q) cursor = %q, want %q", "access", "broadcaster", "", cursor, "next")
+	}
+}
+
+func TestAppAuthTokenCachesUntilExpiry(t *testing.T) {
+	t.Parallel()
+
+	var tokenCalls int32
+	client := NewClient(testConfig(), &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Host != "id.twitch.tv" || req.URL.Path != "/oauth2/token" {
+				t.Fatalf("unexpected URL %q", req.URL.String())
+			}
+			atomic.AddInt32(&tokenCalls, 1)
+			return response(http.StatusOK, `{"access_token":"app-1","expires_in":3600}`), nil
+		}),
+	})
+
+	got1, err := client.appAuthToken(t.Context())
+	if err != nil {
+		t.Fatalf("appAuthToken() first error: %v", err)
+	}
+	got2, err := client.appAuthToken(t.Context())
+	if err != nil {
+		t.Fatalf("appAuthToken() second error: %v", err)
+	}
+
+	if got1 != "app-1" || got2 != "app-1" {
+		t.Fatalf("appAuthToken() tokens = %q, %q, want app-1 both times", got1, got2)
+	}
+	if atomic.LoadInt32(&tokenCalls) != 1 {
+		t.Fatalf("token endpoint calls = %d, want 1", tokenCalls)
+	}
+}
+
+func TestAppAuthTokenRefreshesWhenNearExpiry(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	now := base
+	var tokenCalls int32
+	client := NewClient(testConfig(), &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			call := atomic.AddInt32(&tokenCalls, 1)
+			switch call {
+			case 1:
+				return response(http.StatusOK, `{"access_token":"app-1","expires_in":3600}`), nil
+			case 2:
+				return response(http.StatusOK, `{"access_token":"app-2","expires_in":3600}`), nil
+			default:
+				t.Fatalf("unexpected token call #%d", call)
+				return nil, errors.New("unexpected call")
+			}
+		}),
+	})
+	client.now = func() time.Time { return now }
+
+	got1, err := client.appAuthToken(t.Context())
+	if err != nil {
+		t.Fatalf("appAuthToken() first error: %v", err)
+	}
+
+	now = base.Add(time.Hour - appTokenRefreshSkew + time.Second)
+	got2, err := client.appAuthToken(t.Context())
+	if err != nil {
+		t.Fatalf("appAuthToken() refresh error: %v", err)
+	}
+
+	if got1 != "app-1" || got2 != "app-2" {
+		t.Fatalf("appAuthToken() tokens = %q, %q, want app-1 then app-2", got1, got2)
+	}
+	if atomic.LoadInt32(&tokenCalls) != 2 {
+		t.Fatalf("token endpoint calls = %d, want 2", tokenCalls)
+	}
+}
+
+func TestAppAuthTokenConcurrentRefreshCollapsesCalls(t *testing.T) {
+	t.Parallel()
+
+	var tokenCalls int32
+	release := make(chan struct{})
+	client := NewClient(testConfig(), &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Host != "id.twitch.tv" {
+				t.Fatalf("unexpected URL %q", req.URL.String())
+			}
+			atomic.AddInt32(&tokenCalls, 1)
+			<-release
+			return response(http.StatusOK, `{"access_token":"app-1","expires_in":3600}`), nil
+		}),
+	})
+
+	const callers = 8
+	var wg sync.WaitGroup
+	results := make(chan string, callers)
+	errs := make(chan error, callers)
+	for range callers {
+		wg.Go(func() {
+			token, err := client.appAuthToken(context.Background())
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- token
+		})
+	}
+
+	close(release)
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	for err := range errs {
+		t.Fatalf("appAuthToken() concurrent error: %v", err)
+	}
+	for token := range results {
+		if token != "app-1" {
+			t.Fatalf("appAuthToken() concurrent token = %q, want app-1", token)
+		}
+	}
+	if atomic.LoadInt32(&tokenCalls) != 1 {
+		t.Fatalf("token endpoint calls = %d, want 1", atomic.LoadInt32(&tokenCalls))
+	}
+}
+
+func TestCreateEventSubUnauthorizedRefreshesAndRetries(t *testing.T) {
+	t.Parallel()
+
+	var (
+		tokenCalls  int32
+		createCalls int32
+	)
+	client := NewClient(testConfig(), &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			switch req.URL.Host {
+			case "id.twitch.tv":
+				call := atomic.AddInt32(&tokenCalls, 1)
+				if call == 1 {
+					return response(http.StatusOK, `{"access_token":"stale-token","expires_in":3600}`), nil
+				}
+				if call == 2 {
+					return response(http.StatusOK, `{"access_token":"fresh-token","expires_in":3600}`), nil
+				}
+				t.Fatalf("unexpected token call #%d", call)
+				return nil, errors.New("unexpected token call")
+			case "api.twitch.tv":
+				call := atomic.AddInt32(&createCalls, 1)
+				auth := req.Header.Get("Authorization")
+				switch call {
+				case 1:
+					if auth != "Bearer stale-token" {
+						t.Fatalf("first create auth = %q, want %q", auth, "Bearer stale-token")
+					}
+					return response(http.StatusUnauthorized, `{"error":"unauthorized"}`), nil
+				case 2:
+					if auth != "Bearer fresh-token" {
+						t.Fatalf("second create auth = %q, want %q", auth, "Bearer fresh-token")
+					}
+					return response(http.StatusAccepted, `{"ok":true}`), nil
+				default:
+					t.Fatalf("unexpected create call #%d", call)
+					return nil, errors.New("unexpected create call")
+				}
+			default:
+				t.Fatalf("unexpected host %q", req.URL.Host)
+				return nil, errors.New("unexpected host")
+			}
+		}),
+	})
+
+	err := client.CreateEventSub(t.Context(), "b1", core.EventTypeChannelSubscribe, "1")
+	if err != nil {
+		t.Fatalf("CreateEventSub() error: %v", err)
+	}
+	if atomic.LoadInt32(&tokenCalls) != 2 {
+		t.Fatalf("token endpoint calls = %d, want 2", tokenCalls)
+	}
+	if atomic.LoadInt32(&createCalls) != 2 {
+		t.Fatalf("create endpoint calls = %d, want 2", createCalls)
 	}
 }

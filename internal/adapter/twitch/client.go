@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
 
 	"imsub/internal/core"
 	"imsub/internal/platform/config"
@@ -31,17 +33,29 @@ var (
 	errSubList             = errors.New("subscriptions list failed")
 )
 
+const appTokenRefreshSkew = 30 * time.Second
+
 var _ core.TwitchAPI = (*Client)(nil)
 
 // Client is the production Twitch API client that makes real HTTP calls.
 type Client struct {
 	cfg    config.Config
 	client *http.Client
+	now    func() time.Time
+
+	appTokenMu      sync.Mutex
+	appToken        string
+	appTokenExpires time.Time
+	appTokenFetchCh chan struct{}
 }
 
 // NewClient creates a Twitch API client backed by real HTTP requests.
 func NewClient(cfg config.Config, client *http.Client) *Client {
-	return &Client{cfg: cfg, client: client}
+	return &Client{
+		cfg:    cfg,
+		client: client,
+		now:    time.Now,
+	}
 }
 
 func responseBodyString(resp *http.Response) (string, error) {
@@ -50,6 +64,157 @@ func responseBodyString(resp *http.Response) (string, error) {
 		return "", fmt.Errorf("read response body: %w", err)
 	}
 	return string(b), nil
+}
+
+func (c *Client) postOAuthToken(ctx context.Context, values url.Values, endpointErr error) (core.TokenResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://id.twitch.tv/oauth2/token", strings.NewReader(values.Encode()))
+	if err != nil {
+		return core.TokenResponse{}, fmt.Errorf("create oauth token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+	if err != nil {
+		return core.TokenResponse{}, fmt.Errorf("do oauth token request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := responseBodyString(resp)
+		if readErr != nil {
+			return core.TokenResponse{}, fmt.Errorf("%w: status %d: read body: %w", endpointErr, resp.StatusCode, readErr)
+		}
+		return core.TokenResponse{}, fmt.Errorf("%w: status %d: %s", endpointErr, resp.StatusCode, body)
+	}
+
+	var tr core.TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		return core.TokenResponse{}, fmt.Errorf("decode oauth token response: %w", err)
+	}
+	return tr, nil
+}
+
+func (c *Client) appTokenValidLocked(now time.Time) bool {
+	return c.appToken != "" && now.Add(appTokenRefreshSkew).Before(c.appTokenExpires)
+}
+
+func (c *Client) cacheAppTokenLocked(token string, expiresIn int) {
+	c.appToken = token
+	if expiresIn > 0 {
+		c.appTokenExpires = c.now().Add(time.Duration(expiresIn) * time.Second)
+		return
+	}
+	c.appTokenExpires = time.Time{}
+}
+
+func (c *Client) invalidateAppToken(token string) {
+	c.appTokenMu.Lock()
+	defer c.appTokenMu.Unlock()
+	if token != "" && c.appToken != token {
+		return
+	}
+	c.appToken = ""
+	c.appTokenExpires = time.Time{}
+}
+
+func (c *Client) fetchAppToken(ctx context.Context) (string, error) {
+	values := url.Values{}
+	values.Set("client_id", c.cfg.TwitchClientID)
+	values.Set("client_secret", c.cfg.TwitchClientSecret)
+	values.Set("grant_type", "client_credentials")
+
+	out, err := c.postOAuthToken(ctx, values, errAppToken)
+	if err != nil {
+		return "", err
+	}
+	if out.AccessToken == "" {
+		return "", errEmptyAppToken
+	}
+
+	c.appTokenMu.Lock()
+	c.cacheAppTokenLocked(out.AccessToken, out.ExpiresIn)
+	c.appTokenMu.Unlock()
+	return out.AccessToken, nil
+}
+
+func (c *Client) appAuthToken(ctx context.Context) (string, error) {
+	for {
+		now := c.now()
+
+		c.appTokenMu.Lock()
+		if c.appTokenValidLocked(now) {
+			token := c.appToken
+			c.appTokenMu.Unlock()
+			return token, nil
+		}
+
+		previousToken := c.appToken
+		previousExpiry := c.appTokenExpires
+		if waitCh := c.appTokenFetchCh; waitCh != nil {
+			c.appTokenMu.Unlock()
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("wait for app token refresh: %w", ctx.Err())
+			case <-waitCh:
+				continue
+			}
+		}
+
+		waitCh := make(chan struct{})
+		c.appTokenFetchCh = waitCh
+		c.appTokenMu.Unlock()
+
+		token, err := c.fetchAppToken(ctx)
+
+		c.appTokenMu.Lock()
+		c.appTokenFetchCh = nil
+		close(waitCh)
+		c.appTokenMu.Unlock()
+
+		if err == nil {
+			return token, nil
+		}
+		if previousToken != "" && now.Before(previousExpiry) {
+			return previousToken, nil
+		}
+		return "", err
+	}
+}
+
+func (c *Client) doAppAuthenticatedRequest(ctx context.Context, build func(token string) (*http.Request, error)) (*http.Response, error) {
+	token, err := c.appAuthToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get app token: %w", err)
+	}
+
+	req, err := build(token)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+	if err != nil {
+		return nil, fmt.Errorf("do app-authenticated request: %w", err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		return resp, nil
+	}
+	_ = resp.Body.Close()
+
+	c.invalidateAppToken(token)
+	token, err = c.appAuthToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("refresh app token after unauthorized: %w", err)
+	}
+
+	req, err = build(token)
+	if err != nil {
+		return nil, err
+	}
+	resp, err = c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+	if err != nil {
+		return nil, fmt.Errorf("retry app-authenticated request: %w", err)
+	}
+	return resp, nil
 }
 
 // ExchangeCode implements the core.TwitchAPI interface.
@@ -61,29 +226,9 @@ func (c *Client) ExchangeCode(ctx context.Context, code string) (core.TokenRespo
 	values.Set("grant_type", "authorization_code")
 	values.Set("redirect_uri", c.cfg.PublicBaseURL+"/auth/callback")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://id.twitch.tv/oauth2/token", strings.NewReader(values.Encode()))
+	tr, err := c.postOAuthToken(ctx, values, errTokenExchange)
 	if err != nil {
-		return core.TokenResponse{}, fmt.Errorf("create token request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
-	if err != nil {
-		return core.TokenResponse{}, fmt.Errorf("do token request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, readErr := responseBodyString(resp)
-		if readErr != nil {
-			return core.TokenResponse{}, fmt.Errorf("%w: status %d: read body: %w", errTokenExchange, resp.StatusCode, readErr)
-		}
-		return core.TokenResponse{}, fmt.Errorf("%w: status %d: %s", errTokenExchange, resp.StatusCode, body)
-	}
-
-	var tr core.TokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
-		return core.TokenResponse{}, fmt.Errorf("decode token response: %w", err)
+		return core.TokenResponse{}, err
 	}
 	if tr.AccessToken == "" {
 		return core.TokenResponse{}, errEmptyToken
@@ -103,29 +248,9 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (core.To
 	values.Set("grant_type", "refresh_token")
 	values.Set("refresh_token", refreshToken)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://id.twitch.tv/oauth2/token", strings.NewReader(values.Encode()))
+	tr, err := c.postOAuthToken(ctx, values, errTokenRefresh)
 	if err != nil {
-		return core.TokenResponse{}, fmt.Errorf("create refresh request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
-	if err != nil {
-		return core.TokenResponse{}, fmt.Errorf("do refresh request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, readErr := responseBodyString(resp)
-		if readErr != nil {
-			return core.TokenResponse{}, fmt.Errorf("%w: status %d: read body: %w", errTokenRefresh, resp.StatusCode, readErr)
-		}
-		return core.TokenResponse{}, fmt.Errorf("%w: status %d: %s", errTokenRefresh, resp.StatusCode, body)
-	}
-
-	var tr core.TokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
-		return core.TokenResponse{}, fmt.Errorf("decode refresh response: %w", err)
+		return core.TokenResponse{}, err
 	}
 	if tr.AccessToken == "" {
 		return core.TokenResponse{}, errEmptyRefreshedToken
@@ -166,45 +291,8 @@ func (c *Client) FetchUser(ctx context.Context, userToken string) (id, login, di
 	return ur.Data[0].ID, ur.Data[0].Login, ur.Data[0].DisplayName, nil
 }
 
-// AppToken implements the core.TwitchAPI interface.
-func (c *Client) AppToken(ctx context.Context) (string, error) {
-	values := url.Values{}
-	values.Set("client_id", c.cfg.TwitchClientID)
-	values.Set("client_secret", c.cfg.TwitchClientSecret)
-	values.Set("grant_type", "client_credentials")
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://id.twitch.tv/oauth2/token", strings.NewReader(values.Encode()))
-	if err != nil {
-		return "", fmt.Errorf("create app token request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
-	if err != nil {
-		return "", fmt.Errorf("do app token request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, readErr := responseBodyString(resp)
-		if readErr != nil {
-			return "", fmt.Errorf("%w: status %d: read body: %w", errAppToken, resp.StatusCode, readErr)
-		}
-		return "", fmt.Errorf("%w: status %d: %s", errAppToken, resp.StatusCode, body)
-	}
-
-	var out core.TokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("decode app token response: %w", err)
-	}
-	if out.AccessToken == "" {
-		return "", errEmptyAppToken
-	}
-	return out.AccessToken, nil
-}
-
 // CreateEventSub implements the core.TwitchAPI interface.
-func (c *Client) CreateEventSub(ctx context.Context, appToken, broadcasterID, eventType, version string) error {
+func (c *Client) CreateEventSub(ctx context.Context, broadcasterID, eventType, version string) error {
 	payload := map[string]any{
 		"type":    eventType,
 		"version": version,
@@ -222,15 +310,16 @@ func (c *Client) CreateEventSub(ctx context.Context, appToken, broadcasterID, ev
 		return fmt.Errorf("marshal eventsub payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.twitch.tv/helix/eventsub/subscriptions", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create eventsub request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+appToken)
-	req.Header.Set("Client-Id", c.cfg.TwitchClientID)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+	resp, err := c.doAppAuthenticatedRequest(ctx, func(token string) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.twitch.tv/helix/eventsub/subscriptions", bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("create eventsub request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Client-Id", c.cfg.TwitchClientID)
+		req.Header.Set("Content-Type", "application/json")
+		return req, nil
+	})
 	if err != nil {
 		return fmt.Errorf("do eventsub request: %w", err)
 	}
@@ -247,7 +336,7 @@ func (c *Client) CreateEventSub(ctx context.Context, appToken, broadcasterID, ev
 }
 
 // EnabledEventSubTypes implements the core.TwitchAPI interface.
-func (c *Client) EnabledEventSubTypes(ctx context.Context, appToken, creatorID string) (map[string]bool, error) {
+func (c *Client) EnabledEventSubTypes(ctx context.Context, creatorID string) (map[string]bool, error) {
 	found := map[string]bool{
 		core.EventTypeChannelSubscribe: false,
 		core.EventTypeChannelSubEnd:    false,
@@ -259,14 +348,15 @@ func (c *Client) EnabledEventSubTypes(ctx context.Context, appToken, creatorID s
 		if cursor != "" {
 			endpoint += "&after=" + url.QueryEscape(cursor)
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("create eventsub list request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+appToken)
-		req.Header.Set("Client-Id", c.cfg.TwitchClientID)
-
-		resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+		resp, err := c.doAppAuthenticatedRequest(ctx, func(token string) (*http.Request, error) {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+			if err != nil {
+				return nil, fmt.Errorf("create eventsub list request: %w", err)
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Client-Id", c.cfg.TwitchClientID)
+			return req, nil
+		})
 		if err != nil {
 			return nil, fmt.Errorf("do eventsub list request: %w", err)
 		}
@@ -304,7 +394,7 @@ func (c *Client) EnabledEventSubTypes(ctx context.Context, appToken, creatorID s
 }
 
 // ListEventSubs implements the core.TwitchAPI interface.
-func (c *Client) ListEventSubs(ctx context.Context, appToken string, opts core.ListEventSubsOpts) ([]core.EventSubSubscription, error) {
+func (c *Client) ListEventSubs(ctx context.Context, opts core.ListEventSubsOpts) ([]core.EventSubSubscription, error) {
 	var all []core.EventSubSubscription
 	var cursor string
 	for {
@@ -315,14 +405,15 @@ func (c *Client) ListEventSubs(ctx context.Context, appToken string, opts core.L
 		if cursor != "" {
 			endpoint += "&after=" + url.QueryEscape(cursor)
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("create eventsub list request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+appToken)
-		req.Header.Set("Client-Id", c.cfg.TwitchClientID)
-
-		resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+		resp, err := c.doAppAuthenticatedRequest(ctx, func(token string) (*http.Request, error) {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+			if err != nil {
+				return nil, fmt.Errorf("create eventsub list request: %w", err)
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Client-Id", c.cfg.TwitchClientID)
+			return req, nil
+		})
 		if err != nil {
 			return nil, fmt.Errorf("do eventsub list request: %w", err)
 		}
@@ -358,16 +449,17 @@ func (c *Client) ListEventSubs(ctx context.Context, appToken string, opts core.L
 }
 
 // DeleteEventSub implements the core.TwitchAPI interface.
-func (c *Client) DeleteEventSub(ctx context.Context, appToken, subscriptionID string) error {
+func (c *Client) DeleteEventSub(ctx context.Context, subscriptionID string) error {
 	endpoint := "https://api.twitch.tv/helix/eventsub/subscriptions?id=" + url.QueryEscape(subscriptionID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("create eventsub delete request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+appToken)
-	req.Header.Set("Client-Id", c.cfg.TwitchClientID)
-
-	resp, err := c.client.Do(req) //nolint:gosec // req URL is a hardcoded Twitch URL
+	resp, err := c.doAppAuthenticatedRequest(ctx, func(token string) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create eventsub delete request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Client-Id", c.cfg.TwitchClientID)
+		return req, nil
+	})
 	if err != nil {
 		return fmt.Errorf("do eventsub delete request: %w", err)
 	}

@@ -105,12 +105,11 @@ type eventSubFakeTwitch struct {
 	exchangeCodeFn       func(ctx context.Context, code string) (TokenResponse, error)
 	refreshTokenFn       func(ctx context.Context, refreshToken string) (TokenResponse, error)
 	fetchUserFn          func(ctx context.Context, userToken string) (id, login, displayName string, err error)
-	getAppTokenFn        func(ctx context.Context) (string, error)
-	createEventSubFn     func(ctx context.Context, appToken, broadcasterID, eventType, version string) error
-	enabledEventSubFn    func(ctx context.Context, appToken, creatorID string) (map[string]bool, error)
+	createEventSubFn     func(ctx context.Context, broadcasterID, eventType, version string) error
+	enabledEventSubFn    func(ctx context.Context, creatorID string) (map[string]bool, error)
 	listSubscriberPageFn func(ctx context.Context, accessToken, broadcasterID, cursor string) (userIDs []string, nextCursor string, err error)
-	listEventSubsFn      func(ctx context.Context, appToken string, opts ListEventSubsOpts) ([]EventSubSubscription, error)
-	deleteEventSubFn     func(ctx context.Context, appToken, subscriptionID string) error
+	listEventSubsFn      func(ctx context.Context, opts ListEventSubsOpts) ([]EventSubSubscription, error)
+	deleteEventSubFn     func(ctx context.Context, subscriptionID string) error
 }
 
 type eventSubFakeNotifier struct {
@@ -167,23 +166,16 @@ func (m *eventSubFakeTwitch) FetchUser(ctx context.Context, userToken string) (i
 	return "", "", "", nil
 }
 
-func (m *eventSubFakeTwitch) AppToken(ctx context.Context) (string, error) {
-	if m.getAppTokenFn != nil {
-		return m.getAppTokenFn(ctx)
-	}
-	return "app-token", nil
-}
-
-func (m *eventSubFakeTwitch) CreateEventSub(ctx context.Context, appToken, broadcasterID, eventType, version string) error {
+func (m *eventSubFakeTwitch) CreateEventSub(ctx context.Context, broadcasterID, eventType, version string) error {
 	if m.createEventSubFn != nil {
-		return m.createEventSubFn(ctx, appToken, broadcasterID, eventType, version)
+		return m.createEventSubFn(ctx, broadcasterID, eventType, version)
 	}
 	return nil
 }
 
-func (m *eventSubFakeTwitch) EnabledEventSubTypes(ctx context.Context, appToken, creatorID string) (map[string]bool, error) {
+func (m *eventSubFakeTwitch) EnabledEventSubTypes(ctx context.Context, creatorID string) (map[string]bool, error) {
 	if m.enabledEventSubFn != nil {
-		return m.enabledEventSubFn(ctx, appToken, creatorID)
+		return m.enabledEventSubFn(ctx, creatorID)
 	}
 	return map[string]bool{EventTypeChannelSubscribe: true, EventTypeChannelSubEnd: true, EventTypeChannelSubGift: true}, nil
 }
@@ -195,16 +187,16 @@ func (m *eventSubFakeTwitch) ListSubscriberPage(ctx context.Context, accessToken
 	return nil, "", nil
 }
 
-func (m *eventSubFakeTwitch) ListEventSubs(ctx context.Context, appToken string, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
+func (m *eventSubFakeTwitch) ListEventSubs(ctx context.Context, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
 	if m.listEventSubsFn != nil {
-		return m.listEventSubsFn(ctx, appToken, opts)
+		return m.listEventSubsFn(ctx, opts)
 	}
 	return nil, nil
 }
 
-func (m *eventSubFakeTwitch) DeleteEventSub(ctx context.Context, appToken, subscriptionID string) error {
+func (m *eventSubFakeTwitch) DeleteEventSub(ctx context.Context, subscriptionID string) error {
 	if m.deleteEventSubFn != nil {
-		return m.deleteEventSubFn(ctx, appToken, subscriptionID)
+		return m.deleteEventSubFn(ctx, subscriptionID)
 	}
 	return nil
 }
@@ -216,10 +208,7 @@ func TestEnsureEventSubForCreators(t *testing.T) {
 	svc := NewEventSub(
 		&eventsubFakeStore{},
 		&eventSubFakeTwitch{
-			createEventSubFn: func(_ context.Context, appToken, broadcasterID, eventType, version string) error {
-				if appToken != "app-token" {
-					t.Fatalf("createEventSubFn() appToken = %q, want \"app-token\"", appToken)
-				}
+			createEventSubFn: func(_ context.Context, broadcasterID, eventType, version string) error {
 				if version != "1" {
 					t.Fatalf("createEventSubFn() version = %q, want \"1\"", version)
 				}
@@ -321,13 +310,13 @@ func TestDumpCurrentSubscribersRefreshOnUnauthorized(t *testing.T) {
 	}
 }
 
-func TestIsEventSubActiveForCreatorWithToken(t *testing.T) {
+func TestIsEventSubActiveForCreator(t *testing.T) {
 	t.Parallel()
 
 	svc := NewEventSub(
 		&eventsubFakeStore{},
 		&eventSubFakeTwitch{
-			enabledEventSubFn: func(_ context.Context, _, _ string) (map[string]bool, error) {
+			enabledEventSubFn: func(_ context.Context, _ string) (map[string]bool, error) {
 				return map[string]bool{
 					EventTypeChannelSubscribe: true,
 					EventTypeChannelSubEnd:    false,
@@ -338,12 +327,12 @@ func TestIsEventSubActiveForCreatorWithToken(t *testing.T) {
 		nil,
 	)
 
-	active, err := svc.IsEventSubActiveForCreatorWithToken(t.Context(), "app-token", "creator-1")
+	active, err := svc.IsEventSubActiveForCreator(t.Context(), "creator-1")
 	if err != nil {
-		t.Fatalf("IsEventSubActiveForCreatorWithToken(%q, %q) returned error %v, want nil", "app-token", "creator-1", err)
+		t.Fatalf("IsEventSubActiveForCreator(%q) returned error %v, want nil", "creator-1", err)
 	}
 	if active {
-		t.Errorf("IsEventSubActiveForCreatorWithToken(%q, %q) = %t, want %t", "app-token", "creator-1", active, false)
+		t.Errorf("IsEventSubActiveForCreator(%q) = %t, want %t", "creator-1", active, false)
 	}
 }
 
@@ -450,7 +439,7 @@ func TestDeleteEventSubsForCreator(t *testing.T) {
 	svc := NewEventSub(
 		&eventsubFakeStore{},
 		&eventSubFakeTwitch{
-			listEventSubsFn: func(_ context.Context, _ string, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
+			listEventSubsFn: func(_ context.Context, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
 				if opts.UserID != "c1" {
 					t.Fatalf("listEventSubsFn() opts.UserID = %q, want %q", opts.UserID, "c1")
 				}
@@ -460,7 +449,7 @@ func TestDeleteEventSubsForCreator(t *testing.T) {
 					{ID: "sub3", Type: EventTypeChannelSubGift, BroadcasterID: "c1"},
 				}, nil
 			},
-			deleteEventSubFn: func(_ context.Context, _, subID string) error {
+			deleteEventSubFn: func(_ context.Context, subID string) error {
 				deleted = append(deleted, subID)
 				return nil
 			},
@@ -492,7 +481,7 @@ func TestReconcileEventSubsOnce(t *testing.T) {
 			},
 		},
 		&eventSubFakeTwitch{
-			listEventSubsFn: func(_ context.Context, _ string, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
+			listEventSubsFn: func(_ context.Context, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
 				if opts.UserID != "" {
 					t.Fatalf("listEventSubsFn() opts.UserID = %q, want empty", opts.UserID)
 				}
@@ -505,11 +494,11 @@ func TestReconcileEventSubsOnce(t *testing.T) {
 					{ID: "sub-orphan", Status: "enabled", Type: EventTypeChannelSubscribe, BroadcasterID: "c-gone"},
 				}, nil
 			},
-			deleteEventSubFn: func(_ context.Context, _, subID string) error {
+			deleteEventSubFn: func(_ context.Context, subID string) error {
 				deleted = append(deleted, subID)
 				return nil
 			},
-			createEventSubFn: func(_ context.Context, _, broadcasterID, eventType, _ string) error {
+			createEventSubFn: func(_ context.Context, broadcasterID, eventType, _ string) error {
 				created = append(created, broadcasterID+":"+eventType)
 				return nil
 			},

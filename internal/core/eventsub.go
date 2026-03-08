@@ -89,12 +89,7 @@ func (e *EventSub) ReconcileEventSubsOnce(ctx context.Context) error {
 		return fmt.Errorf("list active creators: %w", err)
 	}
 
-	appToken, err := e.twitch.AppToken(ctx)
-	if err != nil {
-		return fmt.Errorf("app token for reconcile: %w", err)
-	}
-
-	subs, err := e.twitch.ListEventSubs(ctx, appToken, ListEventSubsOpts{})
+	subs, err := e.twitch.ListEventSubs(ctx, ListEventSubsOpts{})
 	if err != nil {
 		return fmt.Errorf("list eventsubs: %w", err)
 	}
@@ -110,7 +105,7 @@ func (e *EventSub) ReconcileEventSubsOnce(ctx context.Context) error {
 			continue
 		}
 		e.log.Info("deleting orphaned eventsub", "sub_id", sub.ID, "broadcaster_id", sub.BroadcasterID, "type", sub.Type)
-		if err := e.twitch.DeleteEventSub(ctx, appToken, sub.ID); err != nil {
+		if err := e.twitch.DeleteEventSub(ctx, sub.ID); err != nil {
 			e.log.Warn("delete orphaned eventsub failed", "sub_id", sub.ID, "error", err)
 		}
 	}
@@ -171,11 +166,7 @@ func (e *EventSub) ReconcileEventSubsOnce(ctx context.Context) error {
 // DeleteEventSubsForCreator removes all EventSub subscriptions for a given creator.
 // Best-effort: logs failures but continues.
 func (e *EventSub) DeleteEventSubsForCreator(ctx context.Context, creatorID string) error {
-	appToken, err := e.twitch.AppToken(ctx)
-	if err != nil {
-		return fmt.Errorf("app token for delete eventsubs: %w", err)
-	}
-	subs, err := e.twitch.ListEventSubs(ctx, appToken, ListEventSubsOpts{UserID: creatorID})
+	subs, err := e.twitch.ListEventSubs(ctx, ListEventSubsOpts{UserID: creatorID})
 	if err != nil {
 		return fmt.Errorf("list eventsubs for delete: %w", err)
 	}
@@ -184,7 +175,7 @@ func (e *EventSub) DeleteEventSubsForCreator(ctx context.Context, creatorID stri
 			continue
 		}
 		e.log.Info("deleting eventsub for creator", "sub_id", sub.ID, "broadcaster_id", creatorID, "type", sub.Type)
-		if err := e.twitch.DeleteEventSub(ctx, appToken, sub.ID); err != nil {
+		if err := e.twitch.DeleteEventSub(ctx, sub.ID); err != nil {
 			e.log.Warn("delete eventsub for creator failed", "sub_id", sub.ID, "creator_id", creatorID, "error", err)
 		}
 	}
@@ -193,16 +184,10 @@ func (e *EventSub) DeleteEventSubsForCreator(ctx context.Context, creatorID stri
 
 // FindInactiveEventSubCreators returns creators missing required EventSub subscriptions.
 func (e *EventSub) FindInactiveEventSubCreators(ctx context.Context, creators []Creator) []Creator {
-	appToken, err := e.twitch.AppToken(ctx)
-	if err != nil {
-		e.log.Warn("eventsub verify app token fetch failed", "error", err)
-		return creators
-	}
-
 	inactive := make([]Creator, 0, len(creators))
 	for _, c := range creators {
 		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		active, err := e.IsEventSubActiveForCreatorWithToken(checkCtx, appToken, c.ID)
+		active, err := e.IsEventSubActiveForCreator(checkCtx, c.ID)
 		cancel()
 		if err != nil {
 			e.log.Warn("eventsub verify failed", "creator_id", c.ID, "creator_name", c.Name, "error", err)
@@ -221,14 +206,10 @@ func (e *EventSub) EnsureEventSubForCreators(ctx context.Context, creators []Cre
 	if len(creators) == 0 {
 		return nil
 	}
-	appToken, err := e.twitch.AppToken(ctx)
-	if err != nil {
-		return fmt.Errorf("app token for ensure eventsub: %w", err)
-	}
 	for _, c := range creators {
 		for _, eventType := range []string{EventTypeChannelSubscribe, EventTypeChannelSubEnd, EventTypeChannelSubGift} {
 			e.log.Debug("ensuring eventsub", "creator_id", c.ID, "type", eventType)
-			if err := e.twitch.CreateEventSub(ctx, appToken, c.ID, eventType, "1"); err != nil {
+			if err := e.twitch.CreateEventSub(ctx, c.ID, eventType, "1"); err != nil {
 				return fmt.Errorf("creating %s for creator %s: %w", eventType, c.ID, err)
 			}
 		}
@@ -238,16 +219,7 @@ func (e *EventSub) EnsureEventSubForCreators(ctx context.Context, creators []Cre
 
 // IsEventSubActiveForCreator reports whether required EventSub types are active.
 func (e *EventSub) IsEventSubActiveForCreator(ctx context.Context, creatorID string) (bool, error) {
-	appToken, err := e.twitch.AppToken(ctx)
-	if err != nil {
-		return false, fmt.Errorf("app token for active eventsub check: %w", err)
-	}
-	return e.IsEventSubActiveForCreatorWithToken(ctx, appToken, creatorID)
-}
-
-// IsEventSubActiveForCreatorWithToken reports active status using a provided app token.
-func (e *EventSub) IsEventSubActiveForCreatorWithToken(ctx context.Context, appToken, creatorID string) (bool, error) {
-	foundTypes, err := e.twitch.EnabledEventSubTypes(ctx, appToken, creatorID)
+	foundTypes, err := e.twitch.EnabledEventSubTypes(ctx, creatorID)
 	if err != nil {
 		return false, fmt.Errorf("fetch enabled eventsub types: %w", err)
 	}

@@ -58,15 +58,11 @@ func (f *fakeAPI) FetchUser(ctx context.Context, userToken string) (id, login, d
 	return "", "", "", nil
 }
 
-func (f *fakeAPI) AppToken(_ context.Context) (string, error) {
-	return "", nil
-}
-
-func (f *fakeAPI) CreateEventSub(_ context.Context, _, _, _, _ string) error {
+func (f *fakeAPI) CreateEventSub(_ context.Context, _, _, _ string) error {
 	return nil
 }
 
-func (f *fakeAPI) EnabledEventSubTypes(_ context.Context, _, _ string) (map[string]bool, error) {
+func (f *fakeAPI) EnabledEventSubTypes(_ context.Context, _ string) (map[string]bool, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -74,11 +70,11 @@ func (f *fakeAPI) ListSubscriberPage(_ context.Context, _, _, _ string) (userIDs
 	return nil, "", errors.New("not implemented")
 }
 
-func (f *fakeAPI) ListEventSubs(_ context.Context, _ string, _ ListEventSubsOpts) ([]EventSubSubscription, error) {
+func (f *fakeAPI) ListEventSubs(_ context.Context, _ ListEventSubsOpts) ([]EventSubSubscription, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (f *fakeAPI) DeleteEventSub(_ context.Context, _, _ string) error {
+func (f *fakeAPI) DeleteEventSub(_ context.Context, _ string) error {
 	return errors.New("not implemented")
 }
 
