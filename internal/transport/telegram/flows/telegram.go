@@ -79,7 +79,7 @@ func (c *Controller) replyLinkedStatus(
 	text := telegramui.LinkedStatusWithJoinStateHTML(lang, twitchLogin, activeNames, len(joinRows) > 0)
 	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{
 		ParseMode:      telego.ModeHTML,
-		Markup:         telegramui.WithMainMenu(lang, joinRows...),
+		Markup:         telegramui.WithMainMenu(lang, viewerMainMenuCallbacks(), joinRows...),
 		DisablePreview: true,
 	})
 }
@@ -94,6 +94,28 @@ func (c *Controller) answerCallbackAlert(ctx context.Context, callbackID, text s
 
 func (c *Controller) answerCallbackOpts(ctx context.Context, callbackID, text string, showAlert bool) {
 	c.tgClient().AnswerCallback(ctx, callbackID, text, showAlert)
+}
+
+func viewerMainMenuCallbacks() telegramui.MainMenuCallbacks {
+	return telegramui.MainMenuCallbacks{
+		Refresh: viewerRefreshCallback(),
+		Reset:   resetOpenCallback(resetOriginViewer),
+	}
+}
+
+func viewerMainMenuMarkup(lang string) *telego.InlineKeyboardMarkup {
+	return telegramui.MainMenuMarkup(lang, viewerMainMenuCallbacks())
+}
+
+func creatorMenuCallbacks() telegramui.CreatorMenuCallbacks {
+	return telegramui.CreatorMenuCallbacks{
+		Refresh: creatorRefreshCallback(),
+		Reset:   resetOpenCallback(resetOriginCreator),
+	}
+}
+
+func creatorMainMenuMarkup(lang string) *telego.InlineKeyboardMarkup {
+	return telegramui.CreatorMainMenuMarkup(lang, creatorMenuCallbacks())
 }
 
 // --- OAuth state ---

@@ -12,7 +12,6 @@ import (
 	"imsub/internal/core"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/transport/telegram/client"
-	"imsub/internal/transport/telegram/ui"
 
 	"github.com/mymmrac/telego"
 	tghandler "github.com/mymmrac/telego/telegohandler"
@@ -55,7 +54,7 @@ func (c *Controller) onUnknownMessage(ctx *tghandler.Context, message telego.Mes
 			key = msgCmdHelp
 		}
 	}
-	c.sendMsg(ctx, message.Chat.ID, i18n.Translate(lang, key), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+	c.sendMsg(ctx, message.Chat.ID, i18n.Translate(lang, key), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
 	return nil
 }
 
@@ -621,6 +620,6 @@ func IsAdmin(member telego.ChatMember) bool {
 // onResetCommand handles /reset by showing the reset confirmation prompt.
 func (c *Controller) onResetCommand(ctx *tghandler.Context, message telego.Message) error {
 	lang := i18n.NormalizeLanguage(message.From.LanguageCode)
-	c.handleResetPrompt(ctx, message.From.ID, 0, lang)
+	c.renderResetPrompt(ctx, message.From.ID, 0, lang, resetOriginCommand)
 	return nil
 }

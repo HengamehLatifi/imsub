@@ -13,41 +13,15 @@ import (
 )
 
 const (
-	// ActionRefreshViewer refreshes viewer status.
-	ActionRefreshViewer = "action:refresh_viewer"
-	// ActionRefreshCreator refreshes creator status.
-	ActionRefreshCreator = "action:refresh_creator"
-	// ActionRegisterCreator starts creator registration.
-	ActionRegisterCreator = "action:register_creator"
-	// ActionReconnectCreator starts creator reconnect for an existing creator.
-	ActionReconnectCreator = "action:reconnect_creator"
-	// ActionResetConfirm opens the reset scope picker.
-	ActionResetConfirm = "action:reset_confirm"
-
-	// ActionResetPickViewer selects viewer reset scope.
-	ActionResetPickViewer = "action:reset_pick_viewer"
-	// ActionResetPickCreator selects creator reset scope.
-	ActionResetPickCreator = "action:reset_pick_creator"
-	// ActionResetPickBoth selects combined reset scope.
-	ActionResetPickBoth = "action:reset_pick_both"
-	// ActionResetPickerBack returns from the scope picker to the originating menu.
-	ActionResetPickerBack = "action:reset_back_menu"
-	// ActionResetPickerCancel exits the scope picker when entered from /reset.
-	ActionResetPickerCancel = "action:reset_cancel"
-
-	// ActionResetConfirmBack returns from the confirmation screen to the scope picker or menu.
-	ActionResetConfirmBack = "action:reset_back"
-	// ActionResetDoViewer confirms viewer data deletion.
-	ActionResetDoViewer = "action:reset_do_viewer"
-	// ActionResetDoCreator confirms creator data deletion.
-	ActionResetDoCreator = "action:reset_do_creator"
-	// ActionResetDoBoth confirms combined data deletion.
-	ActionResetDoBoth = "action:reset_do_both"
-
-	btnRefresh   = "btn_refresh"
-	btnReconnect = "btn_reconnect_creator"
-	btnReset     = "btn_reset"
-	btnSubscribe = "btn_subscribe"
+	btnRefresh          = "btn_refresh"
+	btnReconnect        = "btn_reconnect_creator"
+	btnReset            = "btn_reset"
+	btnSubscribe        = "btn_subscribe"
+	btnResetViewerData  = "btn_reset_viewer_data"
+	btnResetCreatorData = "btn_reset_creator_data"
+	btnResetAllData     = "btn_reset_all_data"
+	btnBack             = "btn_back"
+	btnResetConfirm     = "btn_reset_confirm"
 
 	msgLinkedStatusNoSubsHTML           = "linked_status_no_subs_html"
 	msgLinkedStatusWithSubsHTML         = "linked_status_with_subs_html"
@@ -59,33 +33,45 @@ const (
 	backButtonEmojiID    = "5258236805890710909"
 )
 
-func buildMainMenuMarkup(lang, refreshAction string) *telego.InlineKeyboardMarkup {
+// MainMenuCallbacks defines callback data for the viewer main menu.
+type MainMenuCallbacks struct {
+	Refresh string
+	Reset   string
+}
+
+// CreatorMenuCallbacks defines callback data for the creator status menu.
+type CreatorMenuCallbacks struct {
+	Refresh string
+	Reset   string
+}
+
+func buildMainMenuMarkup(lang string, callbacks MainMenuCallbacks) *telego.InlineKeyboardMarkup {
 	return tu.InlineKeyboard(
-		tu.InlineKeyboardRow(RefreshButton(i18n.Translate(lang, btnRefresh), refreshAction)),
-		tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnReset), ActionResetConfirm)),
+		tu.InlineKeyboardRow(RefreshButton(i18n.Translate(lang, btnRefresh), callbacks.Refresh)),
+		tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnReset), callbacks.Reset)),
 	)
 }
 
 // MainMenuMarkup builds the viewer main-menu inline keyboard.
-func MainMenuMarkup(lang string) *telego.InlineKeyboardMarkup {
-	return buildMainMenuMarkup(lang, ActionRefreshViewer)
+func MainMenuMarkup(lang string, callbacks MainMenuCallbacks) *telego.InlineKeyboardMarkup {
+	return buildMainMenuMarkup(lang, callbacks)
 }
 
 // CreatorStatusMenuMarkup builds the creator status inline keyboard.
-func CreatorStatusMenuMarkup(lang, reconnectURL string) *telego.InlineKeyboardMarkup {
+func CreatorStatusMenuMarkup(lang, reconnectURL string, callbacks CreatorMenuCallbacks) *telego.InlineKeyboardMarkup {
 	rows := make([][]telego.InlineKeyboardButton, 0, 3)
 	if strings.TrimSpace(reconnectURL) != "" {
 		rows = append(rows, tu.InlineKeyboardRow(LinkButton(i18n.Translate(lang, btnReconnect), reconnectURL)))
 	} else {
-		rows = append(rows, tu.InlineKeyboardRow(RefreshButton(i18n.Translate(lang, btnRefresh), ActionRefreshCreator)))
+		rows = append(rows, tu.InlineKeyboardRow(RefreshButton(i18n.Translate(lang, btnRefresh), callbacks.Refresh)))
 	}
-	rows = append(rows, tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnReset), ActionResetConfirm)))
+	rows = append(rows, tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnReset), callbacks.Reset)))
 	return tu.InlineKeyboard(rows...)
 }
 
 // CreatorMainMenuMarkup builds the default creator main-menu inline keyboard.
-func CreatorMainMenuMarkup(lang string) *telego.InlineKeyboardMarkup {
-	return CreatorStatusMenuMarkup(lang, "")
+func CreatorMainMenuMarkup(lang string, callbacks CreatorMenuCallbacks) *telego.InlineKeyboardMarkup {
+	return CreatorStatusMenuMarkup(lang, "", callbacks)
 }
 
 func appendMainMenuRows(menu *telego.InlineKeyboardMarkup, rows ...[]telego.InlineKeyboardButton) *telego.InlineKeyboardMarkup {
@@ -95,18 +81,36 @@ func appendMainMenuRows(menu *telego.InlineKeyboardMarkup, rows ...[]telego.Inli
 }
 
 // WithMainMenu appends the viewer main menu rows to existing keyboard rows.
-func WithMainMenu(lang string, rows ...[]telego.InlineKeyboardButton) *telego.InlineKeyboardMarkup {
-	return appendMainMenuRows(MainMenuMarkup(lang), rows...)
+func WithMainMenu(lang string, callbacks MainMenuCallbacks, rows ...[]telego.InlineKeyboardButton) *telego.InlineKeyboardMarkup {
+	return appendMainMenuRows(MainMenuMarkup(lang, callbacks), rows...)
 }
 
 // WithCreatorStatusMenu appends the creator status menu rows to existing keyboard rows.
-func WithCreatorStatusMenu(lang, reconnectURL string, rows ...[]telego.InlineKeyboardButton) *telego.InlineKeyboardMarkup {
-	return appendMainMenuRows(CreatorStatusMenuMarkup(lang, reconnectURL), rows...)
+func WithCreatorStatusMenu(lang, reconnectURL string, callbacks CreatorMenuCallbacks, rows ...[]telego.InlineKeyboardButton) *telego.InlineKeyboardMarkup {
+	return appendMainMenuRows(CreatorStatusMenuMarkup(lang, reconnectURL, callbacks), rows...)
 }
 
 // WithCreatorMainMenu appends the default creator main menu rows to existing keyboard rows.
-func WithCreatorMainMenu(lang string, rows ...[]telego.InlineKeyboardButton) *telego.InlineKeyboardMarkup {
-	return WithCreatorStatusMenu(lang, "", rows...)
+func WithCreatorMainMenu(lang string, callbacks CreatorMenuCallbacks, rows ...[]telego.InlineKeyboardButton) *telego.InlineKeyboardMarkup {
+	return WithCreatorStatusMenu(lang, "", callbacks, rows...)
+}
+
+// ResetScopePickerMarkup builds the reset scope picker keyboard.
+func ResetScopePickerMarkup(lang, viewerCallback, creatorCallback, bothCallback, backCallback string) *telego.InlineKeyboardMarkup {
+	return tu.InlineKeyboard(
+		tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnResetViewerData), viewerCallback)),
+		tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnResetCreatorData), creatorCallback)),
+		tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnResetAllData), bothCallback)),
+		tu.InlineKeyboardRow(BackButton(i18n.Translate(lang, btnBack), backCallback)),
+	)
+}
+
+// ResetConfirmMarkup builds the reset confirmation keyboard.
+func ResetConfirmMarkup(lang, confirmCallback, backCallback string) *telego.InlineKeyboardMarkup {
+	return tu.InlineKeyboard(
+		tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnResetConfirm), confirmCallback)),
+		tu.InlineKeyboardRow(BackButton(i18n.Translate(lang, btnBack), backCallback)),
+	)
 }
 
 // LinkedStatusWithJoinStateHTML renders the viewer linked status block for the

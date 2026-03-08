@@ -16,6 +16,32 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
+const (
+	msgErrCreatorLink            = "err_creator_link"
+	msgCreatorRegisterInfo       = "creator_register_info"
+	msgCreatorRegisteredNoGroup  = "creator_registered_no_group_html"
+	msgCreatorRegistered         = "creator_registered_html"
+	msgCreatorEventSubActive     = "creator_eventsub_active"
+	msgCreatorEventSubInactive   = "creator_eventsub_inactive"
+	msgCreatorEventSubUnknown    = "creator_eventsub_unknown"
+	msgCreatorEventSubFail       = "creator_eventsub_fail"
+	msgCreatorAuthHealthy        = "creator_auth_healthy"
+	msgCreatorAuthReconnect      = "creator_auth_reconnect_required"
+	msgCreatorSubscribersPending = "creator_subscribers_pending"
+	msgCreatorSubscribersReady   = "creator_subscribers_ready"
+	msgCreatorGroupsNone         = "creator_groups_none"
+	msgCreatorExchangeFail       = "creator_exchange_fail"
+	msgCreatorReconnectInfo      = "creator_reconnect_info"
+	msgCreatorReconnectMismatch  = "creator_reconnect_mismatch"
+	msgCreatorReconnectNeeded    = "creator_reconnect_needed"
+	msgCreatorScopeMissing       = "creator_scope_missing"
+	msgCreatorUserInfoFail       = "creator_userinfo_fail"
+	msgCreatorStoreFail          = "creator_store_fail"
+
+	btnRegisterCreatorOpen = "btn_register_creator_open"
+	btnReconnectCreator    = "btn_reconnect_creator"
+)
+
 // --- Creator flow ---
 
 func (c *Controller) handleCreatorRegistrationStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
@@ -60,7 +86,7 @@ func (c *Controller) replyCreatorOAuthPrompt(ctx context.Context, telegramUserID
 	}
 	state, err := c.createOAuthState(ctx, payload, 10*time.Minute)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrCreatorLink), &client.MessageOptions{Markup: ui.CreatorMainMenuMarkup(lang)})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrCreatorLink), &client.MessageOptions{Markup: creatorMainMenuMarkup(lang)})
 		return i18n.Translate(lang, msgErrCreatorLink)
 	}
 	url := c.oauthStartURL(state)
@@ -121,7 +147,7 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{
 			ParseMode:      telego.ModeHTML,
 			DisablePreview: true,
-			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL),
+			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorMenuCallbacks()),
 		})
 		return
 	}
@@ -141,7 +167,7 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{
 			ParseMode:      telego.ModeHTML,
 			DisablePreview: true,
-			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL),
+			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorMenuCallbacks()),
 		})
 		return
 	}
@@ -149,7 +175,7 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 	c.sendMsg(ctx, telegramUserID, text, &client.MessageOptions{
 		ParseMode:      telego.ModeHTML,
 		DisablePreview: true,
-		Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL),
+		Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorMenuCallbacks()),
 	})
 }
 

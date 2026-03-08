@@ -16,6 +16,17 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
+const (
+	msgLinkPromptHTML    = "link_prompt_html"
+	msgOAuthExchangeFail = "oauth_exchange_fail"
+	msgOAuthUserInfoFail = "oauth_userinfo_fail"
+	msgOAuthSaveFail     = "oauth_save_fail"
+	msgSubEndPartial     = "sub_end_partial"
+
+	btnLinkTwitch = "btn_link_twitch"
+	btnJoin       = "btn_join"
+)
+
 // --- Viewer flow ---
 
 func (c *Controller) handleViewerStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
@@ -25,7 +36,7 @@ func (c *Controller) handleViewerStart(ctx context.Context, telegramUserID int64
 func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserID int64, editMsgID int, lang, userName string) string {
 	identity, hasIdentity, err := c.viewerSvc.LoadIdentity(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
 		return i18n.Translate(lang, msgErrLoadStatus)
 	}
 
@@ -38,7 +49,7 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 		}
 		state, err := c.createOAuthState(ctx, payload, 10*time.Minute)
 		if err != nil {
-			c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+			c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
 			return i18n.Translate(lang, msgErrLoadStatus)
 		}
 		authURL := c.oauthStartURL(state)
@@ -68,7 +79,7 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 	joinRows, activeNames, err := c.buildJoinButtons(ctx, telegramUserID, identity.TwitchUserID, lang)
 	if err != nil {
 		c.log().Warn("buildJoinButtons failed", "telegram_user_id", telegramUserID, "error", err)
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
 		return i18n.Translate(lang, msgErrLoadStatus)
 	}
 	c.replyLinkedStatus(ctx, telegramUserID, editMsgID, lang, identity.TwitchLogin, joinRows, activeNames)

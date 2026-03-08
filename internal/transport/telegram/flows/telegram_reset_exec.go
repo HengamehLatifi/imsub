@@ -8,7 +8,6 @@ import (
 
 	"imsub/internal/platform/i18n"
 	"imsub/internal/transport/telegram/client"
-	"imsub/internal/transport/telegram/ui"
 
 	"github.com/mymmrac/telego"
 )
@@ -19,7 +18,7 @@ import (
 func (c *Controller) handleResetViewerCommand(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	res, err := c.resetSvc.ExecuteViewerReset(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
 		return i18n.Translate(lang, msgErrReset)
 	}
 	// Nothing to delete if viewer scope is absent.
@@ -39,7 +38,7 @@ func (c *Controller) handleResetCreatorCommand(ctx context.Context, telegramUser
 	// Delete creator records owned by this Telegram user.
 	res, err := c.resetSvc.ExecuteCreatorReset(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
 		return i18n.Translate(lang, msgErrReset)
 	}
 	// If no creator record existed, exit with empty-state message.
@@ -63,7 +62,7 @@ func (c *Controller) handleResetCreatorCommand(ctx context.Context, telegramUser
 func (c *Controller) handleResetBothCommand(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	res, err := c.resetSvc.ExecuteBothReset(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
 		return i18n.Translate(lang, msgErrReset)
 	}
 	// Both scopes absent: reply with empty-state instead of success summary.

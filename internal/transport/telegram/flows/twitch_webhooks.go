@@ -65,7 +65,7 @@ func (c *Controller) HandleViewerOAuthCallback(ctx context.Context, code string,
 	joinRows, activeNames, buildErr := c.buildJoinButtons(ctx, payload.TelegramUserID, res.TwitchUserID, lang)
 	if buildErr != nil {
 		c.log().Warn("buildJoinButtons failed after viewer oauth callback", "telegram_user_id", payload.TelegramUserID, "error", buildErr)
-		c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: ui.MainMenuMarkup(lang)})
+		c.sendMsg(ctx, payload.TelegramUserID, i18n.Translate(lang, msgErrLoadStatus), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
 		return resultLoadStatusFailed, res.TwitchDisplayName, buildErr
 	}
 	c.replyLinkedStatus(ctx, payload.TelegramUserID, 0, lang, res.TwitchLogin, joinRows, activeNames)

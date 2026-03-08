@@ -58,12 +58,12 @@ func TestProfileAndButtons(t *testing.T) {
 		t.Errorf("DeleteButton(%q, %q) style = %q, want %q", "Delete", "action:delete", del.Style, "danger")
 	}
 
-	reconnect := ReconnectButton("Reconnect", ActionReconnectCreator)
+	reconnect := ReconnectButton("Reconnect", "creator:reconnect")
 	if reconnect.IconCustomEmojiID != linkButtonEmojiID {
-		t.Errorf("ReconnectButton(%q, %q) icon = %q, want %q", "Reconnect", ActionReconnectCreator, reconnect.IconCustomEmojiID, linkButtonEmojiID)
+		t.Errorf("ReconnectButton(%q, %q) icon = %q, want %q", "Reconnect", "creator:reconnect", reconnect.IconCustomEmojiID, linkButtonEmojiID)
 	}
 	if reconnect.Style != "primary" {
-		t.Errorf("ReconnectButton(%q, %q) style = %q, want %q", "Reconnect", ActionReconnectCreator, reconnect.Style, "primary")
+		t.Errorf("ReconnectButton(%q, %q) style = %q, want %q", "Reconnect", "creator:reconnect", reconnect.Style, "primary")
 	}
 
 	back := BackButton("Back", "action:back")
@@ -105,18 +105,22 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 		t.Fatalf("i18n.Ensure failed: %v", err)
 	}
 
-	menu := MainMenuMarkup("en")
+	viewerCallbacks := MainMenuCallbacks{
+		Refresh: "viewer:refresh",
+		Reset:   "reset:open:viewer",
+	}
+	menu := MainMenuMarkup("en", viewerCallbacks)
 	if menu == nil || len(menu.InlineKeyboard) != 2 {
 		t.Fatalf("MainMenuMarkup(%q) = %+v, want 2 rows", "en", menu)
 	}
-	if menu.InlineKeyboard[0][0].CallbackData != ActionRefreshViewer {
-		t.Errorf("MainMenuMarkup(%q) first callback = %+v, want CallbackData=%q", "en", menu.InlineKeyboard[0][0], ActionRefreshViewer)
+	if menu.InlineKeyboard[0][0].CallbackData != viewerCallbacks.Refresh {
+		t.Errorf("MainMenuMarkup(%q) first callback = %+v, want CallbackData=%q", "en", menu.InlineKeyboard[0][0], viewerCallbacks.Refresh)
 	}
 	if menu.InlineKeyboard[0][0].IconCustomEmojiID != refreshButtonEmojiID {
 		t.Errorf("MainMenuMarkup(%q) first icon = %q, want %q", "en", menu.InlineKeyboard[0][0].IconCustomEmojiID, refreshButtonEmojiID)
 	}
-	if menu.InlineKeyboard[1][0].CallbackData != ActionResetConfirm {
-		t.Errorf("MainMenuMarkup(%q) second callback = %+v, want CallbackData=%q", "en", menu.InlineKeyboard[1][0], ActionResetConfirm)
+	if menu.InlineKeyboard[1][0].CallbackData != viewerCallbacks.Reset {
+		t.Errorf("MainMenuMarkup(%q) second callback = %+v, want CallbackData=%q", "en", menu.InlineKeyboard[1][0], viewerCallbacks.Reset)
 	}
 	if menu.InlineKeyboard[1][0].IconCustomEmojiID != deleteButtonEmojiID {
 		t.Errorf("MainMenuMarkup(%q) second icon = %q, want %q", "en", menu.InlineKeyboard[1][0].IconCustomEmojiID, deleteButtonEmojiID)
@@ -125,18 +129,22 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 		t.Errorf("MainMenuMarkup(%q) second style = %q, want %q", "en", menu.InlineKeyboard[1][0].Style, "danger")
 	}
 
-	creatorMenu := CreatorMainMenuMarkup("en")
+	creatorCallbacks := CreatorMenuCallbacks{
+		Refresh: "creator:refresh",
+		Reset:   "reset:open:creator",
+	}
+	creatorMenu := CreatorMainMenuMarkup("en", creatorCallbacks)
 	if creatorMenu == nil || len(creatorMenu.InlineKeyboard) != 2 {
 		t.Fatalf("CreatorMainMenuMarkup(%q) = %+v, want 2 rows", "en", creatorMenu)
 	}
-	if creatorMenu.InlineKeyboard[0][0].CallbackData != ActionRefreshCreator {
-		t.Errorf("CreatorMainMenuMarkup(%q) first callback = %+v, want CallbackData=%q", "en", creatorMenu.InlineKeyboard[0][0], ActionRefreshCreator)
+	if creatorMenu.InlineKeyboard[0][0].CallbackData != creatorCallbacks.Refresh {
+		t.Errorf("CreatorMainMenuMarkup(%q) first callback = %+v, want CallbackData=%q", "en", creatorMenu.InlineKeyboard[0][0], creatorCallbacks.Refresh)
 	}
 	if creatorMenu.InlineKeyboard[0][0].IconCustomEmojiID != refreshButtonEmojiID {
 		t.Errorf("CreatorMainMenuMarkup(%q) first icon = %q, want %q", "en", creatorMenu.InlineKeyboard[0][0].IconCustomEmojiID, refreshButtonEmojiID)
 	}
-	if creatorMenu.InlineKeyboard[1][0].CallbackData != ActionResetConfirm {
-		t.Errorf("CreatorMainMenuMarkup(%q) second callback = %+v, want CallbackData=%q", "en", creatorMenu.InlineKeyboard[1][0], ActionResetConfirm)
+	if creatorMenu.InlineKeyboard[1][0].CallbackData != creatorCallbacks.Reset {
+		t.Errorf("CreatorMainMenuMarkup(%q) second callback = %+v, want CallbackData=%q", "en", creatorMenu.InlineKeyboard[1][0], creatorCallbacks.Reset)
 	}
 	if creatorMenu.InlineKeyboard[1][0].IconCustomEmojiID != deleteButtonEmojiID {
 		t.Errorf("CreatorMainMenuMarkup(%q) second icon = %q, want %q", "en", creatorMenu.InlineKeyboard[1][0].IconCustomEmojiID, deleteButtonEmojiID)
@@ -145,7 +153,7 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 		t.Errorf("CreatorMainMenuMarkup(%q) second style = %q, want %q", "en", creatorMenu.InlineKeyboard[1][0].Style, "danger")
 	}
 
-	reconnectMenu := CreatorStatusMenuMarkup("en", "https://example.com/reconnect")
+	reconnectMenu := CreatorStatusMenuMarkup("en", "https://example.com/reconnect", creatorCallbacks)
 	if reconnectMenu == nil || len(reconnectMenu.InlineKeyboard) != 2 {
 		t.Fatalf("CreatorStatusMenuMarkup(%q, reconnectURL) = %+v, want 2 rows", "en", reconnectMenu)
 	}
@@ -158,35 +166,57 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	if reconnectMenu.InlineKeyboard[0][0].Style != "primary" {
 		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) first style = %q, want %q", "en", reconnectMenu.InlineKeyboard[0][0].Style, "primary")
 	}
-	if reconnectMenu.InlineKeyboard[1][0].CallbackData != ActionResetConfirm {
-		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) second callback = %+v, want CallbackData=%q", "en", reconnectMenu.InlineKeyboard[1][0], ActionResetConfirm)
+	if reconnectMenu.InlineKeyboard[1][0].CallbackData != creatorCallbacks.Reset {
+		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) second callback = %+v, want CallbackData=%q", "en", reconnectMenu.InlineKeyboard[1][0], creatorCallbacks.Reset)
 	}
 
-	extra := WithMainMenu("en", []telego.InlineKeyboardButton{CallbackButton("X", "x")})
+	extra := WithMainMenu("en", viewerCallbacks, []telego.InlineKeyboardButton{CallbackButton("X", "x")})
 	if extra == nil || len(extra.InlineKeyboard) != 3 {
 		t.Errorf("WithMainMenu(%q, rows=1) = %+v, want 3 rows", "en", extra)
 	}
-	if extra.InlineKeyboard[1][0].CallbackData != ActionRefreshViewer {
-		t.Errorf("WithMainMenu(%q, rows=1) refresh callback = %+v, want CallbackData=%q", "en", extra.InlineKeyboard[1][0], ActionRefreshViewer)
+	if extra.InlineKeyboard[1][0].CallbackData != viewerCallbacks.Refresh {
+		t.Errorf("WithMainMenu(%q, rows=1) refresh callback = %+v, want CallbackData=%q", "en", extra.InlineKeyboard[1][0], viewerCallbacks.Refresh)
 	}
 
-	creatorExtra := WithCreatorMainMenu("en", []telego.InlineKeyboardButton{CallbackButton("X", "x")})
+	creatorExtra := WithCreatorMainMenu("en", creatorCallbacks, []telego.InlineKeyboardButton{CallbackButton("X", "x")})
 	if creatorExtra == nil || len(creatorExtra.InlineKeyboard) != 3 {
 		t.Errorf("WithCreatorMainMenu(%q, rows=1) = %+v, want 3 rows", "en", creatorExtra)
 	}
-	if creatorExtra.InlineKeyboard[1][0].CallbackData != ActionRefreshCreator {
-		t.Errorf("WithCreatorMainMenu(%q, rows=1) refresh callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[1][0], ActionRefreshCreator)
+	if creatorExtra.InlineKeyboard[1][0].CallbackData != creatorCallbacks.Refresh {
+		t.Errorf("WithCreatorMainMenu(%q, rows=1) refresh callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[1][0], creatorCallbacks.Refresh)
 	}
-	if creatorExtra.InlineKeyboard[2][0].CallbackData != ActionResetConfirm {
-		t.Errorf("WithCreatorMainMenu(%q, rows=1) reset callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[2][0], ActionResetConfirm)
+	if creatorExtra.InlineKeyboard[2][0].CallbackData != creatorCallbacks.Reset {
+		t.Errorf("WithCreatorMainMenu(%q, rows=1) reset callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[2][0], creatorCallbacks.Reset)
 	}
 
-	creatorReconnectExtra := WithCreatorStatusMenu("en", "https://example.com/reconnect", []telego.InlineKeyboardButton{CallbackButton("X", "x")})
+	creatorReconnectExtra := WithCreatorStatusMenu("en", "https://example.com/reconnect", creatorCallbacks, []telego.InlineKeyboardButton{CallbackButton("X", "x")})
 	if creatorReconnectExtra == nil || len(creatorReconnectExtra.InlineKeyboard) != 3 {
 		t.Errorf("WithCreatorStatusMenu(%q, reconnectURL, rows=1) = %+v, want 3 rows", "en", creatorReconnectExtra)
 	}
 	if creatorReconnectExtra.InlineKeyboard[1][0].URL != "https://example.com/reconnect" {
 		t.Errorf("WithCreatorStatusMenu(%q, reconnectURL, rows=1) reconnect url = %q, want %q", "en", creatorReconnectExtra.InlineKeyboard[1][0].URL, "https://example.com/reconnect")
+	}
+
+	resetPicker := ResetScopePickerMarkup("en", "reset:pick:viewer:viewer", "reset:pick:viewer:creator", "reset:pick:viewer:both", "reset:back:viewer")
+	if resetPicker == nil || len(resetPicker.InlineKeyboard) != 4 {
+		t.Fatalf("ResetScopePickerMarkup(%q, ...) = %+v, want 4 rows", "en", resetPicker)
+	}
+	if resetPicker.InlineKeyboard[0][0].CallbackData != "reset:pick:viewer:viewer" {
+		t.Errorf("ResetScopePickerMarkup first callback = %+v, want %q", resetPicker.InlineKeyboard[0][0], "reset:pick:viewer:viewer")
+	}
+	if resetPicker.InlineKeyboard[3][0].CallbackData != "reset:back:viewer" {
+		t.Errorf("ResetScopePickerMarkup back callback = %+v, want %q", resetPicker.InlineKeyboard[3][0], "reset:back:viewer")
+	}
+
+	resetConfirm := ResetConfirmMarkup("en", "reset:exec:viewer:both", "reset:back:viewer")
+	if resetConfirm == nil || len(resetConfirm.InlineKeyboard) != 2 {
+		t.Fatalf("ResetConfirmMarkup(%q, ...) = %+v, want 2 rows", "en", resetConfirm)
+	}
+	if resetConfirm.InlineKeyboard[0][0].CallbackData != "reset:exec:viewer:both" {
+		t.Errorf("ResetConfirmMarkup confirm callback = %+v, want %q", resetConfirm.InlineKeyboard[0][0], "reset:exec:viewer:both")
+	}
+	if resetConfirm.InlineKeyboard[1][0].CallbackData != "reset:back:viewer" {
+		t.Errorf("ResetConfirmMarkup back callback = %+v, want %q", resetConfirm.InlineKeyboard[1][0], "reset:back:viewer")
 	}
 }
 
