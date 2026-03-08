@@ -5,15 +5,17 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 )
 
 type viewerFakeStore struct {
 	Store
 	getIdentityFn        func(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	listActiveCreatorsFn func(ctx context.Context) ([]Creator, error)
+	listGroupsFn         func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
 	isSubscriberFn       func(ctx context.Context, creatorID, twitchUserID string) (bool, error)
-	removeMembershipFn   func(ctx context.Context, telegramUserID int64, creatorID string) error
-	addMembershipFn      func(ctx context.Context, telegramUserID int64, creatorID string) error
+	removeMembershipFn   func(ctx context.Context, chatID, telegramUserID int64) error
+	addMembershipFn      func(ctx context.Context, chatID, telegramUserID int64) error
 }
 
 func (f *viewerFakeStore) UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error) {
@@ -37,16 +39,23 @@ func (f *viewerFakeStore) IsCreatorSubscriber(ctx context.Context, creatorID, tw
 	return false, nil
 }
 
-func (f *viewerFakeStore) RemoveUserCreatorByTelegram(ctx context.Context, telegramUserID int64, creatorID string) error {
+func (f *viewerFakeStore) ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error) {
+	if f.listGroupsFn != nil {
+		return f.listGroupsFn(ctx, creatorID)
+	}
+	return nil, nil
+}
+
+func (f *viewerFakeStore) RemoveTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error {
 	if f.removeMembershipFn != nil {
-		return f.removeMembershipFn(ctx, telegramUserID, creatorID)
+		return f.removeMembershipFn(ctx, chatID, telegramUserID)
 	}
 	return nil
 }
 
-func (f *viewerFakeStore) AddUserCreatorMembership(ctx context.Context, telegramUserID int64, creatorID string) error {
+func (f *viewerFakeStore) AddTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64, _ string, _ time.Time) error {
 	if f.addMembershipFn != nil {
-		return f.addMembershipFn(ctx, telegramUserID, creatorID)
+		return f.addMembershipFn(ctx, chatID, telegramUserID)
 	}
 	return nil
 }
@@ -73,16 +82,27 @@ func (f *fakeGroupOps) CreateInviteLink(ctx context.Context, groupChatID int64, 
 func TestBuildJoinTargets(t *testing.T) {
 	t.Parallel()
 
-	added := make([]string, 0)
-	removed := make([]string, 0)
+	added := make([]int64, 0)
+	removed := make([]int64, 0)
 	svc := NewViewer(
 		&viewerFakeStore{
 			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
 				return []Creator{
-					{ID: "c1", Name: "zeta", GroupChatID: 101, GroupName: "Group Z"},
-					{ID: "c2", Name: "alpha", GroupChatID: 102, GroupName: "Group A"},
-					{ID: "c3", Name: "beta", GroupChatID: 103, GroupName: "Group B"},
+					{ID: "c1", Name: "zeta"},
+					{ID: "c2", Name: "alpha"},
+					{ID: "c3", Name: "beta"},
 				}, nil
+			},
+			listGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
+				switch creatorID {
+				case "c1":
+					return []ManagedGroup{{ChatID: 101, CreatorID: "c1", GroupName: "Group Z"}}, nil
+				case "c2":
+					return []ManagedGroup{{ChatID: 102, CreatorID: "c2", GroupName: "Group A"}}, nil
+				case "c3":
+					return []ManagedGroup{{ChatID: 103, CreatorID: "c3", GroupName: "Group B"}}, nil
+				}
+				return nil, nil
 			},
 			isSubscriberFn: func(_ context.Context, creatorID, _ string) (bool, error) {
 				switch creatorID {
@@ -93,12 +113,12 @@ func TestBuildJoinTargets(t *testing.T) {
 				}
 				return false, nil
 			},
-			addMembershipFn: func(_ context.Context, _ int64, creatorID string) error {
-				added = append(added, creatorID)
+			addMembershipFn: func(_ context.Context, chatID, _ int64) error {
+				added = append(added, chatID)
 				return nil
 			},
-			removeMembershipFn: func(_ context.Context, _ int64, creatorID string) error {
-				removed = append(removed, creatorID)
+			removeMembershipFn: func(_ context.Context, chatID, _ int64) error {
+				removed = append(removed, chatID)
 				return nil
 			},
 		},
@@ -124,11 +144,11 @@ func TestBuildJoinTargets(t *testing.T) {
 	if len(got.JoinLinks) != 1 || got.JoinLinks[0].CreatorName != "zeta" {
 		t.Errorf("BuildJoinTargets() JoinLinks = %+v, want 1 link with CreatorName=\"zeta\"", got.JoinLinks)
 	}
-	if !slices.Equal(added, []string{"c1"}) {
-		t.Errorf("BuildJoinTargets(7, tw-1) added memberships mismatch: got=%v want=%v", added, []string{"c1"})
+	if !slices.Equal(added, []int64{101}) {
+		t.Errorf("BuildJoinTargets(7, tw-1) added memberships mismatch: got=%v want=%v", added, []int64{101})
 	}
-	if !slices.Equal(removed, []string{"c3"}) {
-		t.Errorf("BuildJoinTargets(7, tw-1) removed memberships mismatch: got=%v want=%v", removed, []string{"c3"})
+	if !slices.Equal(removed, []int64{103}) {
+		t.Errorf("BuildJoinTargets(7, tw-1) removed memberships mismatch: got=%v want=%v", removed, []int64{103})
 	}
 }
 

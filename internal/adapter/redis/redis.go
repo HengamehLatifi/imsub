@@ -15,7 +15,7 @@ import (
 
 var _ core.Store = (*Store)(nil)
 
-const schemaVersionCurrent = 1
+const schemaVersionCurrent = 3
 
 // Store implements [Store] backed by Redis.
 type Store struct {
@@ -93,11 +93,10 @@ func keyEventMessage(messageID string) string { return "imsub:eventmsg:" + messa
 func keyUserIdentity(telegramUserID int64) string {
 	return "imsub:user:" + strconv.FormatInt(telegramUserID, 10)
 }
-func keyUserCreators(telegramUserID int64) string {
-	return "imsub:user:creators:" + strconv.FormatInt(telegramUserID, 10)
+func keyUserTrackedGroups(telegramUserID int64) string {
+	return "imsub:user:groups:tracked:" + strconv.FormatInt(telegramUserID, 10)
 }
 func keyUsersSet() string                            { return "imsub:users" }
-func keyCreatorMembers(creatorID string) string      { return "imsub:creator:members:" + creatorID }
 func keyCreatorSubscribers(creatorID string) string  { return "imsub:creator:subscribers:" + creatorID }
 func keyTwitchToTelegram(twitchUserID string) string { return "imsub:twitch_to_tg:" + twitchUserID }
 func keyCreator(creatorID string) string             { return "imsub:creator:" + creatorID }
@@ -105,8 +104,23 @@ func keyCreatorsSet() string                         { return "imsub:creators" }
 func keyCreatorByOwner(ownerTelegramID int64) string {
 	return "imsub:creator:by_owner:" + strconv.FormatInt(ownerTelegramID, 10)
 }
-func keyActiveCreatorsSet() string { return "imsub:creators:active" }
-func keySchemaVersion() string     { return "imsub:schema_version" }
+func keySchemaVersion() string { return "imsub:schema_version" }
+func keyManagedGroup(chatID int64) string {
+	return "imsub:group:" + strconv.FormatInt(chatID, 10)
+}
+func keyManagedGroupsSet() string { return "imsub:groups" }
+func keyManagedGroupsByCreator(creatorID string) string {
+	return "imsub:groups:by_creator:" + creatorID
+}
+func keyTrackedGroupMembers(chatID int64) string {
+	return "imsub:group:tracked:" + strconv.FormatInt(chatID, 10)
+}
+func keyUntrackedGroupMembers(chatID int64) string {
+	return "imsub:group:untracked:" + strconv.FormatInt(chatID, 10)
+}
+func keyTrackedGroupMemberMeta(chatID, telegramUserID int64) string {
+	return "imsub:group:member:" + strconv.FormatInt(chatID, 10) + ":" + strconv.FormatInt(telegramUserID, 10)
+}
 
 // --- Lua scripts ---
 
@@ -123,23 +137,5 @@ redis.call("HSET", KEYS[1],
 )
 redis.call("SET", KEYS[2], ARGV[1])
 redis.call("SADD", KEYS[3], ARGV[1])
-return 1
-`)
-
-var linkViewerCreatorScript = redis.NewScript(`
-local existing = redis.call("HGET", KEYS[1], "twitch_user_id")
-if existing and existing ~= "" and existing ~= ARGV[2] then
-  return redis.error_reply("DIFFERENT_TWITCH")
-end
-redis.call("HSET", KEYS[1],
-  "twitch_user_id", ARGV[2],
-  "twitch_login", ARGV[3],
-  "language", ARGV[4],
-  "verified_at", ARGV[5]
-)
-redis.call("SET", KEYS[2], ARGV[1])
-redis.call("SADD", KEYS[3], ARGV[1])
-redis.call("SADD", KEYS[4], ARGV[1])
-redis.call("SADD", KEYS[5], ARGV[6])
 return 1
 `)

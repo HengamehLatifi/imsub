@@ -11,34 +11,43 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// --- Integrity ---
-
-// RepairUserCreatorReverseIndex audits and repairs user↔creator reverse-index sets.
+// RepairUserCreatorReverseIndex audits and repairs tracked-group reverse-index sets.
 func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []core.Creator) (indexUsers int, repairedUsers int, missingLinks int, staleLinks int, err error) {
-	creatorIDs := make([]string, 0, len(creators))
-	for _, c := range creators {
-		creatorIDs = append(creatorIDs, c.ID)
+	_ = creators
+
+	groups, err := s.ListManagedGroups(ctx)
+	if err != nil {
+		return 0, 0, 0, 0, fmt.Errorf("list managed groups: %w", err)
 	}
-	slices.Sort(creatorIDs)
+	if len(groups) == 0 {
+		return 0, 0, 0, 0, nil
+	}
+
+	groupIDs := make([]int64, 0, len(groups))
+	for _, group := range groups {
+		groupIDs = append(groupIDs, group.ChatID)
+	}
+	slices.Sort(groupIDs)
 
 	memberPipe := s.rdb.Pipeline()
-	memberCmds := make([]*redis.StringSliceCmd, len(creatorIDs))
-	for i, creatorID := range creatorIDs {
-		memberCmds[i] = memberPipe.SMembers(ctx, keyCreatorMembers(creatorID))
+	memberCmds := make([]*redis.StringSliceCmd, len(groupIDs))
+	for i, groupID := range groupIDs {
+		memberCmds[i] = memberPipe.SMembers(ctx, keyTrackedGroupMembers(groupID))
 	}
 	if _, err := memberPipe.Exec(ctx); err != nil {
-		return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit member cmds: %w", err)
+		return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit tracked members: %w", err)
 	}
 
 	wantedByUser := make(map[string]map[string]struct{})
-	for i, creatorID := range creatorIDs {
+	for i, groupID := range groupIDs {
 		memberIDs, cmdErr := memberCmds[i].Result()
 		if cmdErr != nil {
-			return 0, 0, 0, 0, fmt.Errorf("redis result integrity audit member cmds: %w", cmdErr)
+			return 0, 0, 0, 0, fmt.Errorf("redis result integrity audit tracked members: %w", cmdErr)
 		}
+		groupIDStr := strconv.FormatInt(groupID, 10)
 		for _, memberID := range memberIDs {
 			if _, parseErr := strconv.ParseInt(memberID, 10, 64); parseErr != nil {
-				s.log().Warn("integrity audit skipping non-numeric creator member", "creator_id", creatorID, "member_raw", memberID, "error", parseErr)
+				s.log().Warn("integrity audit skipping non-numeric tracked member", "group_chat_id", groupID, "member_raw", memberID, "error", parseErr)
 				continue
 			}
 			set, ok := wantedByUser[memberID]
@@ -46,7 +55,7 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 				set = make(map[string]struct{})
 				wantedByUser[memberID] = set
 			}
-			set[creatorID] = struct{}{}
+			set[groupIDStr] = struct{}{}
 		}
 	}
 
@@ -84,36 +93,36 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 		}
 		validUserIDs = append(validUserIDs, tgID)
 		validUserIDRaw = append(validUserIDRaw, userID)
-		reverseCmds = append(reverseCmds, reversePipe.SMembers(ctx, keyUserCreators(tgID)))
+		reverseCmds = append(reverseCmds, reversePipe.SMembers(ctx, keyUserTrackedGroups(tgID)))
 	}
 	if len(reverseCmds) > 0 {
 		if _, err := reversePipe.Exec(ctx); err != nil {
-			return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit reverse cmds: %w", err)
+			return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit tracked reverse index: %w", err)
 		}
 	}
 
 	writePipe := s.rdb.TxPipeline()
 	needsWrite := false
 	for i, userIDRaw := range validUserIDRaw {
-		currentCreators, cmdErr := reverseCmds[i].Result()
+		currentGroupIDs, cmdErr := reverseCmds[i].Result()
 		if cmdErr != nil {
-			return 0, 0, 0, 0, fmt.Errorf("redis result integrity audit reverse cmds: %w", cmdErr)
+			return 0, 0, 0, 0, fmt.Errorf("redis result integrity audit tracked reverse index: %w", cmdErr)
 		}
-		current := make(map[string]struct{}, len(currentCreators))
-		for _, creatorID := range currentCreators {
-			current[creatorID] = struct{}{}
+		current := make(map[string]struct{}, len(currentGroupIDs))
+		for _, groupID := range currentGroupIDs {
+			current[groupID] = struct{}{}
 		}
 		wanted := wantedByUser[userIDRaw]
 
 		userNeedsRepair := false
-		for creatorID := range wanted {
-			if _, ok := current[creatorID]; !ok {
+		for groupID := range wanted {
+			if _, ok := current[groupID]; !ok {
 				missingLinks++
 				userNeedsRepair = true
 			}
 		}
-		for creatorID := range current {
-			if _, ok := wanted[creatorID]; !ok {
+		for groupID := range current {
+			if _, ok := wanted[groupID]; !ok {
 				staleLinks++
 				userNeedsRepair = true
 			}
@@ -124,39 +133,40 @@ func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []co
 
 		repairedUsers++
 		needsWrite = true
-		key := keyUserCreators(validUserIDs[i])
+		key := keyUserTrackedGroups(validUserIDs[i])
 		writePipe.Del(ctx, key)
 		if len(wanted) == 0 {
 			continue
 		}
 		args := make([]any, 0, len(wanted))
-		for creatorID := range wanted {
-			args = append(args, creatorID)
+		for groupID := range wanted {
+			args = append(args, groupID)
 		}
 		writePipe.SAdd(ctx, key, args...)
 	}
 	if needsWrite {
 		if _, err := writePipe.Exec(ctx); err != nil {
-			return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit repair writes: %w", err)
+			return 0, 0, 0, 0, fmt.Errorf("redis exec integrity audit tracked reverse-index repair: %w", err)
 		}
 	}
 
 	return len(validUserIDRaw), repairedUsers, missingLinks, staleLinks, nil
 }
 
-// ActiveCreatorIDsWithoutGroup counts creators marked active but missing a bound group.
+// ActiveCreatorIDsWithoutGroup counts creators that have no managed groups.
 func (s *Store) ActiveCreatorIDsWithoutGroup(ctx context.Context, creators []core.Creator) (int, error) {
-	activeIDs, err := s.rdb.SMembers(ctx, keyActiveCreatorsSet()).Result()
+	groups, err := s.ListManagedGroups(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("redis smembers active creators: %w", err)
+		return 0, fmt.Errorf("list managed groups: %w", err)
 	}
-	activeSet := make(map[string]struct{}, len(activeIDs))
-	for _, id := range activeIDs {
-		activeSet[id] = struct{}{}
+	managedByCreator := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		managedByCreator[group.CreatorID] = struct{}{}
 	}
+
 	count := 0
-	for _, c := range creators {
-		if _, ok := activeSet[c.ID]; ok && c.GroupChatID == 0 {
+	for _, creator := range creators {
+		if _, ok := managedByCreator[creator.ID]; !ok {
 			count++
 		}
 	}

@@ -16,8 +16,7 @@ type eventSubCleaner interface {
 type resetStore interface {
 	UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
-	UserCreatorIDs(ctx context.Context, telegramUserID int64) ([]string, error)
-	LoadCreatorsByIDs(ctx context.Context, ids []string, filter func(Creator) bool) ([]Creator, error)
+	ListTrackedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, error)
 	DeleteAllUserData(ctx context.Context, telegramUserID int64) error
 	DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (deletedCount int, deletedNames []string, err error)
 }
@@ -172,30 +171,17 @@ func (r *Resetter) CountSubLinkedGroupsForUser(ctx context.Context, telegramUser
 
 // SubLinkedGroupIDsForUser returns sorted linked creator group IDs for the user.
 func (r *Resetter) SubLinkedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, error) {
-	creatorIDs, err := r.store.UserCreatorIDs(ctx, telegramUserID)
+	groupIDs, err := r.store.ListTrackedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
-		return nil, fmt.Errorf("user creator ids: %w", err)
+		return nil, fmt.Errorf("list tracked group ids for user: %w", err)
 	}
-	if len(creatorIDs) == 0 {
-		return nil, nil
-	}
-
-	creators, err := r.store.LoadCreatorsByIDs(ctx, creatorIDs, func(c Creator) bool {
-		return c.GroupChatID != 0
-	})
-	if err != nil {
-		return nil, fmt.Errorf("load creators by ids: %w", err)
-	}
-
-	out := make([]int64, 0, len(creators))
-	for _, c := range creators {
-		out = append(out, c.GroupChatID)
-	}
-	slices.Sort(out)
-	return out, nil
+	slices.Sort(groupIDs)
+	return slices.Compact(groupIDs), nil
 }
 
-// ResetViewerDataAndRevokeGroupAccess kicks the user from linked groups and deletes viewer data.
+// ResetViewerDataAndRevokeGroupAccess kicks the user only from tracked groups
+// and deletes viewer data. Untracked/observed-only group presence is ignored
+// until a creator-configurable policy exists.
 func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, telegramUserID int64) (int, error) {
 	groupIDs, err := r.SubLinkedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {

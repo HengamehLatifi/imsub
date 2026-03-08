@@ -29,79 +29,64 @@ func newTestStore(t *testing.T) *Store {
 	return &Store{rdb: client, logger: logger}
 }
 
-func TestSaveUserCreatorRoundTripMembership(t *testing.T) {
+func TestRemoveUserCreatorByTwitchRemovesTrackedGroupMembership(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 	ctx := t.Context()
 
-	if _, err := s.SaveUserCreator(ctx, 7, "creator-1", "tw-7", "login7", "en"); err != nil {
-		t.Fatalf("SaveUserCreator failed: %v", err)
+	if _, err := s.SaveUserIdentityOnly(ctx, 7, "tw-7", "login7", "en"); err != nil {
+		t.Fatalf("SaveUserIdentityOnly failed: %v", err)
+	}
+	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 111, CreatorID: "creator-1", GroupName: "VIP"}); err != nil {
+		t.Fatalf("UpsertManagedGroup failed: %v", err)
+	}
+	if err := s.AddTrackedGroupMember(ctx, 111, 7, "test", time.Now().UTC()); err != nil {
+		t.Fatalf("AddTrackedGroupMember failed: %v", err)
 	}
 
-	memberIDs, err := s.rdb.SMembers(ctx, keyCreatorMembers("creator-1")).Result()
+	telegramUserID, found, err := s.RemoveUserCreatorByTwitch(ctx, "tw-7", "creator-1")
 	if err != nil {
-		t.Fatalf("SMembers creator members failed: %v", err)
+		t.Fatalf("RemoveUserCreatorByTwitch failed: %v", err)
 	}
-	if !slices.Contains(memberIDs, "7") {
-		t.Fatalf("expected telegram user in creator members, got %v", memberIDs)
+	if !found || telegramUserID != 7 {
+		t.Fatalf("RemoveUserCreatorByTwitch = (%d, %t), want (7, true)", telegramUserID, found)
 	}
 
-	creatorIDs, err := s.rdb.SMembers(ctx, keyUserCreators(7)).Result()
+	tracked, err := s.IsTrackedGroupMember(ctx, 111, 7)
 	if err != nil {
-		t.Fatalf("SMembers user creators failed: %v", err)
+		t.Fatalf("IsTrackedGroupMember failed: %v", err)
 	}
-	if !slices.Contains(creatorIDs, "creator-1") {
-		t.Fatalf("expected creator in reverse index, got %v", creatorIDs)
-	}
-
-	if err := s.RemoveUserCreatorByTelegram(ctx, 7, "creator-1"); err != nil {
-		t.Fatalf("RemoveUserCreatorByTelegram failed: %v", err)
-	}
-
-	memberIDs, _ = s.rdb.SMembers(ctx, keyCreatorMembers("creator-1")).Result()
-	if slices.Contains(memberIDs, "7") {
-		t.Fatalf("expected user removed from creator members, got %v", memberIDs)
-	}
-	creatorIDs, _ = s.rdb.SMembers(ctx, keyUserCreators(7)).Result()
-	if slices.Contains(creatorIDs, "creator-1") {
-		t.Fatalf("expected creator removed from reverse index, got %v", creatorIDs)
+	if tracked {
+		t.Fatal("expected tracked group membership to be removed")
 	}
 }
 
-func TestGetUserCreatorIDsFallbackBackfillsReverseIndex(t *testing.T) {
+func TestListTrackedGroupIDsForUserRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 	ctx := t.Context()
 
-	if err := s.rdb.SAdd(ctx, keyCreatorsSet(), "c1", "c2").Err(); err != nil {
-		t.Fatalf("SAdd creators set failed: %v", err)
+	if err := s.AddTrackedGroupMember(ctx, 222, 42, "test", time.Now().UTC()); err != nil {
+		t.Fatalf("AddTrackedGroupMember 222 failed: %v", err)
 	}
-	if err := s.rdb.SAdd(ctx, keyCreatorMembers("c1"), "42").Err(); err != nil {
-		t.Fatalf("SAdd creator members failed: %v", err)
+	if err := s.AddTrackedGroupMember(ctx, 111, 42, "test", time.Now().UTC()); err != nil {
+		t.Fatalf("AddTrackedGroupMember 111 failed: %v", err)
 	}
 
-	got, err := s.UserCreatorIDs(ctx, 42)
+	got, err := s.ListTrackedGroupIDsForUser(ctx, 42)
 	if err != nil {
-		t.Fatalf("UserCreatorIDs failed: %v", err)
+		t.Fatalf("ListTrackedGroupIDsForUser failed: %v", err)
 	}
-	want := []string{"c1"}
+	slices.Sort(got)
+	want := []int64{111, 222}
 	if !slices.Equal(got, want) {
-		t.Fatalf("unexpected creator IDs: got %v want %v", got, want)
-	}
-
-	backfilled, err := s.rdb.SMembers(ctx, keyUserCreators(42)).Result()
-	if err != nil {
-		t.Fatalf("read backfilled reverse index failed: %v", err)
-	}
-	slices.Sort(backfilled)
-	if !slices.Equal(backfilled, want) {
-		t.Fatalf("unexpected reverse-index backfill: got %v want %v", backfilled, want)
+		t.Fatalf("unexpected tracked groups: got %v want %v", got, want)
 	}
 }
 
-func TestDeleteAllUserDataRemovesForwardAndReverseLinks(t *testing.T) {
+func TestDeleteAllUserDataRemovesTrackedGroupLinks(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -121,11 +106,8 @@ func TestDeleteAllUserDataRemovesForwardAndReverseLinks(t *testing.T) {
 	if err := s.rdb.SAdd(ctx, keyUsersSet(), "42").Err(); err != nil {
 		t.Fatalf("seed users set failed: %v", err)
 	}
-	if err := s.rdb.SAdd(ctx, keyCreatorMembers("c1"), "42").Err(); err != nil {
-		t.Fatalf("seed creator members failed: %v", err)
-	}
-	if err := s.rdb.SAdd(ctx, keyUserCreators(42), "c1").Err(); err != nil {
-		t.Fatalf("seed reverse index failed: %v", err)
+	if err := s.AddTrackedGroupMember(ctx, 500, 42, "test", time.Now().UTC()); err != nil {
+		t.Fatalf("seed tracked group failed: %v", err)
 	}
 
 	if err := s.DeleteAllUserData(ctx, 42); err != nil {
@@ -138,11 +120,11 @@ func TestDeleteAllUserDataRemovesForwardAndReverseLinks(t *testing.T) {
 	if exists, err := s.rdb.Exists(ctx, keyTwitchToTelegram("tw-42")).Result(); err != nil || exists != 0 {
 		t.Fatalf("twitch mapping should be deleted, exists=%d err=%v", exists, err)
 	}
-	if members, _ := s.rdb.SMembers(ctx, keyCreatorMembers("c1")).Result(); slices.Contains(members, "42") {
-		t.Fatalf("creator members should not contain 42, got %v", members)
+	if groups, _ := s.rdb.SMembers(ctx, keyUserTrackedGroups(42)).Result(); len(groups) != 0 {
+		t.Fatalf("tracked groups reverse index should be empty, got %v", groups)
 	}
-	if ids, _ := s.rdb.SMembers(ctx, keyUserCreators(42)).Result(); len(ids) != 0 {
-		t.Fatalf("reverse index should be empty, got %v", ids)
+	if members, _ := s.rdb.SMembers(ctx, keyTrackedGroupMembers(500)).Result(); slices.Contains(members, "42") {
+		t.Fatalf("tracked group members should not contain 42, got %v", members)
 	}
 }
 
@@ -158,17 +140,23 @@ func TestRepairUserCreatorReverseIndex(t *testing.T) {
 	if err := s.UpsertCreator(ctx, core.Creator{ID: "c2", Name: "c2", OwnerTelegramID: 901}); err != nil {
 		t.Fatalf("UpsertCreator c2 failed: %v", err)
 	}
-	if err := s.rdb.SAdd(ctx, keyCreatorMembers("c1"), "100", "101").Err(); err != nil {
-		t.Fatalf("seed c1 members failed: %v", err)
+	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 501, CreatorID: "c1", GroupName: "A"}); err != nil {
+		t.Fatalf("UpsertManagedGroup 501 failed: %v", err)
 	}
-	if err := s.rdb.SAdd(ctx, keyCreatorMembers("c2"), "100").Err(); err != nil {
-		t.Fatalf("seed c2 members failed: %v", err)
+	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 502, CreatorID: "c2", GroupName: "B"}); err != nil {
+		t.Fatalf("UpsertManagedGroup 502 failed: %v", err)
 	}
 	if err := s.rdb.SAdd(ctx, keyUsersSet(), "100", "101").Err(); err != nil {
 		t.Fatalf("seed users set failed: %v", err)
 	}
-	if err := s.rdb.SAdd(ctx, keyUserCreators(100), "c2", "stale").Err(); err != nil {
-		t.Fatalf("seed user 100 reverse index failed: %v", err)
+	if err := s.rdb.SAdd(ctx, keyTrackedGroupMembers(501), "100", "101").Err(); err != nil {
+		t.Fatalf("seed group 501 members failed: %v", err)
+	}
+	if err := s.rdb.SAdd(ctx, keyTrackedGroupMembers(502), "100").Err(); err != nil {
+		t.Fatalf("seed group 502 members failed: %v", err)
+	}
+	if err := s.rdb.SAdd(ctx, keyUserTrackedGroups(100), "502", "999").Err(); err != nil {
+		t.Fatalf("seed user 100 tracked groups failed: %v", err)
 	}
 
 	creators, err := s.ListCreators(ctx)
@@ -183,15 +171,15 @@ func TestRepairUserCreatorReverseIndex(t *testing.T) {
 		t.Fatalf("unexpected repair stats: users=%d repaired=%d missing=%d stale=%d", indexUsers, repairedUsers, missingLinks, staleLinks)
 	}
 
-	user100, _ := s.rdb.SMembers(ctx, keyUserCreators(100)).Result()
+	user100, _ := s.rdb.SMembers(ctx, keyUserTrackedGroups(100)).Result()
 	slices.Sort(user100)
-	if !slices.Equal(user100, []string{"c1", "c2"}) {
-		t.Fatalf("unexpected user100 reverse index: %v", user100)
+	if !slices.Equal(user100, []string{"501", "502"}) {
+		t.Fatalf("unexpected user100 tracked groups: %v", user100)
 	}
-	user101, _ := s.rdb.SMembers(ctx, keyUserCreators(101)).Result()
+	user101, _ := s.rdb.SMembers(ctx, keyUserTrackedGroups(101)).Result()
 	slices.Sort(user101)
-	if !slices.Equal(user101, []string{"c1"}) {
-		t.Fatalf("unexpected user101 reverse index: %v", user101)
+	if !slices.Equal(user101, []string{"501"}) {
+		t.Fatalf("unexpected user101 tracked groups: %v", user101)
 	}
 }
 
@@ -204,8 +192,8 @@ func TestDeleteCreatorData(t *testing.T) {
 	if err := s.UpsertCreator(ctx, core.Creator{ID: "c1", Name: "c1", OwnerTelegramID: 900}); err != nil {
 		t.Fatalf("UpsertCreator c1 failed: %v", err)
 	}
-	if err := s.UpdateCreatorGroup(ctx, "c1", 111, "g-111"); err != nil {
-		t.Fatalf("UpdateCreatorGroup c1 failed: %v", err)
+	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 111, CreatorID: "c1", GroupName: "g-111"}); err != nil {
+		t.Fatalf("UpsertManagedGroup c1 failed: %v", err)
 	}
 
 	count, names, err := s.DeleteCreatorData(ctx, 900)

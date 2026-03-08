@@ -10,8 +10,7 @@ import (
 
 type resetFakeStore struct {
 	Store
-	userCreatorIDs       map[int64][]string
-	creatorsByID         map[string]Creator
+	trackedGroupIDs      map[int64][]int64
 	deleteAllUserDataErr error
 	getIdentityFn        func(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	getCreatorFn         func(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
@@ -23,8 +22,8 @@ type resetFakeStore struct {
 	deleteAllCalledWith int64
 }
 
-func (f *resetFakeStore) UserCreatorIDs(_ context.Context, telegramUserID int64) ([]string, error) {
-	return append([]string(nil), f.userCreatorIDs[telegramUserID]...), nil
+func (f *resetFakeStore) ListTrackedGroupIDsForUser(_ context.Context, telegramUserID int64) ([]int64, error) {
+	return append([]int64(nil), f.trackedGroupIDs[telegramUserID]...), nil
 }
 
 func (f *resetFakeStore) UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error) {
@@ -41,21 +40,6 @@ func (f *resetFakeStore) OwnedCreatorForUser(ctx context.Context, ownerTelegramI
 	return Creator{}, false, nil
 }
 
-func (f *resetFakeStore) LoadCreatorsByIDs(_ context.Context, ids []string, filter func(Creator) bool) ([]Creator, error) {
-	out := make([]Creator, 0, len(ids))
-	for _, id := range ids {
-		c, ok := f.creatorsByID[id]
-		if !ok {
-			continue
-		}
-		if filter != nil && !filter(c) {
-			continue
-		}
-		out = append(out, c)
-	}
-	return out, nil
-}
-
 func (f *resetFakeStore) DeleteAllUserData(_ context.Context, telegramUserID int64) error {
 	f.deleteAllCalledWith = telegramUserID
 	return f.deleteAllUserDataErr
@@ -69,13 +53,8 @@ func TestSubLinkedGroupIDsForUser(t *testing.T) {
 	t.Parallel()
 
 	st := &resetFakeStore{
-		userCreatorIDs: map[int64][]string{
-			7: {"c2", "c1", "c3"},
-		},
-		creatorsByID: map[string]Creator{
-			"c1": {ID: "c1", GroupChatID: 222},
-			"c2": {ID: "c2", GroupChatID: 111},
-			"c3": {ID: "c3", GroupChatID: 0},
+		trackedGroupIDs: map[int64][]int64{
+			7: {222, 111, 222},
 		},
 	}
 	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
@@ -94,12 +73,8 @@ func TestResetViewerDataAndRevokeGroupAccess(t *testing.T) {
 	t.Parallel()
 
 	st := &resetFakeStore{
-		userCreatorIDs: map[int64][]string{
-			9: {"c1", "c2"},
-		},
-		creatorsByID: map[string]Creator{
-			"c1": {ID: "c1", GroupChatID: 300},
-			"c2": {ID: "c2", GroupChatID: 100},
+		trackedGroupIDs: map[int64][]int64{
+			9: {300, 100},
 		},
 	}
 	var kicked []int64
@@ -168,12 +143,7 @@ func TestExecuteBothReset(t *testing.T) {
 		getIdentityFn: func(context.Context, int64) (UserIdentity, bool, error) {
 			return UserIdentity{TwitchLogin: "viewer1"}, true, nil
 		},
-		userCreatorIDs: map[int64][]string{7: {"c1", "c2", "c3"}},
-		creatorsByID: map[string]Creator{
-			"c1": {ID: "c1", GroupChatID: 1},
-			"c2": {ID: "c2", GroupChatID: 2},
-			"c3": {ID: "c3", GroupChatID: 3},
-		},
+		trackedGroupIDs:    map[int64][]int64{7: {1, 2, 3}},
 		deleteCreatorCount: 2,
 		deleteCreatorNames: []string{"c1", "c2"},
 	}

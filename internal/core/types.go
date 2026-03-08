@@ -38,13 +38,11 @@ const (
 	CreatorAuthReconnectRequired CreatorAuthStatus = "reconnect_required"
 )
 
-// Creator represents a Twitch broadcaster/creator and their associated Telegram group.
+// Creator represents a Twitch broadcaster/creator and their OAuth state.
 type Creator struct {
 	ID              string
 	Name            string
 	OwnerTelegramID int64
-	GroupChatID     int64
-	GroupName       string
 	AccessToken     string `json:"access_token"`  //nolint:gosec
 	RefreshToken    string `json:"refresh_token"` //nolint:gosec
 	UpdatedAt       time.Time
@@ -53,6 +51,25 @@ type Creator struct {
 	AuthStatusAt    time.Time
 	LastSyncAt      time.Time
 	LastNoticeAt    time.Time
+}
+
+// GroupPolicy describes what the bot should do with users discovered in a group
+// but not yet verified as tracked members.
+type GroupPolicy string
+
+const (
+	// GroupPolicyObserve records untracked members without enforcement.
+	GroupPolicyObserve GroupPolicy = "observe"
+)
+
+// ManagedGroup represents a Telegram group linked to a creator.
+type ManagedGroup struct {
+	ChatID       int64
+	CreatorID    string
+	GroupName    string
+	Policy       GroupPolicy
+	RegisteredAt time.Time
+	UpdatedAt    time.Time
 }
 
 // OAuthStatePayload represents the data encoded in the OAuth state parameter.

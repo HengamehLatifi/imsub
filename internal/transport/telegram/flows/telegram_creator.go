@@ -90,7 +90,11 @@ func (c *Controller) replyCreatorOAuthPrompt(ctx context.Context, telegramUserID
 
 func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int64, editMsgID int, lang string, creator core.Creator) {
 	profileDisplay := ui.TwitchProfileHTML(creator.Name)
-	groupLines := CreatorGroupLine(lang, creator)
+	groups, err := c.creatorSvc.LoadManagedGroups(ctx, creator.ID)
+	if err != nil {
+		c.log().Warn("LoadManagedGroups failed", "creator_id", creator.ID, "error", err)
+	}
+	groupLines := CreatorGroupLines(lang, creator.Name, groups)
 	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	status, err := c.creatorSvc.LoadStatus(statusCtx, creator)
@@ -106,7 +110,7 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 	}
 	authStatus := creatorAuthStatusText(status, lang)
 	statusDetails := creatorStatusDetailsText(status, lang)
-	if creator.GroupChatID == 0 {
+	if len(groups) == 0 {
 		text := fmt.Sprintf(
 			i18n.Translate(lang, msgCreatorRegisteredNoGroup),
 			profileDisplay,
@@ -198,18 +202,22 @@ func formatStatusTime(ts time.Time) string {
 	return ts.UTC().Format("2006-01-02 15:04 UTC")
 }
 
-// CreatorGroupLine returns one HTML bullet line describing creator-to-group binding.
-func CreatorGroupLine(lang string, creator core.Creator) string {
-	if creator.GroupChatID == 0 {
+// CreatorGroupLines returns HTML bullet lines describing creator-to-group bindings.
+func CreatorGroupLines(lang, creatorName string, groups []core.ManagedGroup) string {
+	if len(groups) == 0 {
 		return i18n.Translate(lang, msgCreatorGroupsNone)
 	}
-	groupName := strings.TrimSpace(creator.GroupName)
-	if groupName == "" {
-		groupName = "-"
+	lines := make([]string, 0, len(groups))
+	for _, group := range groups {
+		groupName := strings.TrimSpace(group.GroupName)
+		if groupName == "" {
+			groupName = "-"
+		}
+		lines = append(lines, fmt.Sprintf(
+			"• <b>%s</b> -> <b>%s</b>",
+			html.EscapeString(creatorName),
+			html.EscapeString(groupName),
+		))
 	}
-	return fmt.Sprintf(
-		"• <b>%s</b> -> <b>%s</b>",
-		html.EscapeString(creator.Name),
-		html.EscapeString(groupName),
-	)
+	return strings.Join(lines, "\n")
 }

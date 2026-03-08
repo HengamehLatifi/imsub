@@ -185,7 +185,7 @@ func TestLinkCreatorUpsertSetsUpdatedAt(t *testing.T) {
 	}
 }
 
-func TestLinkCreatorReconnectPreservesGroupAndClearsAuthDegradation(t *testing.T) {
+func TestLinkCreatorReconnectClearsAuthDegradation(t *testing.T) {
 	t.Parallel()
 
 	var saved Creator
@@ -199,8 +199,6 @@ func TestLinkCreatorReconnectPreservesGroupAndClearsAuthDegradation(t *testing.T
 					ID:              "creator-1",
 					Name:            "creator_login",
 					OwnerTelegramID: 99,
-					GroupChatID:     1234,
-					GroupName:       "VIP Group",
 					AuthStatus:      CreatorAuthReconnectRequired,
 					AuthErrorCode:   "token_refresh_failed",
 				}, true, nil
@@ -228,14 +226,11 @@ func TestLinkCreatorReconnectPreservesGroupAndClearsAuthDegradation(t *testing.T
 	if err != nil {
 		t.Fatalf("LinkCreator reconnect error: %v", err)
 	}
-	if got.Creator.GroupChatID != 1234 || got.Creator.GroupName != "VIP Group" {
-		t.Fatalf("LinkCreator reconnect group = (%d, %q), want (1234, %q)", got.Creator.GroupChatID, got.Creator.GroupName, "VIP Group")
-	}
 	if got.Creator.AuthStatus != CreatorAuthHealthy {
 		t.Fatalf("LinkCreator reconnect auth status = %q, want %q", got.Creator.AuthStatus, CreatorAuthHealthy)
 	}
-	if saved.GroupChatID != 1234 || saved.GroupName != "VIP Group" {
-		t.Fatalf("UpsertCreator saved group = (%d, %q), want (1234, %q)", saved.GroupChatID, saved.GroupName, "VIP Group")
+	if saved.AuthStatus != CreatorAuthHealthy {
+		t.Fatalf("UpsertCreator saved auth status = %q, want %q", saved.AuthStatus, CreatorAuthHealthy)
 	}
 }
 

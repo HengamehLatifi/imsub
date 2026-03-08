@@ -37,6 +37,7 @@ type Status struct {
 
 type creatorStore interface {
 	OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
+	ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error)
 	CreatorSubscriberCount(ctx context.Context, creatorID string) (int64, error)
 }
 
@@ -66,6 +67,15 @@ func (c *CreatorService) LoadOwnedCreator(ctx context.Context, telegramUserID in
 		return Creator{}, false, fmt.Errorf("load owned creator for user: %w", err)
 	}
 	return creator, found, nil
+}
+
+// LoadManagedGroups returns managed groups linked to the creator.
+func (c *CreatorService) LoadManagedGroups(ctx context.Context, creatorID string) ([]ManagedGroup, error) {
+	groups, err := c.store.ListManagedGroupsByCreator(ctx, creatorID)
+	if err != nil {
+		return nil, fmt.Errorf("load managed groups by creator: %w", err)
+	}
+	return groups, nil
 }
 
 // LoadStatus returns the current event sub and subscriber status.

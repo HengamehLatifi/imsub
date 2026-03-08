@@ -10,6 +10,7 @@ type subscriptionFakeStore struct {
 	Store
 	removeCreatorSubscriberFn func(ctx context.Context, creatorID, twitchUserID string) error
 	getCreatorFn              func(ctx context.Context, creatorID string) (Creator, bool, error)
+	listManagedGroupsFn       func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
 	removeByTwitchFn          func(ctx context.Context, twitchUserID, creatorID string) (int64, bool, error)
 	getUserIdentityFn         func(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 }
@@ -35,6 +36,13 @@ func (f *subscriptionFakeStore) RemoveUserCreatorByTwitch(ctx context.Context, t
 	return 0, false, nil
 }
 
+func (f *subscriptionFakeStore) ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error) {
+	if f.listManagedGroupsFn != nil {
+		return f.listManagedGroupsFn(ctx, creatorID)
+	}
+	return nil, nil
+}
+
 func (f *subscriptionFakeStore) UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error) {
 	if f.getUserIdentityFn != nil {
 		return f.getUserIdentityFn(ctx, telegramUserID)
@@ -50,7 +58,10 @@ func TestProcessEndFound(t *testing.T) {
 			if creatorID != "c1" {
 				t.Fatalf("getCreatorFn() creatorID = %q, want \"c1\"", creatorID)
 			}
-			return Creator{ID: "c1", Name: "streamer1", GroupChatID: 123}, true, nil
+			return Creator{ID: "c1", Name: "streamer1"}, true, nil
+		},
+		listManagedGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
+			return []ManagedGroup{{ChatID: 123, CreatorID: creatorID, GroupName: "VIP"}}, nil
 		},
 		removeByTwitchFn: func(_ context.Context, twitchUserID, creatorID string) (int64, bool, error) {
 			if twitchUserID != "tw-1" || creatorID != "c1" {
@@ -73,8 +84,8 @@ func TestProcessEndFound(t *testing.T) {
 	if !got.Found {
 		t.Fatalf("ProcessEnd() Found = %t, want true", got.Found)
 	}
-	if got.TelegramUserID != 777 || got.GroupChatID != 123 {
-		t.Errorf("ProcessEnd() = %+v, want TelegramUserID=777, GroupChatID=123", got)
+	if got.TelegramUserID != 777 || len(got.GroupChatIDs) != 1 || got.GroupChatIDs[0] != 123 {
+		t.Errorf("ProcessEnd() = %+v, want TelegramUserID=777, GroupChatIDs=[123]", got)
 	}
 	if got.BroadcasterLogin != "streamer1" {
 		t.Errorf("ProcessEnd() BroadcasterLogin = %q, want %q", got.BroadcasterLogin, "streamer1")
@@ -173,7 +184,10 @@ func TestPrepareEndFoundResult(t *testing.T) {
 
 	svc := NewSubscription(&subscriptionFakeStore{
 		getCreatorFn: func(_ context.Context, creatorID string) (Creator, bool, error) {
-			return Creator{ID: creatorID, Name: "creator_login", GroupChatID: 100}, true, nil
+			return Creator{ID: creatorID, Name: "creator_login"}, true, nil
+		},
+		listManagedGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
+			return []ManagedGroup{{ChatID: 100, CreatorID: creatorID, GroupName: "VIP"}}, nil
 		},
 		removeByTwitchFn: func(context.Context, string, string) (int64, bool, error) {
 			return 10, true, nil

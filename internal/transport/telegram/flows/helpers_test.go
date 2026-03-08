@@ -45,16 +45,11 @@ func TestOAuthStartURLEscapesState(t *testing.T) {
 func TestCreatorGroupLineEscapesHTML(t *testing.T) {
 	t.Parallel()
 
-	creator := core.Creator{
-		Name:        `name<&>`,
-		GroupName:   `group "x"`,
-		GroupChatID: 1,
-	}
-	line := CreatorGroupLine("en", creator)
+	line := CreatorGroupLines("en", `name<&>`, []core.ManagedGroup{{GroupName: `group "x"`}})
 	if !strings.Contains(line, "name&lt;&amp;&gt;") {
-		t.Errorf("CreatorGroupLine(%q, creator) = %q, want escaped creator name", "en", line)
+		t.Errorf("CreatorGroupLines(%q, creatorName, groups) = %q, want escaped creator name", "en", line)
 	}
 	if !strings.Contains(line, "group &#34;x&#34;") {
-		t.Errorf("CreatorGroupLine(%q, creator) = %q, want escaped group name", "en", line)
+		t.Errorf("CreatorGroupLines(%q, creatorName, groups) = %q, want escaped group name", "en", line)
 	}
 }

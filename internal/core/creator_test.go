@@ -9,8 +9,9 @@ import (
 
 type creatorFakeStore struct {
 	Store
-	getOwnedFn func(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
-	countFn    func(ctx context.Context, creatorID string) (int64, error)
+	getOwnedFn   func(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
+	listGroupsFn func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
+	countFn      func(ctx context.Context, creatorID string) (int64, error)
 }
 
 func (f *creatorFakeStore) OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (Creator, bool, error) {
@@ -25,6 +26,13 @@ func (f *creatorFakeStore) CreatorSubscriberCount(ctx context.Context, creatorID
 		return f.countFn(ctx, creatorID)
 	}
 	return 0, nil
+}
+
+func (f *creatorFakeStore) ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error) {
+	if f.listGroupsFn != nil {
+		return f.listGroupsFn(ctx, creatorID)
+	}
+	return nil, nil
 }
 
 type fakeChecker struct {

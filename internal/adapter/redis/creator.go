@@ -35,7 +35,6 @@ func parseCreatorTimeField(logger *slog.Logger, creatorID string, vals map[strin
 
 func (s *Store) parseCreatorHash(vals map[string]string, fallbackID string) core.Creator {
 	ownerID, _ := strconv.ParseInt(vals["owner_telegram_id"], 10, 64)
-	groupChatID, _ := strconv.ParseInt(vals["group_chat_id"], 10, 64)
 	updatedAt, err := time.Parse(time.RFC3339, vals["updated_at"])
 	if err != nil {
 		s.log().Warn("parseCreatorHash invalid updated_at, using current time",
@@ -49,8 +48,6 @@ func (s *Store) parseCreatorHash(vals map[string]string, fallbackID string) core
 		ID:              vals["id"],
 		Name:            vals["name"],
 		OwnerTelegramID: ownerID,
-		GroupChatID:     groupChatID,
-		GroupName:       vals["group_name"],
 		AccessToken:     vals["access_token"],
 		RefreshToken:    vals["refresh_token"],
 		UpdatedAt:       updatedAt,
@@ -130,11 +127,26 @@ func (s *Store) ListCreators(ctx context.Context) ([]core.Creator, error) {
 	return s.loadCreatorsBySet(ctx, keyCreatorsSet(), nil)
 }
 
-// ListActiveCreators returns creators that have a bound group chat.
+// ListActiveCreators returns creators that have at least one managed group.
 func (s *Store) ListActiveCreators(ctx context.Context) ([]core.Creator, error) {
-	return s.loadCreatorsBySet(ctx, keyActiveCreatorsSet(), func(c core.Creator) bool {
-		return c.GroupChatID != 0
-	})
+	groups, err := s.ListManagedGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(groups))
+	ids := make([]string, 0, len(groups))
+	for _, group := range groups {
+		if _, ok := seen[group.CreatorID]; ok {
+			continue
+		}
+		seen[group.CreatorID] = struct{}{}
+		ids = append(ids, group.CreatorID)
+	}
+	slices.Sort(ids)
+	return s.LoadCreatorsByIDs(ctx, ids, nil)
 }
 
 // OwnedCreatorForUser returns the creator owned by the given Telegram user.
@@ -173,11 +185,6 @@ func (s *Store) UpsertCreator(ctx context.Context, c core.Creator) error {
 		c.AuthStatus = core.CreatorAuthHealthy
 	}
 
-	activeGroupChatID := c.GroupChatID
-	if activeGroupChatID == 0 && exists {
-		activeGroupChatID = existing.GroupChatID
-	}
-
 	pipe := s.rdb.TxPipeline()
 	pipe.SAdd(ctx, keyCreatorsSet(), c.ID)
 	pipe.SAdd(ctx, keyCreatorByOwner(c.OwnerTelegramID), c.ID)
@@ -211,12 +218,6 @@ func (s *Store) UpsertCreator(ctx context.Context, c core.Creator) error {
 		pipe.HDel(ctx, keyCreator(c.ID), "last_reconnect_notice_at")
 	}
 
-	if activeGroupChatID != 0 {
-		pipe.SAdd(ctx, keyActiveCreatorsSet(), c.ID)
-	} else {
-		pipe.SRem(ctx, keyActiveCreatorsSet(), c.ID)
-	}
-
 	_, err = pipe.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("redis exec upsert creator: %w", err)
@@ -233,50 +234,26 @@ func (s *Store) DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (d
 	if !ok {
 		return 0, nil, nil
 	}
-	memberIDs, err := s.rdb.SMembers(ctx, keyCreatorMembers(c.ID)).Result()
-	if err != nil {
-		return 0, nil, fmt.Errorf("redis smembers creator members: %w", err)
-	}
-
 	pipe := s.rdb.TxPipeline()
-	for _, tgStr := range memberIDs {
-		tgID, parseErr := strconv.ParseInt(tgStr, 10, 64)
-		if parseErr != nil {
-			s.log().Warn("DeleteCreatorData invalid member telegram id, skipping reverse-index cleanup", "creator_id", c.ID, "member_raw", tgStr, "error", parseErr)
-			continue
-		}
-		pipe.SRem(ctx, keyUserCreators(tgID), c.ID)
-	}
-	pipe.Del(ctx, keyCreatorMembers(c.ID))
 	pipe.Del(ctx, keyCreatorSubscribers(c.ID))
 	pipe.Del(ctx, keyCreator(c.ID))
 	pipe.SRem(ctx, keyCreatorsSet(), c.ID)
-	pipe.SRem(ctx, keyActiveCreatorsSet(), c.ID)
 	pipe.SRem(ctx, keyCreatorByOwner(ownerTelegramID), c.ID)
 
 	if _, err := pipe.Exec(ctx); err != nil {
 		return 0, nil, fmt.Errorf("redis exec delete creator data: %w", err)
 	}
+	groups, err := s.ListManagedGroupsByCreator(ctx, c.ID)
+	if err != nil {
+		return 0, nil, err
+	}
+	for _, group := range groups {
+		if err := s.DeleteManagedGroup(ctx, group.ChatID); err != nil {
+			return 0, nil, err
+		}
+	}
 
 	return 1, []string{c.Name}, nil
-}
-
-// UpdateCreatorGroup binds or unbinds a Telegram group to a creator.
-func (s *Store) UpdateCreatorGroup(ctx context.Context, creatorID string, groupChatID int64, groupName string) error {
-	pipe := s.rdb.TxPipeline()
-	pipe.HSet(ctx, keyCreator(creatorID), map[string]any{
-		"group_chat_id": strconv.FormatInt(groupChatID, 10),
-		"group_name":    groupName,
-	})
-	if groupChatID != 0 {
-		pipe.SAdd(ctx, keyActiveCreatorsSet(), creatorID)
-	} else {
-		pipe.SRem(ctx, keyActiveCreatorsSet(), creatorID)
-	}
-	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("redis exec update creator group: %w", err)
-	}
-	return nil
 }
 
 // UpdateCreatorTokens replaces the creator's OAuth access and refresh tokens.

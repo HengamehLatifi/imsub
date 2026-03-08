@@ -24,7 +24,7 @@ type limiter interface {
 }
 
 type creatorStore interface {
-	ListActiveCreators(ctx context.Context) ([]core.Creator, error)
+	ListManagedGroups(ctx context.Context) ([]core.ManagedGroup, error)
 }
 
 // Client wraps Telegram group-level operations used by business flows.
@@ -138,22 +138,19 @@ func (c *Client) KickFromGroup(ctx context.Context, groupChatID int64, telegramU
 	return nil
 }
 
-// KickDisplacedUser removes telegramUserID from every active creator group.
+// KickDisplacedUser removes telegramUserID from every managed group.
 func (c *Client) KickDisplacedUser(ctx context.Context, telegramUserID int64) {
 	if c == nil || c.store == nil {
 		return
 	}
-	creators, err := c.store.ListActiveCreators(ctx)
+	groups, err := c.store.ListManagedGroups(ctx)
 	if err != nil {
-		c.logger.Warn("kick displaced user listActiveCreators failed", "error", err)
+		c.logger.Warn("kick displaced user ListManagedGroups failed", "error", err)
 		return
 	}
-	for _, creator := range creators {
-		if creator.GroupChatID == 0 {
-			continue
-		}
-		if err := c.KickFromGroup(ctx, creator.GroupChatID, telegramUserID); err != nil {
-			c.logger.Warn("kick displaced user from group failed", "group_chat_id", creator.GroupChatID, "telegram_user_id", telegramUserID, "error", err)
+	for _, group := range groups {
+		if err := c.KickFromGroup(ctx, group.ChatID, telegramUserID); err != nil {
+			c.logger.Warn("kick displaced user from group failed", "group_chat_id", group.ChatID, "telegram_user_id", telegramUserID, "error", err)
 		}
 	}
 }

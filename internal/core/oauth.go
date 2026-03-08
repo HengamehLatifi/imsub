@@ -156,8 +156,6 @@ func (o *OAuth) LinkCreator(ctx context.Context, code string, payload OAuthState
 		if existing.ID != broadcasterID {
 			return CreatorResult{}, &FlowError{Kind: KindCreatorMismatch, Cause: errReconnectCreatorMismatch}
 		}
-		creator.GroupChatID = existing.GroupChatID
-		creator.GroupName = existing.GroupName
 		creator.LastSyncAt = existing.LastSyncAt
 		creator.LastNoticeAt = existing.LastNoticeAt
 	}

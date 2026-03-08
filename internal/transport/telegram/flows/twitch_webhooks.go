@@ -149,9 +149,9 @@ func (c *Controller) HandleSubscriptionEnd(ctx context.Context, broadcasterID, b
 		return nil
 	}
 
-	if res.GroupChatID != 0 {
-		if err := c.KickFromGroup(ctx, res.GroupChatID, res.TelegramUserID); err != nil {
-			c.log().Warn("kickFromGroup failed", "telegram_user_id", res.TelegramUserID, "group_chat_id", res.GroupChatID, "error", err)
+	for _, groupChatID := range res.GroupChatIDs {
+		if err := c.KickFromGroup(ctx, groupChatID, res.TelegramUserID); err != nil {
+			c.log().Warn("kickFromGroup failed", "telegram_user_id", res.TelegramUserID, "group_chat_id", groupChatID, "error", err)
 		}
 	}
 

@@ -15,12 +15,20 @@ type Store interface {
 
 	UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	SaveUserIdentityOnly(ctx context.Context, telegramUserID int64, twitchUserID, twitchLogin, language string) (displacedUserID int64, err error)
-	SaveUserCreator(ctx context.Context, telegramUserID int64, creatorID, twitchUserID, twitchLogin, language string) (displacedUserID int64, err error)
-	UserCreatorIDs(ctx context.Context, telegramUserID int64) ([]string, error)
-	RemoveUserCreatorByTelegram(ctx context.Context, telegramUserID int64, creatorID string) error
-	AddUserCreatorMembership(ctx context.Context, telegramUserID int64, creatorID string) error
 	RemoveUserCreatorByTwitch(ctx context.Context, twitchUserID, creatorID string) (telegramUserID int64, found bool, err error)
 	DeleteAllUserData(ctx context.Context, telegramUserID int64) error
+	ManagedGroupByChatID(ctx context.Context, chatID int64) (ManagedGroup, bool, error)
+	ListManagedGroups(ctx context.Context) ([]ManagedGroup, error)
+	ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error)
+	ListTrackedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, error)
+	UpsertManagedGroup(ctx context.Context, group ManagedGroup) error
+	DeleteManagedGroup(ctx context.Context, chatID int64) error
+	AddTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64, source string, at time.Time) error
+	RemoveTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
+	IsTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) (bool, error)
+	UpsertUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64, source, status string, at time.Time) error
+	RemoveUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
+	CountUntrackedGroupMembers(ctx context.Context, chatID int64) (int, error)
 
 	// --- Creator CRUD and group binding ---
 
@@ -31,7 +39,6 @@ type Store interface {
 	LoadCreatorsByIDs(ctx context.Context, ids []string, filter func(Creator) bool) ([]Creator, error)
 	UpsertCreator(ctx context.Context, c Creator) error
 	DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (deletedCount int, deletedNames []string, err error)
-	UpdateCreatorGroup(ctx context.Context, creatorID string, groupChatID int64, groupName string) error
 	UpdateCreatorTokens(ctx context.Context, creatorID, accessToken, refreshToken string) error
 	MarkCreatorAuthReconnectRequired(ctx context.Context, creatorID, errorCode string, at time.Time) (transitioned bool, err error)
 	MarkCreatorAuthHealthy(ctx context.Context, creatorID string, at time.Time) error

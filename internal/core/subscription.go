@@ -10,6 +10,7 @@ import (
 type subscriptionStore interface {
 	RemoveCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) error
 	Creator(ctx context.Context, creatorID string) (Creator, bool, error)
+	ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error)
 	RemoveUserCreatorByTwitch(ctx context.Context, twitchUserID, creatorID string) (telegramUserID int64, found bool, err error)
 	UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 }
@@ -28,7 +29,7 @@ func NewSubscription(store subscriptionStore) *Subscription {
 type EndResult struct {
 	TelegramUserID   int64
 	Found            bool
-	GroupChatID      int64
+	GroupChatIDs     []int64
 	BroadcasterLogin string
 	IdentityLanguage string
 	HasIdentityLang  bool
@@ -38,7 +39,7 @@ type EndResult struct {
 type PreparedEnd struct {
 	Found            bool
 	TelegramUserID   int64
-	GroupChatID      int64
+	GroupChatIDs     []int64
 	Language         string
 	BroadcasterLogin string
 	ViewerLogin      string
@@ -57,6 +58,10 @@ func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcaste
 	if broadcasterLogin == "" && creatorFound {
 		broadcasterLogin = creator.Name
 	}
+	groups, err := s.store.ListManagedGroupsByCreator(ctx, broadcasterID)
+	if err != nil {
+		return EndResult{}, fmt.Errorf("list managed groups by creator: %w", err)
+	}
 
 	telegramUserID, found, err := s.store.RemoveUserCreatorByTwitch(ctx, twitchUserID, broadcasterID)
 	if err != nil {
@@ -73,8 +78,11 @@ func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcaste
 	out := EndResult{
 		TelegramUserID:   telegramUserID,
 		Found:            true,
-		GroupChatID:      creator.GroupChatID,
+		GroupChatIDs:     make([]int64, 0, len(groups)),
 		BroadcasterLogin: broadcasterLogin,
+	}
+	for _, group := range groups {
+		out.GroupChatIDs = append(out.GroupChatIDs, group.ChatID)
 	}
 	if hasIdentity {
 		out.IdentityLanguage = identity.Language
@@ -101,7 +109,7 @@ func (s *Subscription) PrepareEnd(ctx context.Context, broadcasterID, broadcaste
 	return PreparedEnd{
 		Found:            true,
 		TelegramUserID:   res.TelegramUserID,
-		GroupChatID:      res.GroupChatID,
+		GroupChatIDs:     res.GroupChatIDs,
 		Language:         lang,
 		BroadcasterLogin: res.BroadcasterLogin,
 		ViewerLogin:      twitchLogin,

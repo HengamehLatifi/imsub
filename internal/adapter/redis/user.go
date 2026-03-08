@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -119,109 +118,6 @@ func (s *Store) SaveUserIdentityOnly(ctx context.Context, telegramUserID int64, 
 	return displacedUserID, nil
 }
 
-// SaveUserCreator links a Twitch account and binds a creator membership atomically.
-func (s *Store) SaveUserCreator(ctx context.Context, telegramUserID int64, creatorID, twitchUserID, twitchLogin, language string) (displacedUserID int64, err error) {
-	displacedUserID, err = s.prepareTwitchLink(ctx, telegramUserID, twitchUserID)
-	if err != nil {
-		return 0, err
-	}
-
-	_, err = linkViewerCreatorScript.Run(ctx, s.rdb,
-		[]string{
-			keyUserIdentity(telegramUserID),
-			keyTwitchToTelegram(twitchUserID),
-			keyCreatorMembers(creatorID),
-			keyUsersSet(),
-			keyUserCreators(telegramUserID),
-		},
-		strconv.FormatInt(telegramUserID, 10),
-		twitchUserID,
-		twitchLogin,
-		language,
-		time.Now().UTC().Format(time.RFC3339),
-		creatorID,
-	).Result()
-
-	if err != nil {
-		if isDifferentTwitchLinkError(err) {
-			return displacedUserID, core.ErrDifferentTwitch
-		}
-		return displacedUserID, fmt.Errorf("eval link viewer creator script: %w", err)
-	}
-	return displacedUserID, nil
-}
-
-// UserCreatorIDs returns the creator IDs associated with a Telegram user, with reverse-index backfill.
-func (s *Store) UserCreatorIDs(ctx context.Context, telegramUserID int64) ([]string, error) {
-	ids, err := s.rdb.SMembers(ctx, keyUserCreators(telegramUserID)).Result()
-	if err != nil {
-		return nil, fmt.Errorf("redis smembers user creators: %w", err)
-	}
-	if len(ids) != 0 {
-		slices.Sort(ids)
-		return ids, nil
-	}
-
-	allIDs, err := s.rdb.SMembers(ctx, keyCreatorsSet()).Result()
-	if err != nil {
-		return nil, fmt.Errorf("redis smembers creators set: %w", err)
-	}
-	if len(allIDs) == 0 {
-		return nil, nil
-	}
-	tgStr := strconv.FormatInt(telegramUserID, 10)
-	pipe := s.rdb.Pipeline()
-	cmds := make([]*redis.BoolCmd, len(allIDs))
-	for i, creatorID := range allIDs {
-		cmds[i] = pipe.SIsMember(ctx, keyCreatorMembers(creatorID), tgStr)
-	}
-	if _, err := pipe.Exec(ctx); err != nil {
-		return nil, fmt.Errorf("redis exec pipeline user creators check: %w", err)
-	}
-	fallbackIDs := make([]string, 0, len(allIDs))
-	for i, creatorID := range allIDs {
-		if cmds[i].Val() {
-			fallbackIDs = append(fallbackIDs, creatorID)
-		}
-	}
-	if len(fallbackIDs) == 0 {
-		return nil, nil
-	}
-	slices.Sort(fallbackIDs)
-	args := make([]any, len(fallbackIDs))
-	for i, creatorID := range fallbackIDs {
-		args[i] = creatorID
-	}
-	if err := s.rdb.SAdd(ctx, keyUserCreators(telegramUserID), args...).Err(); err != nil {
-		s.log().Warn("UserCreatorIDs reverse-index backfill failed", "telegram_user_id", telegramUserID, "error", err)
-	}
-	return fallbackIDs, nil
-}
-
-// RemoveUserCreatorByTelegram removes a user's membership from a creator group.
-func (s *Store) RemoveUserCreatorByTelegram(ctx context.Context, telegramUserID int64, creatorID string) error {
-	tgStr := strconv.FormatInt(telegramUserID, 10)
-	pipe := s.rdb.TxPipeline()
-	pipe.SRem(ctx, keyCreatorMembers(creatorID), tgStr)
-	pipe.SRem(ctx, keyUserCreators(telegramUserID), creatorID)
-	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("redis exec remove user creator link: %w", err)
-	}
-	return nil
-}
-
-// AddUserCreatorMembership adds a user to a creator's member set and reverse index.
-func (s *Store) AddUserCreatorMembership(ctx context.Context, telegramUserID int64, creatorID string) error {
-	tgStr := strconv.FormatInt(telegramUserID, 10)
-	pipe := s.rdb.TxPipeline()
-	pipe.SAdd(ctx, keyCreatorMembers(creatorID), tgStr)
-	pipe.SAdd(ctx, keyUserCreators(telegramUserID), creatorID)
-	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("redis exec add user creator link: %w", err)
-	}
-	return nil
-}
-
 // RemoveUserCreatorByTwitch resolves a Twitch user to Telegram and removes their creator membership.
 func (s *Store) RemoveUserCreatorByTwitch(ctx context.Context, twitchUserID, creatorID string) (telegramUserID int64, found bool, err error) {
 	tgStr, err := s.rdb.Get(ctx, keyTwitchToTelegram(twitchUserID)).Result()
@@ -235,18 +131,20 @@ func (s *Store) RemoveUserCreatorByTwitch(ctx context.Context, twitchUserID, cre
 	if err != nil {
 		return 0, false, fmt.Errorf("parse telegram user id: %w", err)
 	}
-	if err := s.RemoveUserCreatorByTelegram(ctx, tgID, creatorID); err != nil {
+	groups, err := s.ListManagedGroupsByCreator(ctx, creatorID)
+	if err != nil {
 		return 0, false, err
+	}
+	for _, group := range groups {
+		if err := s.RemoveTrackedGroupMember(ctx, group.ChatID, tgID); err != nil {
+			return 0, false, err
+		}
 	}
 	return tgID, true, nil
 }
 
 // DeleteAllUserData removes all stored data for a Telegram user.
 func (s *Store) DeleteAllUserData(ctx context.Context, telegramUserID int64) error {
-	creatorIDs, err := s.UserCreatorIDs(ctx, telegramUserID)
-	if err != nil {
-		return err
-	}
 	identity, ok, err := s.UserIdentity(ctx, telegramUserID)
 	if err != nil {
 		return err
@@ -254,10 +152,19 @@ func (s *Store) DeleteAllUserData(ctx context.Context, telegramUserID int64) err
 
 	pipe := s.rdb.TxPipeline()
 	tgStr := strconv.FormatInt(telegramUserID, 10)
-	for _, creatorID := range creatorIDs {
-		pipe.SRem(ctx, keyCreatorMembers(creatorID), tgStr)
+	trackedGroups, err := s.rdb.SMembers(ctx, keyUserTrackedGroups(telegramUserID)).Result()
+	if err != nil {
+		return fmt.Errorf("redis smembers user tracked groups: %w", err)
 	}
-	pipe.Del(ctx, keyUserCreators(telegramUserID))
+	for _, rawChatID := range trackedGroups {
+		chatID, parseErr := strconv.ParseInt(rawChatID, 10, 64)
+		if parseErr != nil {
+			s.log().Warn("DeleteAllUserData invalid tracked group id, skipping cleanup", "telegram_user_id", telegramUserID, "group_chat_id_raw", rawChatID, "error", parseErr)
+			continue
+		}
+		pipe.SRem(ctx, keyTrackedGroupMembers(chatID), tgStr)
+	}
+	pipe.Del(ctx, keyUserTrackedGroups(telegramUserID))
 	pipe.Del(ctx, keyUserIdentity(telegramUserID))
 	pipe.SRem(ctx, keyUsersSet(), tgStr)
 	if ok && identity.TwitchUserID != "" {
