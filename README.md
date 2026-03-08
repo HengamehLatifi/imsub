@@ -302,18 +302,21 @@ The bot is mostly state-driven. User actions from Telegram callbacks/commands re
 | `imsub:user:{telegram_user_id}` | hash | Viewer identity (twitch_user_id, twitch_login, language, verified_at) |
 | `imsub:users` | set | All Telegram user IDs with a linked identity |
 | `imsub:twitch_to_tg:{twitch_user_id}` | string | Reverse mapping: Twitch user → Telegram user |
-| `imsub:creator:{creator_id}` | hash | Creator profile, tokens, group binding |
+| `imsub:creator:{creator_id}` | hash | Creator profile and OAuth tokens |
 | `imsub:creators` | set | All creator IDs |
-| `imsub:creators:active` | set | Creator IDs with a bound group chat |
-| `imsub:creator:members:{creator_id}` | set | Telegram user IDs granted access to this creator's group |
 | `imsub:creator:subscribers:{creator_id}` | set | Twitch user IDs subscribed to this creator (refreshed every 15m) |
-| `imsub:user:creators:{telegram_user_id}` | set | Reverse index: creator IDs linked to this Telegram user |
 | `imsub:creator:by_owner:{telegram_user_id}` | set | Creator IDs owned by this Telegram user |
+| `imsub:group:{chat_id}` | hash | Managed Telegram group metadata |
+| `imsub:groups` | set | All managed group chat IDs |
+| `imsub:groups:by_creator:{creator_id}` | set | Managed groups owned by a creator |
+| `imsub:group:tracked:{chat_id}` | set | Telegram user IDs tracked for that group |
+| `imsub:group:untracked:{chat_id}` | set | Telegram user IDs seen in the group but not yet tracked |
+| `imsub:user:groups:tracked:{telegram_user_id}` | set | Reverse index: tracked group chat IDs for this Telegram user |
 | `imsub:schema_version` | string | Data model version marker |
 
-> **Note:** The app maintains a per-user reverse index (`imsub:user:creators:*`) alongside canonical creator member sets. If reverse entries are missing, reads fall back to scanning creator sets and backfilling the index.
+> **Note:** Group membership is group-centric. The canonical tracked set is `imsub:group:tracked:{chat_id}`, with `imsub:user:groups:tracked:{telegram_user_id}` kept as its reverse index.
 
-**Active vs. inactive creator:** A creator is "active" when it has a Telegram group linked (`GroupChatID != 0`), meaning the creator ran `/registergroup`. An "inactive" creator has linked their Twitch account via `/creator` but has not yet bound a group. Most flows (join buttons, kicks, reconciler, reset scans) only operate on active creators.
+**Active vs. inactive creator:** A creator is "active" when it owns at least one managed Telegram group, meaning the creator ran `/registergroup` successfully. An "inactive" creator has linked their Twitch account via `/creator` but has not yet bound any group. Most flows (join buttons, kicks, reconciler, reset scans) only operate on active creators.
 
 ### Detailed Flows
 
@@ -334,10 +337,10 @@ The bot is mostly state-driven. User actions from Telegram callbacks/commands re
 5. Eligibility and buttons:
    - Iterates all active creators
    - Checks subscription cache
-   - For each subscribed creator, checks Telegram group membership
-   - If already in the group → skips
-   - If not in the group → generates invite link + shows join button
-   - If no longer subscribed → removes from member set
+   - For each subscribed creator, iterates that creator's managed groups
+   - If already in a group → skips that group
+   - If not in a group → generates invite link + shows join button
+   - If no longer subscribed → removes tracked membership for each managed group
 
 </details>
 
@@ -367,12 +370,12 @@ The bot is mostly state-driven. User actions from Telegram callbacks/commands re
 2. Caller must be admin/creator in that group.
 3. Caller must have a creator account linked.
 
-If valid, bot stores group metadata (`group_chat_id`, `group_name`) on the creator record and initializes:
+If valid, bot stores a managed-group record keyed by `chat_id` and initializes:
 
 - EventSub subscriptions (`channel.subscribe`, `channel.subscription.end`)
 - Initial subscriber dump in background
 
-> **Note:** A single Telegram user can only link one Twitch creator account, and a single creator can only be linked to one group. Running `/registergroup` in a new chat overwrites the previous group.
+> **Note:** A single Telegram user can only link one Twitch creator account, but a creator may own multiple managed groups.
 
 </details>
 
@@ -382,13 +385,14 @@ If valid, bot stores group metadata (`group_chat_id`, `group_name`) on the creat
 `/reset` is role-aware and supports deleting viewer data, creator data, or both.
 
 **Viewer reset:**
-- Scans active creators to find groups linked by subscription membership data
+- Reads tracked group IDs directly from Redis
 - Kicks/unbans the user from those groups (best-effort)
-- Removes user from each creator's member set
+- Removes the user's tracked-group links
+- Ignores groups where the user was only observed as untracked
 - Deletes viewer identity and Twitch mapping
 
 **Creator reset:**
-- Deletes owned creator records, member set, and subscriber cache
+- Deletes owned creator records, managed groups, and subscriber cache
 - Removes creator from all indices
 
 </details>
@@ -437,7 +441,6 @@ Planned improvements and open design questions, roughly ordered by impact.
 ### Multi-entity support
 
 - **Other platforms integration**: support other platforms (like YouTube and Patreon) alongside Twitch to gather subscriptions from multiple sources.
-- **Multiple groups per creator**: allow a single creator to register more than one Telegram group (e.g. sub-only chat + VIP chat). Requires changing the creator data model from a single `group_chat_id` to a list.
 - **Multiple Twitch accounts per viewer**: let a Telegram user link more than one Twitch account and merge subscription eligibility across them.
 - **Multiple creator accounts per owner**: let a single Telegram user own more than one creator record.
 
@@ -448,16 +451,16 @@ Planned improvements and open design questions, roughly ordered by impact.
 
 ### Group lifecycle
 
-- **Creator reset group action**: when a creator deletes their creator data, ask what to do with the linked group's members. Options: kick all tracked members from the group, or keep them. Currently `deleteCreatorData` removes the Redis member set and creator record but does not touch the Telegram group, so members remain in the group as orphans. The same choice should apply to the "reset both" flow.
-- **Unregister group**: let a creator unlink their Telegram group without deleting the entire creator record (e.g. `/unregistergroup` or an inline button). Should ask what to do with current group members: kick all tracked members, or leave them in. Currently the only way to detach a group is to reset the creator entirely or overwrite it by running `/registergroup` in a different chat.
-- **Bot removal auto-unregister**: when Telegram sends a `my_chat_member` update showing the bot was removed or kicked from a registered group, automatically unlink that group from the creator record and notify the owner. For now the code only logs this as the next step.
+- **Creator reset group action**: when a creator deletes their creator data, ask what to do with members of their managed groups. Options: kick all tracked members from those groups, or keep them. Currently `deleteCreatorData` removes the creator record and managed-group state but does not touch the Telegram groups themselves, so members remain there as orphans. The same choice should apply to the "reset both" flow.
+- **Unregister group**: let a creator unlink one managed Telegram group without deleting the entire creator record (e.g. `/unregistergroup` or an inline button). It should ask what to do with the current tracked members of that group: kick them, or leave them in place. Right now the only way to detach a managed group is to delete the creator entirely or remove the bot from the chat.
+- **Bot removal auto-unregister**: when Telegram sends a `my_chat_member` update showing the bot was removed or kicked from a managed group, automatically unregister that group and notify the owner. For now the code only logs this as the next step.
 - **Pre-populated group handling**: when a creator runs `/registergroup` on a group that already has members, decide what to do: kick everyone who isn't a verified subscriber, invite existing members to verify via `/start`, or ignore them. Currently the bot ignores pre-existing members entirely.
-- **Untracked member detection**: Telegram bots cannot enumerate group members, so users who were added manually or were present before registration are invisible. Use message activity (e.g. `on_message` handler) to detect users writing in the group whose Telegram ID is not in the creator's member set. Possible responses: ignore them, start a grace period and DM them a `/start` link to verify, post a public prompt in the group asking them to verify privately, or kick immediately. The chosen policy could be configurable per creator.
+- **Untracked member policy**: the bot now records untracked users seen via `chat_member` updates and group messages. They are observational only: resets and automatic removal paths act only on tracked memberships. The next step is a creator-configurable response policy: ignore, DM to verify, start a grace period, or kick.
 - **Forum / multi-topic group support**: Telegram supergroups can have topics enabled. Verify that invite links, kicks, and join request approvals work correctly in topic-enabled groups.
 
 ### Data model hygiene
 
-- **Redis reverse-index hygiene**: keep `imsub:user:creators:*` consistent with canonical `imsub:creator:members:*` sets; run periodic repair to fix stale or missing links.
+- **Tracked-group reverse-index hygiene**: keep `imsub:user:groups:tracked:*` consistent with canonical `imsub:group:tracked:*` sets; run periodic repair to fix stale or missing links.
 
 ### UX polish
 
