@@ -1,2 +1,2 @@
-// Package jobs runs background reconciliation and integrity tasks.
+// Package jobs runs scheduled background tasks.
 package jobs

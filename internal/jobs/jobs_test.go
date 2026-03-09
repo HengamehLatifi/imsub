@@ -82,18 +82,37 @@ func (f *fakeObserver) snapshot() (calls int, evt events.Event) {
 	return f.calls, f.lastEvent
 }
 
-func TestReconcileSubscribersOnceRecordsObserverResult(t *testing.T) {
+func TestRunScheduledRecordsObserverResult(t *testing.T) {
 	t.Parallel()
 
 	obs := &fakeObserver{}
 	reconcile := &fakeReconciler{result: "partial_failure"}
-	j := New(nil, reconcile, nil, obs)
+	runner := NewRunner(nil, obs)
 
-	_ = j.ReconcileSubscribersOnce(t.Context())
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = runner.RunScheduled(ctx, Schedule{
+			Task:     NewSubscriberTask(reconcile),
+			Interval: 5 * time.Millisecond,
+		})
+	}()
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		calls, _ := obs.snapshot()
+		if calls > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
 
 	calls, evt := obs.snapshot()
-	if calls != 1 {
-		t.Fatalf("expected 1 observer call, got %d", calls)
+	if calls == 0 {
+		t.Fatal("expected at least one observer call")
 	}
 	if evt.Name != events.NameBackgroundJob {
 		t.Errorf("Emit() name = %q, want %q", evt.Name, events.NameBackgroundJob)
@@ -109,17 +128,20 @@ func TestReconcileSubscribersOnceRecordsObserverResult(t *testing.T) {
 	}
 }
 
-func TestRunSubscriberReconcilerStopsOnCancel(t *testing.T) {
+func TestRunScheduledStopsOnCancel(t *testing.T) {
 	t.Parallel()
 
 	reconcile := &fakeReconciler{result: "ok"}
-	j := New(nil, reconcile, nil, nil)
+	runner := NewRunner(nil, nil)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_ = j.RunSubscriberReconciler(ctx, 5*time.Millisecond)
+		_ = runner.RunScheduled(ctx, Schedule{
+			Task:     NewSubscriberTask(reconcile),
+			Interval: 5 * time.Millisecond,
+		})
 	}()
 
 	deadline := time.Now().Add(300 * time.Millisecond)
@@ -138,34 +160,25 @@ func TestRunSubscriberReconcilerStopsOnCancel(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(300 * time.Millisecond):
-		t.Fatal("RunSubscriberReconciler did not stop after cancel")
+		t.Fatal("RunScheduled did not stop after cancel")
 	}
 }
 
-func TestRunIntegrityAuditOnceRecordsFailureResult(t *testing.T) {
+func TestIntegrityAuditTaskClassifiesFailureResult(t *testing.T) {
 	t.Parallel()
 
-	obs := &fakeObserver{}
 	store := &fakeStore{
 		listCreatorsFn: func(_ context.Context) ([]core.Creator, error) {
 			return nil, errors.New("boom")
 		},
 	}
-	j := New(store, nil, nil, obs)
+	task := NewIntegrityAuditTask(store, nil, nil)
 
-	_ = j.RunIntegrityAuditOnce(t.Context())
-
-	calls, evt := obs.snapshot()
-	if calls != 1 {
-		t.Fatalf("expected 1 observer call, got %d", calls)
+	err := task.Run(t.Context())
+	if err == nil {
+		t.Fatal("Run() error = nil, want non-nil")
 	}
-	if evt.Name != events.NameBackgroundJob {
-		t.Errorf("Emit() name = %q, want %q", evt.Name, events.NameBackgroundJob)
-	}
-	if evt.Fields["job"] != "integrity_audit" {
-		t.Errorf("Emit() job = %q, want \"integrity_audit\"", evt.Fields["job"])
-	}
-	if evt.Outcome != "list_creators_failed" {
-		t.Errorf("Emit() outcome = %q, want \"list_creators_failed\"", evt.Outcome)
+	if got := task.Classify(err); got != "list_creators_failed" {
+		t.Fatalf("Classify() = %q, want %q", got, "list_creators_failed")
 	}
 }

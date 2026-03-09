@@ -15,12 +15,12 @@ import (
 	"imsub/internal/application"
 	"imsub/internal/core"
 	"imsub/internal/events"
+	"imsub/internal/jobs"
 	"imsub/internal/operator"
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/platform/observability"
 	"imsub/internal/platform/ratelimit"
-	"imsub/internal/reconcile"
 	"imsub/internal/transport/http/handlers"
 	"imsub/internal/transport/http/server"
 	"imsub/internal/transport/telegram/flows"
@@ -121,10 +121,10 @@ func Run() error {
 		},
 		OperatorReadModel: operatorReadModel,
 	})
-	reconcileRunner := reconcile.NewRunner(logger, eventSink)
-	subscriberTask := reconcile.NewSubscriberTask(reconcileSvc)
-	eventSubTask := reconcile.NewEventSubTask(eventSubSvc)
-	integrityTask := reconcile.NewIntegrityAuditTask(s, logger, eventSink)
+	jobRunner := jobs.NewRunner(logger, eventSink)
+	subscriberTask := jobs.NewSubscriberTask(reconcileSvc)
+	eventSubTask := jobs.NewEventSubTask(eventSubSvc)
+	integrityTask := jobs.NewIntegrityAuditTask(s, logger, eventSink)
 
 	flowController := flows.New(flows.Dependencies{
 		Config:          cfg,
@@ -193,20 +193,20 @@ func Run() error {
 		})
 	})
 	g.Go(func() error {
-		return reconcileRunner.RunScheduled(gctx, reconcile.Schedule{
+		return jobRunner.RunScheduled(gctx, jobs.Schedule{
 			Task:         eventSubTask,
 			InitialDelay: 3 * time.Second,
 			Interval:     1 * time.Hour,
 		})
 	})
 	g.Go(func() error {
-		return reconcileRunner.RunScheduled(gctx, reconcile.Schedule{
+		return jobRunner.RunScheduled(gctx, jobs.Schedule{
 			Task:     subscriberTask,
 			Interval: 15 * time.Minute,
 		})
 	})
 	g.Go(func() error {
-		return reconcileRunner.RunScheduled(gctx, reconcile.Schedule{
+		return jobRunner.RunScheduled(gctx, jobs.Schedule{
 			Task:     integrityTask,
 			Interval: 20 * time.Minute,
 		})
