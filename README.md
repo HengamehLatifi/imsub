@@ -19,8 +19,8 @@ Access is enforced continuously: Twitch EventSub webhooks trigger grants and kic
 - [Quick Start](#quick-start)
 - [Bot Commands](#bot-commands)
 - [Configuration](#configuration)
-- [Local Development](#local-development)
 - [Deployment](#deployment)
+- [Local Development](#local-development)
 - [Observability](#observability)
 - [Security](#security)
 - [Architecture](#architecture)
@@ -60,6 +60,7 @@ Access is enforced continuously: Twitch EventSub webhooks trigger grants and kic
 - **Redis** — reachable from the machine running ImSub
 - **Telegram Bot Token** — create one via [@BotFather](https://t.me/BotFather)
 - **Twitch OAuth Credentials** — register an application in the [Twitch Developer Console](https://dev.twitch.tv/console/apps)
+- **Public HTTPS URL** — reachable by Twitch for OAuth callbacks and EventSub webhooks
 
 ### Setup
 
@@ -84,11 +85,18 @@ Access is enforced continuously: Twitch EventSub webhooks trigger grants and kic
 
    For example: `https://imsub.fly.dev/auth/callback`
 
-4. Run the bot:
+4. Ensure `IMSUB_PUBLIC_BASE_URL` points to a public HTTPS endpoint that Twitch can reach for:
+
+   - OAuth callback: `/auth/callback`
+   - EventSub webhooks: `IMSUB_TWITCH_WEBHOOK_PATH` (default `/webhooks/twitch`)
+
+5. Run the bot:
 
    ```bash
    go run ./cmd/imsub
    ```
+
+   If `IMSUB_TELEGRAM_WEBHOOK_SECRET` is set, ImSub registers a Telegram webhook at `IMSUB_TELEGRAM_WEBHOOK_PATH`. If it is unset, ImSub uses Telegram long polling instead.
 
 For production deployments, see [Deployment](#deployment).
 
@@ -102,6 +110,7 @@ For production deployments, see [Deployment](#deployment).
 | `/creator` | Private chat | Link a Twitch creator account or view creator status |
 | `/reset` | Private chat | Guided deletion of viewer data, creator data, or both |
 | `/registergroup` | Group chat | Bind the current group to your creator account (admin only) |
+| `/unregistergroup` | Group chat | Unlink the current group from your creator account (owner only) |
 
 ---
 
@@ -134,6 +143,35 @@ All configuration is done through environment variables. See `.env.example` for 
 
 ---
 
+## Deployment
+
+ImSub ships with everything needed for [Fly.io](https://fly.io) deployment.
+
+### Included Files
+
+- `Dockerfile` — multi-stage build producing a minimal Alpine image
+- `fly.toml` — HTTP service configuration, health checks, and metrics scraping
+
+### Deploy Commands
+
+```bash
+make deploy     # Deploy to Fly.io
+make status     # Show app status
+make logs       # Show recent logs
+```
+
+### GitHub Actions Deploy Flow
+
+Pushes to `main` run the `Main` GitHub Actions workflow. Deployment happens only after Fly config validation, checks, linting, vulnerability scanning, and secret scanning pass.
+
+### Health Check
+
+- **Endpoint:** `GET /healthz` (includes Redis connectivity check)
+- **Service check:** Fly polls `/healthz` every 30 seconds
+- **Machine check:** Verifies `/healthz` before completing a rollout
+
+---
+
 ## Local Development
 
 ### Prerequisites
@@ -155,13 +193,13 @@ make check
 go run ./cmd/imsub
 ```
 
-When you open the repository in the devcontainer, the post-create bootstrap installs the CLI tools used by the `Makefile` targets (`flyctl`, `golangci-lint`, `govulncheck`, `gitleaks`, `xdg-open`) and the AI coding CLIs (`codex`, `claude`, `gemini`) so the local workflow works without extra manual setup.
+### Devcontainer
 
-The devcontainer also bind-mounts `~/.codex`, `~/.claude`, `~/.claude.json`, `~/.fly`, and `~/.gemini` from the host into the container so CLI settings and login state persist across rebuilds. Anthropic’s docs note Claude Code uses both `~/.claude/` and `~/.claude.json` for user-level state, so both are mounted for the `claude` CLI. `claude` also supports `ANTHROPIC_API_KEY`, but for interactive usage the normal flow is `/login`. `flyctl` will reuse the host login from `~/.fly`, with `FLY_ACCESS_TOKEN` still supported as an override.
+The repository includes a full devcontainer configuration. Opening the project in a supported IDE automatically provisions Redis, installs CLI tools (`flyctl`, `golangci-lint`, `govulncheck`, `gitleaks`, `xdg-open`) and AI coding CLIs (`codex`, `claude`, `gemini`). Host directories for CLI state (`~/.claude`, `~/.fly`, `~/.codex`, `~/.gemini`) are bind-mounted so login state persists across rebuilds. The `initializeCommand` creates placeholder host paths if missing.
 
-These mounts are tolerant of missing host state for Codex, Claude, Gemini, Fly, SSH, and Git config: the devcontainer `initializeCommand` creates placeholder host directories and files before the container starts. 1Password SSH signing is different: if you require signed commits, the host must provide `/opt/1Password/op-ssh-sign` and the relevant Git signer configuration. Without that signer, signed commits in the container will not work by design.
+For Fly Redis inspection from VS Code, use the `fly redis proxy` task or `make redis-proxy`. Both start the interactive `flyctl redis proxy` flow and print the local proxy address (typically `127.0.0.1:16379`).
 
-For Fly Redis inspection from VS Code, use the `fly redis proxy` task or run `make redis-proxy`. Both use the interactive `flyctl redis proxy` flow so Fly can prompt for the managed Redis database, print the local proxy port, and show the generated password. Point your Redis extension at the printed local host/port, typically `127.0.0.1:16379`, and use the password shown by `flyctl`.
+**1Password SSH signing:** If you require signed commits, the host must provide `/opt/1Password/op-ssh-sign` and the relevant Git signer configuration. Without that signer, signed commits in the container will not work.
 
 ### Make Targets
 
@@ -177,6 +215,7 @@ For Fly Redis inspection from VS Code, use the `fly redis proxy` task or run `ma
 | `make vuln` | Run govulncheck against all packages |
 | `make secrets-scan` | Scan for leaked secrets with gitleaks |
 | `make check` | Run `fmt` + `test` + `build` |
+| `make ci-check` | Run the full local equivalent of CI checks |
 
 ### Pre-commit Hooks
 
@@ -184,36 +223,6 @@ For Fly Redis inspection from VS Code, use the `fly redis proxy` task or run `ma
 pre-commit install
 pre-commit run --all-files
 ```
-
----
-
-## Deployment
-
-ImSub ships with everything needed for [Fly.io](https://fly.io) deployment.
-
-### Included Files
-
-- `Dockerfile` — multi-stage build producing a minimal Alpine image
-- `fly.toml` — HTTP service configuration, health checks, and metrics scraping
-
-### Deploy Commands
-
-```bash
-make deploy     # Deploy to Fly.io
-make status     # Show app status
-make logs       # Show recent logs
-```
-
-### GitHub Actions Deploy Flow
-
-Push to `main` runs `CI`; if it passes, GitHub Actions deploys to Fly.io.
-
-
-### Health Check
-
-- **Endpoint:** `GET /healthz` (includes Redis connectivity check)
-- **Service check:** Fly polls `/healthz` every 30 seconds
-- **Machine check:** Verifies `/healthz` before completing a rollout
 
 ---
 
@@ -227,7 +236,9 @@ Push to `main` runs `CI`; if it passes, GitHub Actions deploys to Fly.io.
 
 ### Metrics
 
-Prometheus metrics are exposed at `GET /metrics` (configurable via `IMSUB_METRICS_PATH`).
+Prometheus metrics are exposed at `GET /metrics` when `IMSUB_METRICS_ENABLED=true` (default). The path is configurable via `IMSUB_METRICS_PATH`.
+
+Key metrics include:
 
 | Metric | Type | Description |
 |--------|------|-------------|
@@ -239,6 +250,16 @@ Prometheus metrics are exposed at `GET /metrics` (configurable via `IMSUB_METRIC
 | `imsub_telegram_webhook_updates_total` | Counter | Telegram webhook updates received |
 | `imsub_background_jobs_total` | Counter | Background job executions |
 | `imsub_background_job_duration_seconds` | Histogram | Background job latency |
+| `imsub_creator_token_refresh_total` | Counter | Creator token refresh attempts |
+| `imsub_creator_auth_state_transitions_total` | Counter | Creator auth state transitions |
+| `imsub_creators_reconnect_required` | Gauge | Creators currently marked for reconnect |
+| `imsub_reset_executions_total` | Counter | Reset executions by scope and result |
+| `imsub_group_registrations_total` | Counter | Group registration attempts |
+| `imsub_group_unregistrations_total` | Counter | Group unregistration attempts |
+| `imsub_viewer_oauth_total` | Counter | Viewer OAuth completion results |
+| `imsub_creator_oauth_total` | Counter | Creator OAuth completion results |
+| `imsub_viewer_access_total` | Counter | Viewer access workflow results |
+| `imsub_reconciliation_repairs_total` | Counter | Integrity and repair counts |
 
 Fly.io's managed Prometheus can scrape this endpoint for Grafana dashboards.
 
@@ -270,20 +291,25 @@ The executable entrypoint is `cmd/imsub/main.go`. All internal packages are unde
 internal/
   app/             → process startup and top-level dependency wiring
   core/            → unified domain entities, use-case orchestration, and service contracts
+  usecase/         → transport-facing workflows built on core services
   jobs/            → background schedulers and periodic runtime jobs
+  events/          → shared event model used across use cases and workflows
+  operator/        → operator-facing read models projected from shared events
   adapter/
     redis/         → persistence adapter
     twitch/        → Twitch API/EventSub adapter
   transport/
     http/          → server, middleware, controllers, pages
-    telegram/      → Telegram client helpers, rate limiter, UI helpers
+    telegram/      → Telegram client helpers, bot handlers, group ops, UI helpers
   platform/
     config/        → env loading + validation
     observability/ → metrics + HTTP observability middleware
     i18n/          → localization catalogs + translation utilities
+    httputil/      → shared HTTP utilities (request ID, client IP, status recording)
+    ratelimit/     → keyed rate-limit coordination
 ```
 
-**In short:** `app` boots the process, `core` holds all business logic and storage interfaces, `jobs` handles periodic reconciliation, `transport` manages inputs and outputs (Telegram flows and HTTP webhooks), and `adapter` connects the interfaces to Redis and Twitch.
+**In short:** `app` boots the process, `core` holds all business logic and storage interfaces, `usecase` coordinates transport-facing workflows, `jobs` handles periodic reconciliation, `transport` manages inputs and outputs (Telegram flows and HTTP webhooks), and `adapter` connects the interfaces to Redis and Twitch.
 
 ### Request Model
 
@@ -295,11 +321,11 @@ The bot is mostly state-driven. User actions from Telegram callbacks/commands re
 |--------|------|-------------|
 | `GET` | `/` | Redirects to the GitHub repository homepage |
 | `GET` | `/healthz` | Liveness/readiness check (includes Redis ping) |
-| `GET` | `/metrics` | Prometheus metrics (Fly/Grafana scraping) |
+| `GET` | `/metrics` | Prometheus metrics when `IMSUB_METRICS_ENABLED=true` |
 | `GET` | `/auth/start/{state}` | Validates OAuth state, serves Twitch auth launch page |
 | `GET` | `/auth/callback` | Completes viewer or creator OAuth based on stored state |
 | `POST` | `/webhooks/twitch` | EventSub verification + notification intake |
-| `POST` | `/webhooks/telegram` | Telegram webhook intake (secret-token protected) |
+| `POST` | `/webhooks/telegram` | Telegram webhook intake when `IMSUB_TELEGRAM_WEBHOOK_SECRET` is configured |
 
 ### Redis Data Model
 
@@ -443,7 +469,6 @@ Planned improvements and open design questions, roughly ordered by impact.
 
 - **Grace period after subscription end**: instead of kicking immediately on `channel.subscription.end`, keep the user in the group for a configurable window (e.g. 24–72h) and kick only if they haven't resubscribed by then. Requires a delayed job or a scheduled sweep.
 - **EventSub secret rotation key-ring**: replace single static `IMSUB_TWITCH_EVENTSUB_SECRET` usage with a shared persisted key-ring (`current` + `previous`) so all app instances verify with dual-secret during a bounded grace period. Rotate on schedule (not every restart), explicitly migrate EventSub subscriptions to the new secret (create/verify/delete old), and retire the previous key after migration completes.
-- **Gift sub support**: handle `channel.subscription.gift` EventSub events so gifted subs grant group access the same way direct subs do.
 - **Subscription tier awareness**: different tiers could map to different groups or roles within the same group (e.g. Tier 3 gets a VIP group).
 
 ### Multi-entity support
