@@ -170,10 +170,10 @@ func TestRepairTrackedGroupReverseIndex(t *testing.T) {
 	s := newTestStore(t)
 	ctx := t.Context()
 
-	if err := s.UpsertCreator(ctx, core.Creator{ID: "c1", Name: "c1", OwnerTelegramID: 900}); err != nil {
+	if err := s.UpsertCreator(ctx, core.Creator{ID: "c1", TwitchLogin: "c1", OwnerTelegramID: 900}); err != nil {
 		t.Fatalf("UpsertCreator c1 failed: %v", err)
 	}
-	if err := s.UpsertCreator(ctx, core.Creator{ID: "c2", Name: "c2", OwnerTelegramID: 901}); err != nil {
+	if err := s.UpsertCreator(ctx, core.Creator{ID: "c2", TwitchLogin: "c2", OwnerTelegramID: 901}); err != nil {
 		t.Fatalf("UpsertCreator c2 failed: %v", err)
 	}
 	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 501, CreatorID: "c1", GroupName: "A"}); err != nil {
@@ -221,10 +221,10 @@ func TestListActiveCreatorGroups(t *testing.T) {
 	s := newTestStore(t)
 	ctx := t.Context()
 
-	if err := s.UpsertCreator(ctx, core.Creator{ID: "c2", Name: "beta", OwnerTelegramID: 902}); err != nil {
+	if err := s.UpsertCreator(ctx, core.Creator{ID: "c2", TwitchLogin: "beta", OwnerTelegramID: 902}); err != nil {
 		t.Fatalf("UpsertCreator c2 failed: %v", err)
 	}
-	if err := s.UpsertCreator(ctx, core.Creator{ID: "c1", Name: "alpha", OwnerTelegramID: 901}); err != nil {
+	if err := s.UpsertCreator(ctx, core.Creator{ID: "c1", TwitchLogin: "alpha", OwnerTelegramID: 901}); err != nil {
 		t.Fatalf("UpsertCreator c1 failed: %v", err)
 	}
 	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 501, CreatorID: "c1", GroupName: "A"}); err != nil {
@@ -258,7 +258,7 @@ func TestDeleteCreatorData(t *testing.T) {
 	s := newTestStore(t)
 	ctx := t.Context()
 
-	if err := s.UpsertCreator(ctx, core.Creator{ID: "c1", Name: "c1", OwnerTelegramID: 900}); err != nil {
+	if err := s.UpsertCreator(ctx, core.Creator{ID: "c1", TwitchLogin: "c1", OwnerTelegramID: 900}); err != nil {
 		t.Fatalf("UpsertCreator c1 failed: %v", err)
 	}
 	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 111, CreatorID: "c1", GroupName: "g-111"}); err != nil {
@@ -293,7 +293,7 @@ func TestUpsertCreatorClearsZeroTimestampFields(t *testing.T) {
 	noticeAt := authAt.Add(10 * time.Minute)
 	if err := s.UpsertCreator(ctx, core.Creator{
 		ID:              "c1",
-		Name:            "c1",
+		TwitchLogin:     "c1",
 		OwnerTelegramID: 900,
 		AuthStatus:      core.CreatorAuthReconnectRequired,
 		AuthErrorCode:   "token_refresh_failed",
@@ -306,7 +306,7 @@ func TestUpsertCreatorClearsZeroTimestampFields(t *testing.T) {
 
 	if err := s.UpsertCreator(ctx, core.Creator{
 		ID:              "c1",
-		Name:            "c1",
+		TwitchLogin:     "c1",
 		OwnerTelegramID: 900,
 		AuthStatus:      core.CreatorAuthHealthy,
 	}); err != nil {
@@ -352,7 +352,7 @@ func TestCreatorLogsInvalidOptionalTimestampFields(t *testing.T) {
 
 	if err := s.rdb.HSet(ctx, keyCreator("c1"), map[string]any{
 		"id":                       "c1",
-		"name":                     "c1",
+		"twitch_login":             "c1",
 		"owner_telegram_id":        "900",
 		"updated_at":               "2026-03-07T12:00:00Z",
 		"auth_status_changed_at":   "not-a-time",

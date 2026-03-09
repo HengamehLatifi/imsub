@@ -117,13 +117,13 @@ func TestBuildJoinTargets(t *testing.T) {
 
 	added := make([]int64, 0)
 	removed := make([]int64, 0)
-	svc := NewViewer(
+	svc := NewViewerService(
 		&viewerFakeStore{
 			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
 				return []Creator{
-					{ID: "c1", Name: "zeta"},
-					{ID: "c2", Name: "alpha"},
-					{ID: "c3", Name: "beta"},
+					{ID: "c1", TwitchLogin: "zeta"},
+					{ID: "c2", TwitchLogin: "alpha"},
+					{ID: "c3", TwitchLogin: "beta"},
 				}, nil
 			},
 			listGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
@@ -189,7 +189,7 @@ func TestBuildJoinTargets(t *testing.T) {
 func TestBuildJoinTargetsListError(t *testing.T) {
 	t.Parallel()
 
-	svc := NewViewer(
+	svc := NewViewerService(
 		&viewerFakeStore{
 			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
 				return nil, errors.New("boom")
@@ -214,12 +214,12 @@ func TestResolveJoinPlanDoesNotMutateTrackedMembership(t *testing.T) {
 
 	addCalls := 0
 	removeCalls := 0
-	svc := NewViewer(
+	svc := NewViewerService(
 		&viewerFakeStore{
 			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
 				return []Creator{
-					{ID: "c1", Name: "alpha"},
-					{ID: "c2", Name: "beta"},
+					{ID: "c1", TwitchLogin: "alpha"},
+					{ID: "c2", TwitchLogin: "beta"},
 				}, nil
 			},
 			listGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
@@ -272,12 +272,12 @@ func TestBuildJoinTargetsRecordsMetrics(t *testing.T) {
 	t.Parallel()
 
 	obs := &viewerObserverStub{}
-	svc := NewViewer(
+	svc := NewViewerService(
 		&viewerFakeStore{
 			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
 				return []Creator{
-					{ID: "c1", Name: "alpha"},
-					{ID: "c2", Name: "beta"},
+					{ID: "c1", TwitchLogin: "alpha"},
+					{ID: "c2", TwitchLogin: "beta"},
 				}, nil
 			},
 			listGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
@@ -331,11 +331,11 @@ func TestResolveJoinPlanUsesActiveCreatorGroupsStoreRead(t *testing.T) {
 
 	legacyCreatorReads := 0
 	legacyGroupReads := 0
-	svc := NewViewer(
+	svc := NewViewerService(
 		&viewerFakeStore{
 			listActiveCreatorGroups: func(_ context.Context) ([]ActiveCreatorGroups, error) {
 				return []ActiveCreatorGroups{{
-					Creator: Creator{ID: "c1", Name: "alpha"},
+					Creator: Creator{ID: "c1", TwitchLogin: "alpha"},
 					Groups:  []ManagedGroup{{ChatID: 101, CreatorID: "c1", GroupName: "A"}},
 				}}, nil
 			},

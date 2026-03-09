@@ -24,8 +24,8 @@ type resetStore interface {
 	DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (deletedCount int, deletedNames []string, err error)
 }
 
-// Resetter coordinates viewer and creator reset workflows.
-type Resetter struct {
+// ResetService coordinates viewer and creator reset workflows.
+type ResetService struct {
 	store         resetStore
 	kick          kickFunc
 	log           *slog.Logger
@@ -72,12 +72,12 @@ type BothResetResult struct {
 	DeletedNames    []string
 }
 
-// NewResetter creates a Resetter with optional logger fallback.
-func NewResetter(store resetStore, kick kickFunc, logger *slog.Logger) *Resetter {
+// NewResetService creates a reset service with optional logger fallback.
+func NewResetService(store resetStore, kick kickFunc, logger *slog.Logger) *ResetService {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Resetter{
+	return &ResetService{
 		store: store,
 		kick:  kick,
 		log:   logger,
@@ -85,12 +85,12 @@ func NewResetter(store resetStore, kick kickFunc, logger *slog.Logger) *Resetter
 }
 
 // SetEventSubCleaner wires an EventSub cleanup hook into creator reset flows.
-func (r *Resetter) SetEventSubCleaner(cleaner eventSubCleaner) {
+func (r *ResetService) SetEventSubCleaner(cleaner eventSubCleaner) {
 	r.eventSubClean = cleaner
 }
 
 // LoadScopes resolves whether viewer and/or creator state currently exists.
-func (r *Resetter) LoadScopes(ctx context.Context, telegramUserID int64) (ScopeState, error) {
+func (r *ResetService) LoadScopes(ctx context.Context, telegramUserID int64) (ScopeState, error) {
 	identity, hasIdentity, err := r.store.UserIdentity(ctx, telegramUserID)
 	if err != nil {
 		return ScopeState{}, fmt.Errorf("load user identity: %w", err)
@@ -108,12 +108,12 @@ func (r *Resetter) LoadScopes(ctx context.Context, telegramUserID int64) (ScopeS
 }
 
 // CountViewerGroups returns how many creator groups the user may be removed from.
-func (r *Resetter) CountViewerGroups(ctx context.Context, telegramUserID int64) (int, error) {
+func (r *ResetService) CountViewerGroups(ctx context.Context, telegramUserID int64) (int, error) {
 	return r.CountSubLinkedGroupsForUser(ctx, telegramUserID)
 }
 
 // ExecuteViewerReset removes viewer-linked data and group access.
-func (r *Resetter) ExecuteViewerReset(ctx context.Context, telegramUserID int64) (ViewerResetResult, error) {
+func (r *ResetService) ExecuteViewerReset(ctx context.Context, telegramUserID int64) (ViewerResetResult, error) {
 	identity, hasIdentity, err := r.store.UserIdentity(ctx, telegramUserID)
 	if err != nil {
 		return ViewerResetResult{}, fmt.Errorf("load user identity: %w", err)
@@ -134,7 +134,7 @@ func (r *Resetter) ExecuteViewerReset(ctx context.Context, telegramUserID int64)
 }
 
 // ExecuteCreatorReset removes creator-owned data.
-func (r *Resetter) ExecuteCreatorReset(ctx context.Context, telegramUserID int64) (CreatorResetResult, error) {
+func (r *ResetService) ExecuteCreatorReset(ctx context.Context, telegramUserID int64) (CreatorResetResult, error) {
 	deletedCount, deletedNames, err := r.DeleteCreatorData(ctx, telegramUserID)
 	if err != nil {
 		return CreatorResetResult{}, fmt.Errorf("delete creator data: %w", err)
@@ -146,7 +146,7 @@ func (r *Resetter) ExecuteCreatorReset(ctx context.Context, telegramUserID int64
 }
 
 // ExecuteBothReset performs viewer and creator reset scopes together.
-func (r *Resetter) ExecuteBothReset(ctx context.Context, telegramUserID int64) (BothResetResult, error) {
+func (r *ResetService) ExecuteBothReset(ctx context.Context, telegramUserID int64) (BothResetResult, error) {
 	identity, hasIdentity, err := r.store.UserIdentity(ctx, telegramUserID)
 	if err != nil {
 		return BothResetResult{}, fmt.Errorf("load user identity: %w", err)
@@ -177,7 +177,7 @@ func (r *Resetter) ExecuteBothReset(ctx context.Context, telegramUserID int64) (
 }
 
 // CountSubLinkedGroupsForUser returns the number of linked creator groups for the user.
-func (r *Resetter) CountSubLinkedGroupsForUser(ctx context.Context, telegramUserID int64) (int, error) {
+func (r *ResetService) CountSubLinkedGroupsForUser(ctx context.Context, telegramUserID int64) (int, error) {
 	groupIDs, _, err := r.resolveSubLinkedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
 		return 0, fmt.Errorf("sub linked group ids: %w", err)
@@ -188,7 +188,7 @@ func (r *Resetter) CountSubLinkedGroupsForUser(ctx context.Context, telegramUser
 // SubLinkedGroupIDsForUser returns sorted linked creator group IDs for the user.
 // Tracked membership is used as a fast path, then canonical subscription state
 // is consulted to fill gaps when the cache is stale or incomplete.
-func (r *Resetter) SubLinkedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, error) {
+func (r *ResetService) SubLinkedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, error) {
 	groupIDs, _, err := r.resolveSubLinkedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
 		return nil, err
@@ -196,7 +196,7 @@ func (r *Resetter) SubLinkedGroupIDsForUser(ctx context.Context, telegramUserID 
 	return groupIDs, nil
 }
 
-func (r *Resetter) resolveSubLinkedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, GroupResolutionStats, error) {
+func (r *ResetService) resolveSubLinkedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, GroupResolutionStats, error) {
 	groupIDs, err := r.store.ListTrackedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
 		return nil, GroupResolutionStats{}, fmt.Errorf("list tracked group ids for user: %w", err)
@@ -229,7 +229,7 @@ func (r *Resetter) resolveSubLinkedGroupIDsForUser(ctx context.Context, telegram
 	return groupIDs, stats, nil
 }
 
-func (r *Resetter) canonicalGroupIDsForUser(ctx context.Context, twitchUserID string) ([]int64, error) {
+func (r *ResetService) canonicalGroupIDsForUser(ctx context.Context, twitchUserID string) ([]int64, error) {
 	creators, err := r.store.ListActiveCreators(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list active creators: %w", err)
@@ -259,7 +259,7 @@ func (r *Resetter) canonicalGroupIDsForUser(ctx context.Context, twitchUserID st
 // plus any canonically-derived eligible groups, then deletes viewer data.
 // Untracked/observed-only group presence is ignored until a
 // creator-configurable policy exists.
-func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, telegramUserID int64) (int, GroupResolutionStats, error) {
+func (r *ResetService) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, telegramUserID int64) (int, GroupResolutionStats, error) {
 	groupIDs, stats, err := r.resolveSubLinkedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
 		return 0, GroupResolutionStats{}, fmt.Errorf("sub linked group ids: %w", err)
@@ -276,7 +276,7 @@ func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, tele
 }
 
 // DeleteCreatorData removes creator data owned by ownerTelegramID.
-func (r *Resetter) DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (deletedCount int, deletedNames []string, err error) {
+func (r *ResetService) DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (deletedCount int, deletedNames []string, err error) {
 	// Best-effort EventSub cleanup: load creator ID before deletion.
 	if r.eventSubClean != nil {
 		creator, hasCreator, loadErr := r.store.OwnedCreatorForUser(ctx, ownerTelegramID)

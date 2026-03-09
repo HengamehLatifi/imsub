@@ -140,10 +140,10 @@ func (u *GroupRegistrationUseCase) creatorNameByID(ctx context.Context, creatorI
 	if err != nil {
 		return "", fmt.Errorf("load creator %s: %w", creatorID, err)
 	}
-	if !ok || creator.Name == "" {
+	if !ok || creator.TwitchLogin == "" {
 		return creatorID, nil
 	}
-	return creator.Name, nil
+	return creator.TwitchLogin, nil
 }
 
 func (u *GroupRegistrationUseCase) recordOutcome(ctx context.Context, outcome string) {

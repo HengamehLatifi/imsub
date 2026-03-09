@@ -33,7 +33,7 @@ var (
 
 	defaultBundlePtr atomic.Pointer[goi18n.Bundle]
 	defaultInitOnce  sync.Once
-	defaultInitErr   error
+	errDefaultInit   error
 )
 
 // Ensure initializes the default i18n service bundle.
@@ -41,12 +41,12 @@ func Ensure() error {
 	defaultInitOnce.Do(func() {
 		bundle, err := loadBundle()
 		if err != nil {
-			defaultInitErr = err
+			errDefaultInit = err
 			return
 		}
 		defaultBundlePtr.Store(bundle)
 	})
-	return defaultInitErr
+	return errDefaultInit
 }
 
 // NormalizeLanguage returns the two-letter language code for the given input,

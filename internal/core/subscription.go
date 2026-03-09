@@ -15,14 +15,14 @@ type subscriptionStore interface {
 	UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 }
 
-// Subscription handles subscriber-end processing and derived notifications.
-type Subscription struct {
+// SubscriptionService handles subscriber-end processing and derived notifications.
+type SubscriptionService struct {
 	store subscriptionStore
 }
 
-// NewSubscription creates a Subscription service.
-func NewSubscription(store subscriptionStore) *Subscription {
-	return &Subscription{store: store}
+// NewSubscriptionService creates a subscription service.
+func NewSubscriptionService(store subscriptionStore) *SubscriptionService {
+	return &SubscriptionService{store: store}
 }
 
 // EndResult captures the direct result of processing a sub-end event.
@@ -46,7 +46,7 @@ type PreparedEnd struct {
 }
 
 // ProcessEnd applies subscriber-end effects and returns raw domain outcomes.
-func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID string) (EndResult, error) {
+func (s *SubscriptionService) ProcessEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID string) (EndResult, error) {
 	if err := s.store.RemoveCreatorSubscriber(ctx, broadcasterID, twitchUserID); err != nil {
 		return EndResult{}, fmt.Errorf("remove creator subscriber: %w", err)
 	}
@@ -56,7 +56,7 @@ func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcaste
 		return EndResult{}, fmt.Errorf("load creator: %w", err)
 	}
 	if broadcasterLogin == "" && creatorFound {
-		broadcasterLogin = creator.Name
+		broadcasterLogin = creator.TwitchLogin
 	}
 	groups, err := s.store.ListManagedGroupsByCreator(ctx, broadcasterID)
 	if err != nil {
@@ -92,7 +92,7 @@ func (s *Subscription) ProcessEnd(ctx context.Context, broadcasterID, broadcaste
 }
 
 // PrepareEnd converts subscriber-end outcomes into transport-ready data.
-func (s *Subscription) PrepareEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) (PreparedEnd, error) {
+func (s *SubscriptionService) PrepareEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) (PreparedEnd, error) {
 	res, err := s.ProcessEnd(ctx, broadcasterID, broadcasterLogin, twitchUserID)
 	if err != nil {
 		return PreparedEnd{}, fmt.Errorf("process end: %w", err)

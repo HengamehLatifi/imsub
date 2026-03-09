@@ -73,13 +73,13 @@ func TestRegisterGroupTakenByOther(t *testing.T) {
 	obs := &groupRegistrationObserverStub{}
 	uc := NewGroupRegistrationUseCase(groupRegistrationStoreStub{
 		ownedCreatorFn: func(context.Context, int64) (core.Creator, bool, error) {
-			return core.Creator{ID: "c1", Name: "owner"}, true, nil
+			return core.Creator{ID: "c1", TwitchLogin: "owner"}, true, nil
 		},
 		groupByChatFn: func(context.Context, int64) (core.ManagedGroup, bool, error) {
 			return core.ManagedGroup{ChatID: 100, CreatorID: "c2"}, true, nil
 		},
 		creatorFn: func(context.Context, string) (core.Creator, bool, error) {
-			return core.Creator{ID: "c2", Name: "other"}, true, nil
+			return core.Creator{ID: "c2", TwitchLogin: "other"}, true, nil
 		},
 		upsertFn: func(context.Context, core.ManagedGroup) error { return nil },
 	}, obs)
@@ -106,7 +106,7 @@ func TestRegisterGroupAlreadyLinkedNeedsSettingsCheckOnly(t *testing.T) {
 	obs := &groupRegistrationObserverStub{}
 	uc := NewGroupRegistrationUseCase(groupRegistrationStoreStub{
 		ownedCreatorFn: func(context.Context, int64) (core.Creator, bool, error) {
-			return core.Creator{ID: "c1", Name: "owner"}, true, nil
+			return core.Creator{ID: "c1", TwitchLogin: "owner"}, true, nil
 		},
 		groupByChatFn: func(context.Context, int64) (core.ManagedGroup, bool, error) {
 			return core.ManagedGroup{ChatID: 100, CreatorID: "c1", GroupName: "VIP"}, true, nil
@@ -141,7 +141,7 @@ func TestRegisterGroupRegistered(t *testing.T) {
 	obs := &groupRegistrationObserverStub{}
 	uc := NewGroupRegistrationUseCase(groupRegistrationStoreStub{
 		ownedCreatorFn: func(context.Context, int64) (core.Creator, bool, error) {
-			return core.Creator{ID: "c1", Name: "owner"}, true, nil
+			return core.Creator{ID: "c1", TwitchLogin: "owner"}, true, nil
 		},
 		groupByChatFn: func(context.Context, int64) (core.ManagedGroup, bool, error) {
 			return core.ManagedGroup{}, false, nil

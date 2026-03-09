@@ -11,7 +11,7 @@ import (
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/ratelimit"
 	"imsub/internal/transport/telegram/client"
-	"imsub/internal/transport/telegram/groupops"
+	telegramgroups "imsub/internal/transport/telegram/groups"
 	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
@@ -56,7 +56,7 @@ const (
 	btnCopyLink = "btn_copy_link"
 )
 
-// Dependencies configure Telegram flows controller construction.
+// Dependencies configure Telegram bot construction.
 type Dependencies struct {
 	Config              config.Config
 	Store               controllerStore
@@ -65,7 +65,7 @@ type Dependencies struct {
 	TelegramBot         *telego.Bot
 	TelegramHandler     *tghandler.BotHandler
 	TelegramClient      *client.Client
-	TelegramGroupOps    *groupops.Client
+	TelegramGroups      *telegramgroups.Client
 	CreatorStatus       *usecase.CreatorStatusUseCase
 	ViewerOAuth         *usecase.ViewerOAuthUseCase
 	CreatorOAuth        *usecase.CreatorOAuthUseCase
@@ -94,17 +94,17 @@ type controllerStore interface {
 	RemoveUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
 }
 
-// Controller owns Telegram business flows and callback orchestration.
-type Controller struct {
+// Bot owns Telegram bot flows and callback orchestration.
+type Bot struct {
 	cfg       config.Config
 	store     controllerStore
 	tgLimiter *ratelimit.RateLimiter
 	logger    *slog.Logger
 
-	tg               *telego.Bot
-	tgHandler        *tghandler.BotHandler
-	telegramClient   *client.Client
-	telegramGroupOps *groupops.Client
+	tg             *telego.Bot
+	tgHandler      *tghandler.BotHandler
+	telegramClient *client.Client
+	telegramGroups *telegramgroups.Client
 
 	creatorStatus       *usecase.CreatorStatusUseCase
 	viewerOAuth         *usecase.ViewerOAuthUseCase
@@ -119,13 +119,13 @@ type Controller struct {
 	backgroundWG sync.WaitGroup
 }
 
-// New creates a Telegram flows Controller from dependencies.
-func New(deps Dependencies) *Controller {
+// New creates a Telegram bot from dependencies.
+func New(deps Dependencies) *Bot {
 	logger := deps.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
-	c := &Controller{
+	c := &Bot{
 		cfg:                 deps.Config,
 		store:               deps.Store,
 		tgLimiter:           deps.TelegramLimiter,
@@ -133,7 +133,7 @@ func New(deps Dependencies) *Controller {
 		tg:                  deps.TelegramBot,
 		tgHandler:           deps.TelegramHandler,
 		telegramClient:      deps.TelegramClient,
-		telegramGroupOps:    deps.TelegramGroupOps,
+		telegramGroups:      deps.TelegramGroups,
 		creatorStatus:       deps.CreatorStatus,
 		viewerOAuth:         deps.ViewerOAuth,
 		creatorOAuth:        deps.CreatorOAuth,
@@ -147,7 +147,7 @@ func New(deps Dependencies) *Controller {
 	return c
 }
 
-func (c *Controller) log() *slog.Logger {
+func (c *Bot) log() *slog.Logger {
 	if c == nil || c.logger == nil {
 		return slog.Default()
 	}
@@ -155,7 +155,7 @@ func (c *Controller) log() *slog.Logger {
 }
 
 // SetViewerAccessUseCase wires the Telegram viewer access use case after controller construction.
-func (c *Controller) SetViewerAccessUseCase(uc *usecase.ViewerAccessUseCase) {
+func (c *Bot) SetViewerAccessUseCase(uc *usecase.ViewerAccessUseCase) {
 	if c == nil {
 		return
 	}
@@ -163,14 +163,14 @@ func (c *Controller) SetViewerAccessUseCase(uc *usecase.ViewerAccessUseCase) {
 }
 
 // SetResetUseCase wires the Telegram reset use case after controller construction.
-func (c *Controller) SetResetUseCase(uc *usecase.ResetUseCase) {
+func (c *Bot) SetResetUseCase(uc *usecase.ResetUseCase) {
 	if c == nil {
 		return
 	}
 	c.reset = uc
 }
 
-func (c *Controller) runBackground(ctx context.Context, fn func(context.Context)) {
+func (c *Bot) runBackground(ctx context.Context, fn func(context.Context)) {
 	if c == nil || fn == nil {
 		return
 	}
@@ -180,7 +180,7 @@ func (c *Controller) runBackground(ctx context.Context, fn func(context.Context)
 }
 
 // WaitBackground blocks until detached Telegram follow-up work completes or ctx ends.
-func (c *Controller) WaitBackground(ctx context.Context) error {
+func (c *Bot) WaitBackground(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
@@ -198,7 +198,7 @@ func (c *Controller) WaitBackground(ctx context.Context) error {
 }
 
 type viewerGroupOps struct {
-	controller *Controller
+	controller *Bot
 }
 
 func (g viewerGroupOps) IsGroupMember(ctx context.Context, groupChatID, telegramUserID int64) bool {
@@ -210,6 +210,6 @@ func (g viewerGroupOps) CreateInviteLink(ctx context.Context, groupChatID int64,
 }
 
 // ViewerGroupOps returns group operations used by viewer business logic.
-func (c *Controller) ViewerGroupOps() core.GroupOps {
+func (c *Bot) ViewerGroupOps() core.GroupOps {
 	return viewerGroupOps{controller: c}
 }

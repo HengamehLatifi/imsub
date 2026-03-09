@@ -55,7 +55,7 @@ func TestBuildGroupRegistrationViewAlreadyLinked(t *testing.T) {
 	t.Parallel()
 	if _, ok := buildGroupRegistrationView("en", 1, usecase.RegisterGroupResult{
 		Outcome: usecase.RegisterGroupOutcomeAlreadyLinked,
-		Creator: core.Creator{Name: "creator"},
+		Creator: core.Creator{TwitchLogin: "creator"},
 	}); !ok {
 		t.Fatal("buildGroupRegistrationView() ok = false, want true")
 	}
@@ -65,7 +65,7 @@ func TestBuildGroupRegistrationViewRegistered(t *testing.T) {
 	t.Parallel()
 	if _, ok := buildGroupRegistrationView("en", 1, usecase.RegisterGroupResult{
 		Outcome: usecase.RegisterGroupOutcomeRegistered,
-		Creator: core.Creator{Name: "creator"},
+		Creator: core.Creator{TwitchLogin: "creator"},
 	}); !ok {
 		t.Fatal("buildGroupRegistrationView() ok = false, want true")
 	}

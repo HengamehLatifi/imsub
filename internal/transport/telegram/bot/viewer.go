@@ -30,17 +30,17 @@ const (
 )
 
 // onStartCommand handles /start by initiating the viewer flow.
-func (c *Controller) onStartCommand(ctx *tghandler.Context, msg telego.Message) error {
+func (c *Bot) onStartCommand(ctx *tghandler.Context, msg telego.Message) error {
 	lang := i18n.NormalizeLanguage(msg.From.LanguageCode)
 	c.handleViewerStartForUser(ctx, msg.From.ID, 0, lang, msg.From.FirstName)
 	return nil
 }
 
-func (c *Controller) handleViewerStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
+func (c *Bot) handleViewerStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	return c.handleViewerStartForUser(ctx, telegramUserID, editMsgID, lang, "")
 }
 
-func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserID int64, editMsgID int, lang, userName string) string {
+func (c *Bot) handleViewerStartForUser(ctx context.Context, telegramUserID int64, editMsgID int, lang, userName string) string {
 	access, err := c.viewerAccess.LoadAccess(ctx, telegramUserID)
 	if err != nil {
 		view := buildViewerStatusErrorView(lang)
@@ -85,7 +85,7 @@ func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserI
 }
 
 // HandleViewerOAuthCallback executes viewer OAuth callback side effects and notifications.
-func (c *Controller) HandleViewerOAuthCallback(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, twitchDisplayName string, err error) {
+func (c *Bot) HandleViewerOAuthCallback(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, twitchDisplayName string, err error) {
 	res, flowErr := c.viewerOAuth.Complete(ctx, code, payload, lang)
 	if flowErr != nil {
 		var fe *core.FlowError

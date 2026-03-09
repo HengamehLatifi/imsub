@@ -71,7 +71,7 @@ func TestSubLinkedGroupIDsForUser(t *testing.T) {
 			7: {222, 111, 222},
 		},
 	}
-	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
+	svc := NewResetService(st, func(context.Context, int64, int64) error { return nil }, nil)
 
 	got, err := svc.SubLinkedGroupIDsForUser(t.Context(), 7)
 	if err != nil {
@@ -100,7 +100,7 @@ func TestSubLinkedGroupIDsForUserIncludesCanonicalFallback(t *testing.T) {
 			"c2": {"tw-7": false},
 		},
 	}
-	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
+	svc := NewResetService(st, func(context.Context, int64, int64) error { return nil }, nil)
 
 	got, err := svc.SubLinkedGroupIDsForUser(t.Context(), 7)
 	if err != nil {
@@ -130,7 +130,7 @@ func TestSubLinkedGroupIDsForUserUnionsTrackedAndCanonicalGroups(t *testing.T) {
 			"c1": {"tw-7": true},
 		},
 	}
-	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
+	svc := NewResetService(st, func(context.Context, int64, int64) error { return nil }, nil)
 
 	got, err := svc.SubLinkedGroupIDsForUser(t.Context(), 7)
 	if err != nil {
@@ -151,7 +151,7 @@ func TestResetViewerDataAndRevokeGroupAccess(t *testing.T) {
 		},
 	}
 	var kicked []int64
-	svc := NewResetter(
+	svc := NewResetService(
 		st,
 		func(_ context.Context, groupChatID int64, _ int64) error {
 			kicked = append(kicked, groupChatID)
@@ -189,7 +189,7 @@ func TestDeleteCreatorDataPassthrough(t *testing.T) {
 		deleteCreatorCount: 1,
 		deleteCreatorNames: []string{"creator-a"},
 	}
-	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
+	svc := NewResetService(st, func(context.Context, int64, int64) error { return nil }, nil)
 
 	count, names, err := svc.DeleteCreatorData(t.Context(), 42)
 	if err != nil {
@@ -203,7 +203,7 @@ func TestDeleteCreatorDataPassthrough(t *testing.T) {
 func TestExecuteBothReset(t *testing.T) {
 	t.Parallel()
 
-	svc := NewResetter(
+	svc := NewResetService(
 		&resetFakeStore{
 			getIdentityFn: func(context.Context, int64) (UserIdentity, bool, error) {
 				return UserIdentity{TwitchLogin: "viewer1"}, true, nil
@@ -261,7 +261,7 @@ func TestExecuteBothReset(t *testing.T) {
 func TestExecuteViewerResetNoIdentity(t *testing.T) {
 	t.Parallel()
 
-	svc := NewResetter(&resetFakeStore{}, func(context.Context, int64, int64) error { return nil }, nil)
+	svc := NewResetService(&resetFakeStore{}, func(context.Context, int64, int64) error { return nil }, nil)
 	got, err := svc.ExecuteViewerReset(t.Context(), 1)
 	if err != nil {
 		t.Fatalf("ExecuteViewerReset(%d) returned error %v, want nil", 1, err)
@@ -292,7 +292,7 @@ func TestDeleteCreatorDataCallsEventSubCleaner(t *testing.T) {
 		deleteCreatorCount: 1,
 		deleteCreatorNames: []string{"creator-a"},
 	}
-	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
+	svc := NewResetService(st, func(context.Context, int64, int64) error { return nil }, nil)
 	svc.SetEventSubCleaner(cleaner)
 
 	count, names, err := svc.DeleteCreatorData(t.Context(), 42)
@@ -318,7 +318,7 @@ func TestDeleteCreatorDataContinuesOnCleanerError(t *testing.T) {
 		deleteCreatorCount: 1,
 		deleteCreatorNames: []string{"creator-a"},
 	}
-	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, slog.New(slog.DiscardHandler))
+	svc := NewResetService(st, func(context.Context, int64, int64) error { return nil }, slog.New(slog.DiscardHandler))
 	svc.SetEventSubCleaner(cleaner)
 
 	count, _, err := svc.DeleteCreatorData(t.Context(), 42)
@@ -333,7 +333,7 @@ func TestDeleteCreatorDataContinuesOnCleanerError(t *testing.T) {
 func TestLoadScopesPropagatesError(t *testing.T) {
 	t.Parallel()
 
-	svc := NewResetter(
+	svc := NewResetService(
 		&resetFakeStore{
 			getIdentityFn: func(context.Context, int64) (UserIdentity, bool, error) {
 				return UserIdentity{}, false, errors.New("boom")

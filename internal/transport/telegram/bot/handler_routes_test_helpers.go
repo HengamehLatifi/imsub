@@ -16,7 +16,7 @@ import (
 	"imsub/internal/platform/i18n"
 	"imsub/internal/platform/ratelimit"
 	telegramclient "imsub/internal/transport/telegram/client"
-	telegramgroupops "imsub/internal/transport/telegram/groupops"
+	telegramgroups "imsub/internal/transport/telegram/groups"
 	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
@@ -65,7 +65,7 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 	limiter := ratelimit.NewRateLimiter(1000, 0)
 	t.Cleanup(limiter.Close)
 	tgClient := telegramclient.New(bot, limiter, nil)
-	tgGroupOps := telegramgroupops.New(bot, limiter, nil, store)
+	tgGroups := telegramgroups.New(bot, limiter, nil, store)
 
 	controller := New(Dependencies{
 		Config: config.Config{
@@ -76,13 +76,13 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 		TelegramBot:         bot,
 		TelegramHandler:     bh,
 		TelegramClient:      tgClient,
-		TelegramGroupOps:    tgGroupOps,
-		CreatorStatus:       usecase.NewCreatorStatusUseCase(core.NewCreator(store, routeTestEventSubChecker{}, nil), nil),
+		TelegramGroups:      tgGroups,
+		CreatorStatus:       usecase.NewCreatorStatusUseCase(core.NewCreatorService(store, routeTestEventSubChecker{}, nil), nil),
 		GroupRegistration:   usecase.NewGroupRegistrationUseCase(store, nil),
 		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(store, nil, nil),
 	})
-	controller.SetViewerAccessUseCase(usecase.NewViewerAccessUseCase(core.NewViewer(store, controller.ViewerGroupOps(), nil, nil), nil))
-	controller.SetResetUseCase(usecase.NewResetUseCase(core.NewResetter(store, controller.KickFromGroup, nil), nil))
+	controller.SetViewerAccessUseCase(usecase.NewViewerAccessUseCase(core.NewViewerService(store, controller.ViewerGroupOps(), nil, nil), nil))
+	controller.SetResetUseCase(usecase.NewResetUseCase(core.NewResetService(store, controller.KickFromGroup, nil), nil))
 	controller.RegisterTelegramHandlers()
 
 	return routeTestHarness{

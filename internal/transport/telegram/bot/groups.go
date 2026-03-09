@@ -39,7 +39,7 @@ func (c botGroupCapabilities) evaluation() groupCapabilityEvaluation {
 // onRegisterGroup handles /registergroup by binding the current Telegram group
 // to the caller's creator account. The caller must be a group admin and have
 // a linked creator record.
-func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message) error {
+func (c *Bot) onRegisterGroup(ctx *tghandler.Context, msg telego.Message) error {
 	if msg.From == nil {
 		return nil
 	}
@@ -107,7 +107,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 }
 
 // onUnregisterCommand handles /unregistergroup by unbinding the current Telegram group.
-func (c *Controller) onUnregisterCommand(ctx *tghandler.Context, msg telego.Message) error {
+func (c *Bot) onUnregisterCommand(ctx *tghandler.Context, msg telego.Message) error {
 	if msg.From == nil {
 		return nil
 	}
@@ -148,7 +148,7 @@ func (c *Controller) onUnregisterCommand(ctx *tghandler.Context, msg telego.Mess
 	return nil
 }
 
-func (c *Controller) activateCreatorOnFirstGroupRegistration(parent context.Context, creator core.Creator, groupChatID int64, lang string) {
+func (c *Bot) activateCreatorOnFirstGroupRegistration(parent context.Context, creator core.Creator, groupChatID int64, lang string) {
 	if parent == nil {
 		c.log().Warn("Activate creator called with nil context", "creator_id", creator.ID)
 		return
@@ -166,7 +166,7 @@ func (c *Controller) activateCreatorOnFirstGroupRegistration(parent context.Cont
 	c.log().Info("creator activated on first group registration", "creator_id", creator.ID, "group_chat_id", groupChatID, "subscriber_count", res.SubscriberCount)
 }
 
-func (c *Controller) onMyChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMemberUpdated) error {
+func (c *Bot) onMyChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMemberUpdated) error {
 	if update.Chat.Type == telego.ChatTypePrivate {
 		return nil
 	}
@@ -190,7 +190,7 @@ func (c *Controller) onMyChatMemberUpdated(ctx *tghandler.Context, update telego
 	return nil
 }
 
-func (c *Controller) onChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMemberUpdated) error {
+func (c *Bot) onChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMemberUpdated) error {
 	group, ok, err := c.store.ManagedGroupByChatID(ctx, update.Chat.ID)
 	if err != nil {
 		c.log().Warn("ManagedGroupByChatID for chat_member failed", "chat_id", update.Chat.ID, "error", err)
@@ -215,7 +215,7 @@ func (c *Controller) onChatMemberUpdated(ctx *tghandler.Context, update telego.C
 	return nil
 }
 
-func (c *Controller) onGroupMessage(ctx *tghandler.Context, msg telego.Message) error {
+func (c *Bot) onGroupMessage(ctx *tghandler.Context, msg telego.Message) error {
 	if msg.From == nil || msg.From.IsBot || strings.HasPrefix(msg.Text, "/") {
 		return nil
 	}
@@ -231,7 +231,7 @@ func (c *Controller) onGroupMessage(ctx *tghandler.Context, msg telego.Message) 
 	return nil
 }
 
-func (c *Controller) sendPostRegistrationSettingsCheck(ctx context.Context, groupChatID int64, groupMsgID int, lang, groupBaseText string) {
+func (c *Bot) sendPostRegistrationSettingsCheck(ctx context.Context, groupChatID int64, groupMsgID int, lang, groupBaseText string) {
 	warnings := c.evaluateGroupSettings(ctx, groupChatID).issues(lang)
 	if groupMsgID != 0 {
 		view := buildGroupSettingsCheckResultView(lang, groupBaseText, warnings)
@@ -239,7 +239,7 @@ func (c *Controller) sendPostRegistrationSettingsCheck(ctx context.Context, grou
 	}
 }
 
-func (c *Controller) sendPostRegistrationMessages(ctx context.Context, opts postRegistrationMessageOptions) {
+func (c *Bot) sendPostRegistrationMessages(ctx context.Context, opts postRegistrationMessageOptions) {
 	const draftID = 1
 
 	rendered := renderPostRegistrationCopy(postRegistrationCopyInput{
@@ -293,7 +293,7 @@ func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecas
 		view.text = fmt.Sprintf(i18n.Translate(lang, msgGroupTakenByOther), html.EscapeString(regRes.OtherCreatorName))
 		view.opts.ParseMode = telego.ModeHTML
 	case usecase.RegisterGroupOutcomeAlreadyLinked:
-		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupAlreadyLinked), html.EscapeString(regRes.Creator.Name))
+		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupAlreadyLinked), html.EscapeString(regRes.Creator.TwitchLogin))
 		view.text = joinNonEmptySections(
 			textSection{text: view.groupBaseText},
 			textSection{text: i18n.Translate(lang, msgGroupCheckingSettings)},
@@ -301,7 +301,7 @@ func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecas
 		view.opts.ParseMode = telego.ModeHTML
 		view.dispatchFollowUp = true
 	case usecase.RegisterGroupOutcomeRegistered:
-		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupRegistered), html.EscapeString(regRes.Creator.Name))
+		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupRegistered), html.EscapeString(regRes.Creator.TwitchLogin))
 		view.text = joinNonEmptySections(
 			textSection{text: view.groupBaseText},
 			textSection{text: i18n.Translate(lang, msgGroupCheckingSettings)},
@@ -315,7 +315,7 @@ func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecas
 	return view, true
 }
 
-func (c *Controller) dispatchGroupRegistrationFollowUp(ctx context.Context, msg telego.Message, lang string, regRes usecase.RegisterGroupResult, view groupRegistrationView, groupMsgID int) {
+func (c *Bot) dispatchGroupRegistrationFollowUp(ctx context.Context, msg telego.Message, lang string, regRes usecase.RegisterGroupResult, view groupRegistrationView, groupMsgID int) {
 	if !regRes.FollowUp.NeedsActivation && !regRes.FollowUp.NeedsSettingsCheck {
 		return
 	}
@@ -334,7 +334,7 @@ func (c *Controller) dispatchGroupRegistrationFollowUp(ctx context.Context, msg 
 				groupMsgID:    groupMsgID,
 				ownerUserID:   msg.From.ID,
 				groupName:     msg.Chat.Title,
-				creatorName:   regRes.Creator.Name,
+				creatorName:   regRes.Creator.TwitchLogin,
 				lang:          lang,
 				groupBaseText: view.groupBaseText,
 			})
@@ -436,7 +436,7 @@ func (e groupSettingsEvaluation) issues(lang string) []string {
 	return issues
 }
 
-func (c *Controller) evaluateGroupSettings(ctx context.Context, chatID int64) groupSettingsEvaluation {
+func (c *Bot) evaluateGroupSettings(ctx context.Context, chatID int64) groupSettingsEvaluation {
 	if waitErr := c.tgLimiter.Wait(ctx, chatID); waitErr != nil {
 		c.log().Warn("GetChat rate limit wait failed", "error", waitErr)
 		return groupSettingsEvaluation{}
@@ -455,7 +455,7 @@ func (c *Controller) evaluateGroupSettings(ctx context.Context, chatID int64) gr
 	}
 }
 
-func (c *Controller) evaluateBotGroupCapabilities(ctx context.Context, chatID int64) groupCapabilityEvaluation {
+func (c *Bot) evaluateBotGroupCapabilities(ctx context.Context, chatID int64) groupCapabilityEvaluation {
 	caps, err := c.loadBotGroupCapabilities(ctx, chatID)
 	if err != nil {
 		c.log().Warn("load bot group capabilities failed", "chat_id", chatID, "error", err)
@@ -464,7 +464,7 @@ func (c *Controller) evaluateBotGroupCapabilities(ctx context.Context, chatID in
 	return caps.evaluation()
 }
 
-func (c *Controller) loadBotGroupCapabilities(ctx context.Context, chatID int64) (botGroupCapabilities, error) {
+func (c *Bot) loadBotGroupCapabilities(ctx context.Context, chatID int64) (botGroupCapabilities, error) {
 	if c.tg == nil {
 		return botGroupCapabilities{}, errTelegramBotNotConfigured
 	}
@@ -499,7 +499,7 @@ func (c *Controller) loadBotGroupCapabilities(ctx context.Context, chatID int64)
 	}
 }
 
-func (c *Controller) groupMatchesActiveCreator(ctx context.Context, chatID int64) bool {
+func (c *Bot) groupMatchesActiveCreator(ctx context.Context, chatID int64) bool {
 	_, ok, err := c.store.ManagedGroupByChatID(ctx, chatID)
 	if err != nil {
 		c.log().Warn("ManagedGroupByChatID for my_chat_member check failed", "chat_id", chatID, "error", err)
@@ -508,7 +508,7 @@ func (c *Controller) groupMatchesActiveCreator(ctx context.Context, chatID int64
 	return ok
 }
 
-func (c *Controller) countUntrackedMembers(ctx context.Context, chatID int64) int {
+func (c *Bot) countUntrackedMembers(ctx context.Context, chatID int64) int {
 	count, err := c.store.CountUntrackedGroupMembers(ctx, chatID)
 	if err == nil {
 		return count
@@ -540,7 +540,7 @@ func (c *Controller) countUntrackedMembers(ctx context.Context, chatID int64) in
 	return untracked
 }
 
-func (c *Controller) observeGroupMember(ctx context.Context, chatID, telegramUserID int64, source, status string) {
+func (c *Bot) observeGroupMember(ctx context.Context, chatID, telegramUserID int64, source, status string) {
 	tracked, err := c.store.IsTrackedGroupMember(ctx, chatID, telegramUserID)
 	if err != nil {
 		c.log().Warn("IsTrackedGroupMember failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
@@ -561,7 +561,7 @@ func (c *Controller) observeGroupMember(ctx context.Context, chatID, telegramUse
 	}
 }
 
-func (c *Controller) removeObservedGroupMember(ctx context.Context, chatID, telegramUserID int64) {
+func (c *Bot) removeObservedGroupMember(ctx context.Context, chatID, telegramUserID int64) {
 	if err := c.store.RemoveTrackedGroupMember(ctx, chatID, telegramUserID); err != nil {
 		c.log().Warn("RemoveTrackedGroupMember failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
 	}

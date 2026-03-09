@@ -76,16 +76,16 @@ type oauthStore interface {
 	UpsertCreator(ctx context.Context, c Creator) error
 }
 
-// OAuth runs OAuth business logic independent from transport/UI concerns.
-type OAuth struct {
+// OAuthService runs OAuth business logic independent from transport/UI concerns.
+type OAuthService struct {
 	store oauthStore
 	api   TwitchAPI
 	now   func() time.Time
 }
 
-// NewOAuth creates an OAuth service with a UTC clock.
-func NewOAuth(store oauthStore, api TwitchAPI) *OAuth {
-	return &OAuth{
+// NewOAuthService creates an OAuth service with a UTC clock.
+func NewOAuthService(store oauthStore, api TwitchAPI) *OAuthService {
+	return &OAuthService{
 		store: store,
 		api:   api,
 		now: func() time.Time {
@@ -95,7 +95,7 @@ func NewOAuth(store oauthStore, api TwitchAPI) *OAuth {
 }
 
 // LinkViewer completes viewer OAuth linking and persists viewer identity.
-func (o *OAuth) LinkViewer(ctx context.Context, code string, payload OAuthStatePayload, lang string) (ViewerResult, error) {
+func (o *OAuthService) LinkViewer(ctx context.Context, code string, payload OAuthStatePayload, lang string) (ViewerResult, error) {
 	tok, err := o.api.ExchangeCode(ctx, code)
 	if err != nil {
 		return ViewerResult{}, &FlowError{Kind: KindTokenExchange, Cause: err}
@@ -120,7 +120,7 @@ func (o *OAuth) LinkViewer(ctx context.Context, code string, payload OAuthStateP
 }
 
 // LinkCreator completes creator OAuth linking and upserts creator data.
-func (o *OAuth) LinkCreator(ctx context.Context, code string, payload OAuthStatePayload) (CreatorResult, error) {
+func (o *OAuthService) LinkCreator(ctx context.Context, code string, payload OAuthStatePayload) (CreatorResult, error) {
 	tok, err := o.api.ExchangeCode(ctx, code)
 	if err != nil {
 		return CreatorResult{}, &FlowError{Kind: KindTokenExchange, Cause: err}
@@ -137,7 +137,7 @@ func (o *OAuth) LinkCreator(ctx context.Context, code string, payload OAuthState
 	now := o.now()
 	creator := Creator{
 		ID:              broadcasterID,
-		Name:            broadcasterLogin,
+		TwitchLogin:     broadcasterLogin,
 		OwnerTelegramID: payload.TelegramUserID,
 		AccessToken:     tok.AccessToken,
 		RefreshToken:    tok.RefreshToken,

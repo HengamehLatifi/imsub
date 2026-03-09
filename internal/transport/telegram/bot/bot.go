@@ -21,70 +21,70 @@ import (
 
 const msgCbRefreshed = "cb_refreshed"
 
-func (c *Controller) oauthStartURL(state string) string {
+func (c *Bot) oauthStartURL(state string) string {
 	return c.cfg.PublicBaseURL + "/auth/start/" + url.PathEscape(state)
 }
 
 // sendMsg sends a Telegram message and returns its message ID, or 0 on failure.
-func (c *Controller) sendMsg(ctx context.Context, chatID int64, text string, opts *client.MessageOptions) int {
+func (c *Bot) sendMsg(ctx context.Context, chatID int64, text string, opts *client.MessageOptions) int {
 	if c == nil || c.telegramClient == nil {
 		return 0
 	}
 	return c.telegramClient.Send(ctx, chatID, text, opts)
 }
 
-func (c *Controller) reply(ctx context.Context, chatID int64, messageID int, text string, opts *client.MessageOptions) {
+func (c *Bot) reply(ctx context.Context, chatID int64, messageID int, text string, opts *client.MessageOptions) {
 	if c == nil || c.telegramClient == nil {
 		return
 	}
 	c.telegramClient.Reply(ctx, chatID, messageID, text, opts)
 }
 
-func (c *Controller) sendDraft(ctx context.Context, chatID int64, draftID int, text string, opts *client.MessageOptions) {
+func (c *Bot) sendDraft(ctx context.Context, chatID int64, draftID int, text string, opts *client.MessageOptions) {
 	if c == nil || c.telegramClient == nil {
 		return
 	}
 	c.telegramClient.SendDraft(ctx, chatID, draftID, text, opts)
 }
 
-func (c *Controller) deleteMessage(ctx context.Context, chatID int64, messageID int) {
+func (c *Bot) deleteMessage(ctx context.Context, chatID int64, messageID int) {
 	if c == nil || c.telegramClient == nil {
 		return
 	}
 	c.telegramClient.Delete(ctx, chatID, messageID)
 }
 
-func (c *Controller) createInviteLink(ctx context.Context, groupChatID int64, telegramUserID int64, name string) (string, error) {
-	if c == nil || c.telegramGroupOps == nil {
+func (c *Bot) createInviteLink(ctx context.Context, groupChatID int64, telegramUserID int64, name string) (string, error) {
+	if c == nil || c.telegramGroups == nil {
 		return "", errTelegramBotNotConfigured
 	}
-	link, err := c.telegramGroupOps.CreateInviteLink(ctx, groupChatID, telegramUserID, name)
+	link, err := c.telegramGroups.CreateInviteLink(ctx, groupChatID, telegramUserID, name)
 	if err != nil {
 		return "", fmt.Errorf("create invite link from group ops: %w", err)
 	}
 	return link, nil
 }
 
-func (c *Controller) kickDisplacedUser(ctx context.Context, telegramUserID int64) {
-	if c == nil || c.telegramGroupOps == nil {
+func (c *Bot) kickDisplacedUser(ctx context.Context, telegramUserID int64) {
+	if c == nil || c.telegramGroups == nil {
 		return
 	}
-	c.telegramGroupOps.KickDisplacedUser(ctx, telegramUserID)
+	c.telegramGroups.KickDisplacedUser(ctx, telegramUserID)
 }
 
-func (c *Controller) isGroupMember(ctx context.Context, groupChatID, telegramUserID int64) bool {
-	if c == nil || c.telegramGroupOps == nil {
+func (c *Bot) isGroupMember(ctx context.Context, groupChatID, telegramUserID int64) bool {
+	if c == nil || c.telegramGroups == nil {
 		return false
 	}
-	return c.telegramGroupOps.IsGroupMember(ctx, groupChatID, telegramUserID)
+	return c.telegramGroups.IsGroupMember(ctx, groupChatID, telegramUserID)
 }
 
 // KickFromGroup removes a Telegram user from a managed group.
-func (c *Controller) KickFromGroup(ctx context.Context, groupChatID int64, telegramUserID int64) error {
-	if c == nil || c.telegramGroupOps == nil {
+func (c *Bot) KickFromGroup(ctx context.Context, groupChatID int64, telegramUserID int64) error {
+	if c == nil || c.telegramGroups == nil {
 		return nil
 	}
-	if err := c.telegramGroupOps.KickFromGroup(ctx, groupChatID, telegramUserID); err != nil {
+	if err := c.telegramGroups.KickFromGroup(ctx, groupChatID, telegramUserID); err != nil {
 		return fmt.Errorf("kick from group via group ops: %w", err)
 	}
 	return nil
@@ -99,15 +99,15 @@ func renderJoinButtons(targets core.JoinTargets, lang string) [][]telego.InlineK
 	return rows
 }
 
-func (c *Controller) answerCallback(ctx context.Context, callbackID, text string) {
+func (c *Bot) answerCallback(ctx context.Context, callbackID, text string) {
 	c.answerCallbackOpts(ctx, callbackID, text, false)
 }
 
-func (c *Controller) answerCallbackAlert(ctx context.Context, callbackID, text string) {
+func (c *Bot) answerCallbackAlert(ctx context.Context, callbackID, text string) {
 	c.answerCallbackOpts(ctx, callbackID, text, true)
 }
 
-func (c *Controller) answerCallbackOpts(ctx context.Context, callbackID, text string, showAlert bool) {
+func (c *Bot) answerCallbackOpts(ctx context.Context, callbackID, text string, showAlert bool) {
 	if c == nil || c.telegramClient == nil {
 		return
 	}
@@ -147,7 +147,7 @@ func creatorMainMenuMarkup(lang string) *telego.InlineKeyboardMarkup {
 	return telegramui.CreatorMainMenuMarkup(lang, creatorMainMenuCallbacks())
 }
 
-func (c *Controller) createOAuthState(ctx context.Context, payload core.OAuthStatePayload, ttl time.Duration) (string, error) {
+func (c *Bot) createOAuthState(ctx context.Context, payload core.OAuthStatePayload, ttl time.Duration) (string, error) {
 	state, err := NewSecureToken(24)
 	if err != nil {
 		return "", fmt.Errorf("generate secure token: %w", err)
@@ -158,7 +158,7 @@ func (c *Controller) createOAuthState(ctx context.Context, payload core.OAuthSta
 	return state, nil
 }
 
-func (c *Controller) invalidateOAuthState(ctx context.Context, state string) {
+func (c *Bot) invalidateOAuthState(ctx context.Context, state string) {
 	if state == "" {
 		return
 	}
@@ -169,7 +169,7 @@ func (c *Controller) invalidateOAuthState(ctx context.Context, state string) {
 }
 
 // RegisterTelegramHandlers binds Telegram commands, callbacks, and join-request handlers.
-func (c *Controller) RegisterTelegramHandlers() {
+func (c *Bot) RegisterTelegramHandlers() {
 	if c.tgHandler == nil {
 		return
 	}
@@ -197,7 +197,7 @@ func (c *Controller) RegisterTelegramHandlers() {
 	c.tgHandler.HandleMessage(c.onUnknownMessage, tghandler.And(tghandler.AnyMessage(), privateOnly))
 }
 
-func (c *Controller) onCallbackQuery(ctx context.Context, q telego.CallbackQuery) {
+func (c *Bot) onCallbackQuery(ctx context.Context, q telego.CallbackQuery) {
 	lang := i18n.NormalizeLanguage(q.From.LanguageCode)
 	var msgID int
 	if q.Message != nil {
@@ -224,7 +224,7 @@ func (c *Controller) onCallbackQuery(ctx context.Context, q telego.CallbackQuery
 	c.answerCallback(ctx, q.ID, callbackText)
 }
 
-func (c *Controller) dispatchCallbackAction(ctx context.Context, userID int64, editMsgID int, lang string, action callbackAction) string {
+func (c *Bot) dispatchCallbackAction(ctx context.Context, userID int64, editMsgID int, lang string, action callbackAction) string {
 	switch action.domain {
 	case callbackDomainViewer:
 		return c.handleViewerStart(ctx, userID, editMsgID, lang)
@@ -237,7 +237,7 @@ func (c *Controller) dispatchCallbackAction(ctx context.Context, userID int64, e
 	return ""
 }
 
-func (c *Controller) onUnknownMessage(ctx *tghandler.Context, message telego.Message) error {
+func (c *Bot) onUnknownMessage(ctx *tghandler.Context, message telego.Message) error {
 	lang := i18n.NormalizeLanguage(message.From.LanguageCode)
 	key := msgCmdHelp
 	if message.From != nil {
@@ -253,7 +253,7 @@ func (c *Controller) onUnknownMessage(ctx *tghandler.Context, message telego.Mes
 	return nil
 }
 
-func (c *Controller) helpMessageKey(ctx context.Context, telegramUserID int64) (string, error) {
+func (c *Bot) helpMessageKey(ctx context.Context, telegramUserID int64) (string, error) {
 	_, hasViewer, err := c.viewerAccess.LoadIdentity(ctx, telegramUserID)
 	if err != nil {
 		return "", fmt.Errorf("load viewer identity for help message: %w", err)
@@ -274,7 +274,7 @@ func (c *Controller) helpMessageKey(ctx context.Context, telegramUserID int64) (
 	}
 }
 
-func (c *Controller) onChatJoinRequest(ctx *tghandler.Context, req telego.ChatJoinRequest) error {
+func (c *Bot) onChatJoinRequest(ctx *tghandler.Context, req telego.ChatJoinRequest) error {
 	if req.InviteLink == nil || !strings.HasPrefix(req.InviteLink.Name, "imsub-") {
 		return nil
 	}
@@ -326,7 +326,7 @@ const (
 var errReconnectNotificationSend = errors.New("send reconnect-required notification")
 
 // HandleSubscriptionEnd revokes Telegram group access after a Twitch subscription ends.
-func (c *Controller) HandleSubscriptionEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) error {
+func (c *Bot) HandleSubscriptionEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) error {
 	res, err := c.subscriptionEnd.Prepare(ctx, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin)
 	if err != nil {
 		c.log().Warn("process subscription end failed", "error", err)

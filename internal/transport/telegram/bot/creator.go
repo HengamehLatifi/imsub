@@ -54,13 +54,13 @@ const (
 )
 
 // onCreatorCommand handles /creator by showing the creator home/status flow.
-func (c *Controller) onCreatorCommand(ctx *tghandler.Context, msg telego.Message) error {
+func (c *Bot) onCreatorCommand(ctx *tghandler.Context, msg telego.Message) error {
 	lang := i18n.NormalizeLanguage(msg.From.LanguageCode)
 	c.handleCreatorStart(ctx, msg.From.ID, 0, lang)
 	return nil
 }
 
-func (c *Controller) handleCreatorCallback(ctx context.Context, userID int64, editMsgID int, lang string, action callbackAction) string {
+func (c *Bot) handleCreatorCallback(ctx context.Context, userID int64, editMsgID int, lang string, action callbackAction) string {
 	switch action.verb {
 	case callbackVerbRefresh, callbackVerbRegister:
 		return c.handleCreatorStart(ctx, userID, editMsgID, lang)
@@ -95,7 +95,7 @@ func (c *Controller) handleCreatorCallback(ctx context.Context, userID int64, ed
 	return ""
 }
 
-func (c *Controller) handleCreatorStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
+func (c *Bot) handleCreatorStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	_, ok, err := c.creatorStatus.LoadOwnedCreator(ctx, telegramUserID)
 	if err != nil {
 		view := buildCreatorStatusErrorView(lang)
@@ -110,11 +110,11 @@ func (c *Controller) handleCreatorStart(ctx context.Context, telegramUserID int6
 	return c.replyCreatorOAuthPrompt(ctx, telegramUserID, editMsgID, lang, false)
 }
 
-func (c *Controller) handleCreatorReconnectStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
+func (c *Bot) handleCreatorReconnectStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	return c.replyCreatorOAuthPrompt(ctx, telegramUserID, editMsgID, lang, true)
 }
 
-func (c *Controller) creatorReconnectURL(ctx context.Context, telegramUserID int64, lang string) (string, error) {
+func (c *Bot) creatorReconnectURL(ctx context.Context, telegramUserID int64, lang string) (string, error) {
 	payload := core.OAuthStatePayload{
 		Mode:           core.OAuthModeCreator,
 		TelegramUserID: telegramUserID,
@@ -128,7 +128,7 @@ func (c *Controller) creatorReconnectURL(ctx context.Context, telegramUserID int
 	return c.oauthStartURL(state), nil
 }
 
-func (c *Controller) replyCreatorOAuthPrompt(ctx context.Context, telegramUserID int64, editMsgID int, lang string, reconnect bool) string {
+func (c *Bot) replyCreatorOAuthPrompt(ctx context.Context, telegramUserID int64, editMsgID int, lang string, reconnect bool) string {
 	payload := core.OAuthStatePayload{
 		Mode:            core.OAuthModeCreator,
 		TelegramUserID:  telegramUserID,
@@ -160,7 +160,7 @@ func (c *Controller) replyCreatorOAuthPrompt(ctx context.Context, telegramUserID
 	return ""
 }
 
-func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int64, editMsgID int, lang string) {
+func (c *Bot) replyCreatorStatus(ctx context.Context, telegramUserID int64, editMsgID int, lang string) {
 	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	res, err := c.creatorStatus.LoadStatus(statusCtx, telegramUserID)
@@ -201,7 +201,7 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 }
 
 // HandleCreatorOAuthCallback executes creator OAuth callback side effects and notifications.
-func (c *Controller) HandleCreatorOAuthCallback(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, creatorName string, err error) {
+func (c *Bot) HandleCreatorOAuthCallback(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, creatorName string, err error) {
 	res, flowErr := c.creatorOAuth.Complete(ctx, code, payload)
 	if flowErr != nil {
 		var fe *core.FlowError
@@ -238,7 +238,7 @@ func (c *Controller) HandleCreatorOAuthCallback(ctx context.Context, code string
 		return res.ResultLabel, "", fmt.Errorf("creator unexpected fail: %w", flowErr)
 	}
 	creator := res.Creator
-	c.log().Debug("creator oauth exchange success", "creator_id", creator.ID, "creator_login", creator.Name, "owner_telegram_id", creator.OwnerTelegramID)
+	c.log().Debug("creator oauth exchange success", "creator_id", creator.ID, "creator_login", creator.TwitchLogin, "owner_telegram_id", creator.OwnerTelegramID)
 	if payload.PromptMessageID != 0 {
 		c.deleteMessage(ctx, payload.TelegramUserID, payload.PromptMessageID)
 	}
@@ -247,7 +247,7 @@ func (c *Controller) HandleCreatorOAuthCallback(ctx context.Context, code string
 }
 
 // NotifyCreatorReconnectRequired sends a one-shot stale-auth notification to a creator owner.
-func (c *Controller) NotifyCreatorReconnectRequired(ctx context.Context, creator core.Creator) error {
+func (c *Bot) NotifyCreatorReconnectRequired(ctx context.Context, creator core.Creator) error {
 	lang := "en"
 	if identity, ok, err := c.store.UserIdentity(ctx, creator.OwnerTelegramID); err == nil && ok && identity.Language != "" {
 		lang = identity.Language
@@ -333,7 +333,7 @@ func CreatorGroupLines(lang, creatorName string, groups []core.ManagedGroup) str
 	return strings.Join(lines, "\n")
 }
 
-func (c *Controller) replyCreatorManagedGroups(ctx context.Context, telegramUserID int64, editMsgID int, lang, notice string) string {
+func (c *Bot) replyCreatorManagedGroups(ctx context.Context, telegramUserID int64, editMsgID int, lang, notice string) string {
 	res, ok := c.loadCreatorStatusResult(ctx, telegramUserID, lang, editMsgID)
 	if !ok {
 		return ""
@@ -346,7 +346,7 @@ func (c *Controller) replyCreatorManagedGroups(ctx context.Context, telegramUser
 	return ""
 }
 
-func (c *Controller) replyCreatorGroupUnregisterConfirm(ctx context.Context, telegramUserID int64, editMsgID int, lang string, groupChatID int64) string {
+func (c *Bot) replyCreatorGroupUnregisterConfirm(ctx context.Context, telegramUserID int64, editMsgID int, lang string, groupChatID int64) string {
 	res, ok := c.loadCreatorStatusResult(ctx, telegramUserID, lang, editMsgID)
 	if !ok {
 		return ""
@@ -354,7 +354,7 @@ func (c *Controller) replyCreatorGroupUnregisterConfirm(ctx context.Context, tel
 	return c.replyCreatorGroupUnregisterConfirmForResult(ctx, telegramUserID, editMsgID, lang, res, groupChatID)
 }
 
-func (c *Controller) replyCreatorGroupUnregisterConfirmForResult(
+func (c *Bot) replyCreatorGroupUnregisterConfirmForResult(
 	ctx context.Context,
 	telegramUserID int64,
 	editMsgID int,
@@ -383,7 +383,7 @@ func (c *Controller) replyCreatorGroupUnregisterConfirmForResult(
 	return ""
 }
 
-func (c *Controller) executeCreatorGroupUnregister(ctx context.Context, telegramUserID int64, editMsgID int, lang string, groupChatID int64) string {
+func (c *Bot) executeCreatorGroupUnregister(ctx context.Context, telegramUserID int64, editMsgID int, lang string, groupChatID int64) string {
 	if c.groupUnregistration == nil {
 		c.log().Warn("group unregistration use case unavailable")
 		return ""
@@ -415,7 +415,7 @@ func (c *Controller) executeCreatorGroupUnregister(ctx context.Context, telegram
 	}
 }
 
-func (c *Controller) loadCreatorStatusResult(ctx context.Context, telegramUserID int64, lang string, editMsgID int) (usecase.CreatorStatusResult, bool) {
+func (c *Bot) loadCreatorStatusResult(ctx context.Context, telegramUserID int64, lang string, editMsgID int) (usecase.CreatorStatusResult, bool) {
 	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	res, err := c.creatorStatus.LoadStatus(statusCtx, telegramUserID)
@@ -482,8 +482,8 @@ func buildCreatorPromptView(lang, authURL string, reconnect bool) sharedView {
 }
 
 func buildCreatorStatusView(lang, reconnectURL string, creator core.Creator, status core.Status, groups []core.ManagedGroup) sharedView {
-	profileDisplay := ui.TwitchProfileHTML(creator.Name)
-	groupLines := CreatorGroupLines(lang, creator.Name, groups)
+	profileDisplay := ui.TwitchProfileHTML(creator.TwitchLogin)
+	groupLines := CreatorGroupLines(lang, creator.TwitchLogin, groups)
 	authStatus := creatorAuthStatusText(status, lang)
 	statusDetails := creatorStatusDetailsText(status, lang)
 	statusMenuRows := creatorStatusMenuRows(lang, groups)
@@ -530,7 +530,7 @@ func buildCreatorManagedGroupsView(lang string, creator core.Creator, groups []c
 	if len(groups) == 0 {
 		text = i18n.Translate(lang, msgCreatorManageGroupsEmpty)
 	} else {
-		text = fmt.Sprintf(text, html.EscapeString(creator.Name))
+		text = fmt.Sprintf(text, html.EscapeString(creator.TwitchLogin))
 	}
 	if strings.TrimSpace(notice) != "" {
 		text = notice + "\n\n" + text
@@ -560,7 +560,7 @@ func buildCreatorGroupUnregisterConfirmView(lang string, creator core.Creator, g
 		text: fmt.Sprintf(
 			i18n.Translate(lang, msgCreatorUnregisterConfirm),
 			html.EscapeString(groupLabel),
-			html.EscapeString(creator.Name),
+			html.EscapeString(creator.TwitchLogin),
 		),
 		opts: client.MessageOptions{
 			ParseMode: telego.ModeHTML,

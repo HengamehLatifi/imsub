@@ -31,7 +31,7 @@ func TestBuildCreatorPromptView(t *testing.T) {
 func TestBuildCreatorStatusViewNoGroups(t *testing.T) {
 	t.Parallel()
 
-	view := buildCreatorStatusView("en", "", core.Creator{Name: "creator"}, core.Status{}, nil)
+	view := buildCreatorStatusView("en", "", core.Creator{TwitchLogin: "creator"}, core.Status{}, nil)
 	if view.text == "" || view.opts.Markup == nil {
 		t.Fatalf("buildCreatorStatusView() = %+v, want non-empty text and markup", view)
 	}
@@ -40,7 +40,7 @@ func TestBuildCreatorStatusViewNoGroups(t *testing.T) {
 func TestBuildCreatorStatusViewWithSingleGroup(t *testing.T) {
 	t.Parallel()
 
-	view := buildCreatorStatusView("en", "", core.Creator{Name: "creator"}, core.Status{}, []core.ManagedGroup{{ChatID: 1, GroupName: "VIP"}})
+	view := buildCreatorStatusView("en", "", core.Creator{TwitchLogin: "creator"}, core.Status{}, []core.ManagedGroup{{ChatID: 1, GroupName: "VIP"}})
 	if view.text == "" || view.opts.Markup == nil {
 		t.Fatalf("buildCreatorStatusView() = %+v, want non-empty text and markup", view)
 	}
@@ -49,7 +49,7 @@ func TestBuildCreatorStatusViewWithSingleGroup(t *testing.T) {
 func TestBuildCreatorStatusViewWithMultipleGroups(t *testing.T) {
 	t.Parallel()
 
-	view := buildCreatorStatusView("en", "", core.Creator{Name: "creator"}, core.Status{}, []core.ManagedGroup{{ChatID: 1, GroupName: "VIP"}, {ChatID: 2, GroupName: "Patrons"}})
+	view := buildCreatorStatusView("en", "", core.Creator{TwitchLogin: "creator"}, core.Status{}, []core.ManagedGroup{{ChatID: 1, GroupName: "VIP"}, {ChatID: 2, GroupName: "Patrons"}})
 	if view.text == "" || view.opts.Markup == nil {
 		t.Fatalf("buildCreatorStatusView() = %+v, want non-empty text and markup", view)
 	}
@@ -58,7 +58,7 @@ func TestBuildCreatorStatusViewWithMultipleGroups(t *testing.T) {
 func TestBuildCreatorManagedGroupsView(t *testing.T) {
 	t.Parallel()
 
-	view := buildCreatorManagedGroupsView("en", core.Creator{Name: "creator"}, []core.ManagedGroup{{ChatID: 1, GroupName: "VIP"}}, "")
+	view := buildCreatorManagedGroupsView("en", core.Creator{TwitchLogin: "creator"}, []core.ManagedGroup{{ChatID: 1, GroupName: "VIP"}}, "")
 	if view.text == "" || view.opts.Markup == nil {
 		t.Fatalf("buildCreatorManagedGroupsView() = %+v, want non-empty text and markup", view)
 	}
@@ -67,7 +67,7 @@ func TestBuildCreatorManagedGroupsView(t *testing.T) {
 func TestBuildCreatorGroupUnregisterConfirmView(t *testing.T) {
 	t.Parallel()
 
-	view := buildCreatorGroupUnregisterConfirmView("en", core.Creator{Name: "creator"}, core.ManagedGroup{ChatID: 1, GroupName: "VIP"}, creatorMenuCallback())
+	view := buildCreatorGroupUnregisterConfirmView("en", core.Creator{TwitchLogin: "creator"}, core.ManagedGroup{ChatID: 1, GroupName: "VIP"}, creatorMenuCallback())
 	if view.text == "" || view.opts.Markup == nil {
 		t.Fatalf("buildCreatorGroupUnregisterConfirmView() = %+v, want non-empty text and markup", view)
 	}

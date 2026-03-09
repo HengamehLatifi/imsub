@@ -22,7 +22,7 @@ func TestReconcileSubscribersOnceOK(t *testing.T) {
 	t.Parallel()
 
 	calls := 0
-	svc := NewReconciler(
+	svc := NewReconcilerService(
 		&reconcileFakeStore{
 			listActiveCreatorsFn: func(context.Context) ([]Creator, error) {
 				return []Creator{
@@ -49,7 +49,7 @@ func TestReconcileSubscribersOnceOK(t *testing.T) {
 func TestReconcileSubscribersOnceListError(t *testing.T) {
 	t.Parallel()
 
-	svc := NewReconciler(
+	svc := NewReconcilerService(
 		&reconcileFakeStore{
 			listActiveCreatorsFn: func(context.Context) ([]Creator, error) {
 				return nil, errors.New("redis down")
@@ -68,7 +68,7 @@ func TestReconcileSubscribersOnceListError(t *testing.T) {
 func TestReconcileSubscribersOncePartialFailure(t *testing.T) {
 	t.Parallel()
 
-	svc := NewReconciler(
+	svc := NewReconcilerService(
 		&reconcileFakeStore{
 			listActiveCreatorsFn: func(context.Context) ([]Creator, error) {
 				return []Creator{

@@ -50,7 +50,7 @@ func TestLoadStatus(t *testing.T) {
 
 	wantAuthAt := time.Date(2026, 3, 7, 17, 0, 0, 0, time.UTC)
 	wantSyncAt := time.Date(2026, 3, 7, 17, 5, 0, 0, time.UTC)
-	svc := NewCreator(
+	svc := NewCreatorService(
 		&creatorFakeStore{
 			countFn: func(_ context.Context, _ string) (int64, error) {
 				return 12, nil
@@ -97,7 +97,7 @@ func TestLoadStatus(t *testing.T) {
 func TestLoadStatusErrorsDegradeToUnknown(t *testing.T) {
 	t.Parallel()
 
-	svc := NewCreator(
+	svc := NewCreatorService(
 		&creatorFakeStore{
 			countFn: func(_ context.Context, _ string) (int64, error) {
 				return 0, errors.New("count failed")

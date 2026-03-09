@@ -1,3 +1,4 @@
+// Package telegram provides shared Telegram transport helpers.
 package telegram
 
 import (

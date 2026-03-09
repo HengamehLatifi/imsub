@@ -52,12 +52,12 @@ func (f *subscriptionFakeStore) UserIdentity(ctx context.Context, telegramUserID
 func TestProcessEndFound(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		getCreatorFn: func(_ context.Context, creatorID string) (Creator, bool, error) {
 			if creatorID != "c1" {
 				t.Fatalf("getCreatorFn() creatorID = %q, want \"c1\"", creatorID)
 			}
-			return Creator{ID: "c1", Name: "streamer1"}, true, nil
+			return Creator{ID: "c1", TwitchLogin: "streamer1"}, true, nil
 		},
 		listManagedGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
 			return []ManagedGroup{{ChatID: 123, CreatorID: creatorID, GroupName: "VIP"}}, nil
@@ -97,7 +97,7 @@ func TestProcessEndFound(t *testing.T) {
 func TestProcessEndNotFound(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		removeByTwitchFn: func(context.Context, string, string) (int64, bool, error) {
 			return 0, false, nil
 		},
@@ -115,7 +115,7 @@ func TestProcessEndNotFound(t *testing.T) {
 func TestProcessEndStoreError(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		removeByTwitchFn: func(context.Context, string, string) (int64, bool, error) {
 			return 0, false, errors.New("redis down")
 		},
@@ -130,7 +130,7 @@ func TestProcessEndStoreError(t *testing.T) {
 func TestProcessEndRemoveSubscriberError(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		removeCreatorSubscriberFn: func(context.Context, string, string) error {
 			return errors.New("remove subscriber failed")
 		},
@@ -145,7 +145,7 @@ func TestProcessEndRemoveSubscriberError(t *testing.T) {
 func TestProcessEndGetCreatorError(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		getCreatorFn: func(context.Context, string) (Creator, bool, error) {
 			return Creator{}, false, errors.New("creator lookup failed")
 		},
@@ -160,7 +160,7 @@ func TestProcessEndGetCreatorError(t *testing.T) {
 func TestProcessEndGetIdentityError(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		getCreatorFn: func(_ context.Context, creatorID string) (Creator, bool, error) {
 			return Creator{ID: creatorID}, true, nil
 		},
@@ -181,9 +181,9 @@ func TestProcessEndGetIdentityError(t *testing.T) {
 func TestPrepareEndFoundResult(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		getCreatorFn: func(_ context.Context, creatorID string) (Creator, bool, error) {
-			return Creator{ID: creatorID, Name: "creator_login"}, true, nil
+			return Creator{ID: creatorID, TwitchLogin: "creator_login"}, true, nil
 		},
 		listManagedGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
 			return []ManagedGroup{{ChatID: 100, CreatorID: creatorID, GroupName: "VIP"}}, nil
@@ -214,7 +214,7 @@ func TestPrepareEndFoundResult(t *testing.T) {
 func TestPrepareEndNotFound(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		removeByTwitchFn: func(context.Context, string, string) (int64, bool, error) {
 			return 0, false, nil
 		},
@@ -232,7 +232,7 @@ func TestPrepareEndNotFound(t *testing.T) {
 func TestPrepareEndPropagatesError(t *testing.T) {
 	t.Parallel()
 
-	svc := NewSubscription(&subscriptionFakeStore{
+	svc := NewSubscriptionService(&subscriptionFakeStore{
 		removeByTwitchFn: func(context.Context, string, string) (int64, bool, error) {
 			return 0, false, errors.New("boom")
 		},

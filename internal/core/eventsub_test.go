@@ -191,7 +191,7 @@ func TestEnsureEventSubForCreators(t *testing.T) {
 	t.Parallel()
 
 	var got []string
-	svc := NewEventSub(
+	svc := NewEventSubService(
 		&eventsubFakeStore{},
 		&eventSubFakeTwitch{
 			createEventSubFn: func(_ context.Context, broadcasterID, eventType, version string) error {
@@ -233,7 +233,7 @@ func TestDumpCurrentSubscribersRefreshOnUnauthorized(t *testing.T) {
 		finalHasData  bool
 		updatedTokens bool
 	)
-	svc := NewEventSub(
+	svc := NewEventSubService(
 		&eventsubFakeStore{
 			newSubscriberDumpKey: func(creatorID string) string { return "tmp:" + creatorID },
 			addToSubscriberDumpFn: func(_ context.Context, _ string, userIDs []string) error {
@@ -297,7 +297,7 @@ func TestDumpCurrentSubscribersRefreshOnUnauthorized(t *testing.T) {
 func TestIsEventSubActiveForCreator(t *testing.T) {
 	t.Parallel()
 
-	svc := NewEventSub(
+	svc := NewEventSubService(
 		&eventsubFakeStore{},
 		&eventSubFakeTwitch{
 			enabledEventSubFn: func(_ context.Context, _ string) (map[string]bool, error) {
@@ -322,7 +322,7 @@ func TestIsEventSubActiveForCreator(t *testing.T) {
 func TestDumpCurrentSubscribersPropagatesStoreErrors(t *testing.T) {
 	t.Parallel()
 
-	svc := NewEventSub(
+	svc := NewEventSubService(
 		&eventsubFakeStore{
 			newSubscriberDumpKey: func(string) string { return "tmp:c1" },
 			addToSubscriberDumpFn: func(context.Context, string, []string) error {
@@ -352,7 +352,7 @@ func TestDumpCurrentSubscribersMarksReconnectRequiredOnceOnRefreshFailure(t *tes
 	)
 	notifier := &eventSubFakeNotifier{}
 	observer := &eventSubFakeObserver{}
-	svc := NewEventSub(
+	svc := NewEventSubService(
 		&eventsubFakeStore{
 			markReconnectFn: func(_ context.Context, creatorID, errorCode string, _ time.Time) (bool, error) {
 				markCalls++
@@ -434,7 +434,7 @@ func TestDeleteEventSubsForCreator(t *testing.T) {
 	t.Parallel()
 
 	var deleted []string
-	svc := NewEventSub(
+	svc := NewEventSubService(
 		&eventsubFakeStore{},
 		&eventSubFakeTwitch{
 			listEventSubsFn: func(_ context.Context, opts ListEventSubsOpts) ([]EventSubSubscription, error) {
@@ -471,7 +471,7 @@ func TestReconcileEventSubsOnce(t *testing.T) {
 		deleted []string
 		created []string
 	)
-	svc := NewEventSub(
+	svc := NewEventSubService(
 		&eventsubFakeStore{
 			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
 				return []Creator{{ID: "c1"}, {ID: "c2"}}, nil

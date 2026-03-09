@@ -29,9 +29,9 @@ func TestNewSecureToken(t *testing.T) {
 func TestOAuthStartURLEscapesState(t *testing.T) {
 	t.Parallel()
 
-	c := &Controller{cfg: config.Config{PublicBaseURL: "https://example.com"}}
+	c := &Bot{cfg: config.Config{PublicBaseURL: "https://example.com"}}
 	state := "a/b c"
 	if got, want := c.oauthStartURL(state), "https://example.com/auth/start/a%2Fb%20c"; got != want {
-		t.Errorf("(*Controller).oauthStartURL(%q) = %q, want %q", state, got, want)
+		t.Errorf("(*Bot).oauthStartURL(%q) = %q, want %q", state, got, want)
 	}
 }

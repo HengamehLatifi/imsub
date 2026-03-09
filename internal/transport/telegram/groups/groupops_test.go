@@ -1,4 +1,4 @@
-package groupops
+package groups
 
 import (
 	"testing"

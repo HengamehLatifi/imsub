@@ -157,7 +157,7 @@ func TestRegisterTelegramHandlersCreatorManageGroupsFlow(t *testing.T) {
 	h := newRouteTestHarness(t)
 	h.store.setOwnedCreator(core.Creator{
 		ID:              "creator-1",
-		Name:            "streamer",
+		TwitchLogin:     "streamer",
 		OwnerTelegramID: 77,
 	})
 	h.store.setManagedGroup(core.ManagedGroup{
@@ -255,7 +255,7 @@ func TestRegisterTelegramHandlersCreatorSingleGroupGoesStraightToConfirm(t *test
 	h := newRouteTestHarness(t)
 	h.store.setOwnedCreator(core.Creator{
 		ID:              "creator-1",
-		Name:            "streamer",
+		TwitchLogin:     "streamer",
 		OwnerTelegramID: 77,
 	})
 	h.store.setManagedGroup(core.ManagedGroup{
@@ -301,7 +301,7 @@ func TestRegisterTelegramHandlersResetViewerOriginBackReturnsViewerMenu(t *testi
 	})
 	h.store.setOwnedCreator(core.Creator{
 		ID:              "creator-1",
-		Name:            "streamer",
+		TwitchLogin:     "streamer",
 		OwnerTelegramID: 55,
 	})
 
@@ -363,7 +363,7 @@ func TestRegisterTelegramHandlersResetCreatorOriginBackReturnsCreatorMenu(t *tes
 	})
 	h.store.setOwnedCreator(core.Creator{
 		ID:              "creator-1",
-		Name:            "streamer",
+		TwitchLogin:     "streamer",
 		OwnerTelegramID: 77,
 	})
 
@@ -458,7 +458,7 @@ func TestRegisterTelegramHandlersRegisterGroupBlocksWhenBotLacksRequiredPermissi
 	h := newRouteTestHarness(t)
 	h.store.setOwnedCreator(core.Creator{
 		ID:              "creator-1",
-		Name:            "streamer",
+		TwitchLogin:     "streamer",
 		OwnerTelegramID: 77,
 	})
 	h.caller.setBotUserID(999)
@@ -491,7 +491,7 @@ func TestRegisterTelegramHandlersUnregisterGroupCommand(t *testing.T) {
 	h := newRouteTestHarness(t)
 	h.store.setOwnedCreator(core.Creator{
 		ID:              "creator-1",
-		Name:            "streamer",
+		TwitchLogin:     "streamer",
 		OwnerTelegramID: 77,
 	})
 	h.store.setManagedGroup(core.ManagedGroup{

@@ -48,8 +48,8 @@ type CreatorService struct {
 	log     *slog.Logger
 }
 
-// NewCreator builds a CreatorService with optional logger fallback.
-func NewCreator(store creatorStore, checker eventSubChecker, logger *slog.Logger) *CreatorService {
+// NewCreatorService builds a creator service with optional logger fallback.
+func NewCreatorService(store creatorStore, checker eventSubChecker, logger *slog.Logger) *CreatorService {
 	if logger == nil {
 		logger = slog.Default()
 	}

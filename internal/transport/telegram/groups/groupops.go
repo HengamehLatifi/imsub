@@ -1,4 +1,4 @@
-package groupops
+package groups
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"imsub/internal/core"
-	telegram "imsub/internal/transport/telegram"
+	"imsub/internal/transport/telegram"
 
 	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"

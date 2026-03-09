@@ -33,7 +33,7 @@ func TestCreatorOAuthCompleteSuccess(t *testing.T) {
 	uc := NewCreatorOAuthUseCase(creatorOAuthServiceStub{
 		linkCreatorFn: func(context.Context, string, core.OAuthStatePayload) (core.CreatorResult, error) {
 			return core.CreatorResult{
-				Creator:                core.Creator{ID: "c1", Name: "alpha", OwnerTelegramID: 7},
+				Creator:                core.Creator{ID: "c1", TwitchLogin: "alpha", OwnerTelegramID: 7},
 				BroadcasterDisplayName: "Alpha",
 			}, nil
 		},

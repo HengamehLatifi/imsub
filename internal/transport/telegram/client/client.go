@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	telegram "imsub/internal/transport/telegram"
+	"imsub/internal/transport/telegram"
 
 	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"

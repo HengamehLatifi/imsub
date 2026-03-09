@@ -21,20 +21,20 @@ type reconcilerStore interface {
 	ListActiveCreators(ctx context.Context) ([]Creator, error)
 }
 
-// Reconciler periodically refreshes subscriber caches for active creators.
-type Reconciler struct {
+// ReconcilerService periodically refreshes subscriber caches for active creators.
+type ReconcilerService struct {
 	store   reconcilerStore
 	dump    dumpFunc
 	log     *slog.Logger
 	timeout time.Duration
 }
 
-// NewReconciler creates a Reconciler with default timeout settings.
-func NewReconciler(store reconcilerStore, dump dumpFunc, logger *slog.Logger) *Reconciler {
+// NewReconcilerService creates a reconciler service with default timeout settings.
+func NewReconcilerService(store reconcilerStore, dump dumpFunc, logger *slog.Logger) *ReconcilerService {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Reconciler{
+	return &ReconcilerService{
 		store:   store,
 		dump:    dump,
 		log:     logger,
@@ -43,7 +43,7 @@ func NewReconciler(store reconcilerStore, dump dumpFunc, logger *slog.Logger) *R
 }
 
 // ReconcileSubscribersOnce refreshes subscriber caches for all active creators once.
-func (r *Reconciler) ReconcileSubscribersOnce(ctx context.Context) error {
+func (r *ReconcilerService) ReconcileSubscribersOnce(ctx context.Context) error {
 	creators, err := r.store.ListActiveCreators(ctx)
 	if err != nil {
 		r.log.Warn("reconciler ListActiveCreators failed", "error", err)

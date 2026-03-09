@@ -71,7 +71,7 @@ func TestCreatorStatusLoadStatusLoaded(t *testing.T) {
 	obs := &creatorStatusObserverStub{}
 	uc := NewCreatorStatusUseCase(creatorStatusServiceStub{
 		loadOwnedCreatorFn: func(context.Context, int64) (core.Creator, bool, error) {
-			return core.Creator{ID: "c1", Name: "alpha"}, true, nil
+			return core.Creator{ID: "c1", TwitchLogin: "alpha"}, true, nil
 		},
 		loadManagedGroupsFn: func(context.Context, string) ([]core.ManagedGroup, error) {
 			return []core.ManagedGroup{{ChatID: 1, GroupName: "VIP"}}, nil
@@ -100,7 +100,7 @@ func TestCreatorStatusLoadStatusDegraded(t *testing.T) {
 	obs := &creatorStatusObserverStub{}
 	uc := NewCreatorStatusUseCase(creatorStatusServiceStub{
 		loadOwnedCreatorFn: func(context.Context, int64) (core.Creator, bool, error) {
-			return core.Creator{ID: "c1", Name: "alpha"}, true, nil
+			return core.Creator{ID: "c1", TwitchLogin: "alpha"}, true, nil
 		},
 		loadManagedGroupsFn: func(context.Context, string) ([]core.ManagedGroup, error) {
 			return nil, errors.New("groups boom")

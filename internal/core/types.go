@@ -41,7 +41,7 @@ const (
 // Creator represents a Twitch broadcaster/creator and their OAuth state.
 type Creator struct {
 	ID              string
-	Name            string
+	TwitchLogin     string
 	OwnerTelegramID int64
 	AccessToken     string `json:"access_token"`  // #nosec G117 -- stored OAuth field name must match serialized schema
 	RefreshToken    string `json:"refresh_token"` // #nosec G117 -- stored OAuth field name must match serialized schema

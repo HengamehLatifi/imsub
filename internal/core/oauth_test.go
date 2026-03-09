@@ -80,7 +80,7 @@ func (f *fakeAPI) DeleteEventSub(_ context.Context, _ string) error {
 func TestLinkViewerSuccess(t *testing.T) {
 	t.Parallel()
 
-	svc := NewOAuth(
+	svc := NewOAuthService(
 		&oauthFakeStore{
 			saveViewerFn: func(_ context.Context, telegramUserID int64, twitchUserID, twitchLogin, language string) (int64, error) {
 				if telegramUserID != 7 || twitchUserID != "tw-1" || twitchLogin != "login1" || language != "en" {
@@ -120,7 +120,7 @@ func TestLinkViewerSuccess(t *testing.T) {
 func TestLinkCreatorScopeMissing(t *testing.T) {
 	t.Parallel()
 
-	svc := NewOAuth(
+	svc := NewOAuthService(
 		&oauthFakeStore{},
 		&fakeAPI{
 			exchangeFn: func(_ context.Context, _ string) (TokenResponse, error) {
@@ -144,7 +144,7 @@ func TestLinkCreatorUpsertSetsUpdatedAt(t *testing.T) {
 
 	wantNow := time.Date(2026, 3, 4, 12, 0, 0, 0, time.UTC)
 	var saved Creator
-	svc := NewOAuth(
+	svc := NewOAuthService(
 		&oauthFakeStore{
 			upsertFn: func(_ context.Context, c Creator) error {
 				saved = c
@@ -188,7 +188,7 @@ func TestLinkCreatorReconnectClearsAuthDegradation(t *testing.T) {
 	t.Parallel()
 
 	var saved Creator
-	svc := NewOAuth(
+	svc := NewOAuthService(
 		&oauthFakeStore{
 			getOwnedFn: func(_ context.Context, ownerTelegramID int64) (Creator, bool, error) {
 				if ownerTelegramID != 99 {
@@ -196,7 +196,7 @@ func TestLinkCreatorReconnectClearsAuthDegradation(t *testing.T) {
 				}
 				return Creator{
 					ID:              "creator-1",
-					Name:            "creator_login",
+					TwitchLogin:     "creator_login",
 					OwnerTelegramID: 99,
 					AuthStatus:      CreatorAuthReconnectRequired,
 					AuthErrorCode:   "token_refresh_failed",
@@ -236,7 +236,7 @@ func TestLinkCreatorReconnectClearsAuthDegradation(t *testing.T) {
 func TestLinkCreatorReconnectRejectsDifferentCreator(t *testing.T) {
 	t.Parallel()
 
-	svc := NewOAuth(
+	svc := NewOAuthService(
 		&oauthFakeStore{
 			getOwnedFn: func(_ context.Context, _ int64) (Creator, bool, error) {
 				return Creator{ID: "creator-1", OwnerTelegramID: 99}, true, nil

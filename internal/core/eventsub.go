@@ -33,8 +33,8 @@ type creatorReconnectNotifier interface {
 const creatorAuthErrorTokenRefreshFailed = "token_refresh_failed"
 const eventSubDeletePause = 50 * time.Millisecond
 
-// EventSub manages EventSub lifecycle checks, creation, and subscriber dumps.
-type EventSub struct {
+// EventSubService manages EventSub lifecycle checks, creation, and subscriber dumps.
+type EventSubService struct {
 	store    eventSubStore
 	twitch   TwitchAPI
 	log      *slog.Logger
@@ -42,12 +42,12 @@ type EventSub struct {
 	observer events.EventSink
 }
 
-// NewEventSub creates an EventSub service with default timings.
-func NewEventSub(store eventSubStore, twitchAPI TwitchAPI, logger *slog.Logger) *EventSub {
+// NewEventSubService creates an EventSub service with default timings.
+func NewEventSubService(store eventSubStore, twitchAPI TwitchAPI, logger *slog.Logger) *EventSubService {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &EventSub{
+	return &EventSubService{
 		store:  store,
 		twitch: twitchAPI,
 		log:    logger,
@@ -55,17 +55,17 @@ func NewEventSub(store eventSubStore, twitchAPI TwitchAPI, logger *slog.Logger) 
 }
 
 // SetNotifier wires a reconnect-required notifier into EventSub flows.
-func (e *EventSub) SetNotifier(notifier creatorReconnectNotifier) {
+func (e *EventSubService) SetNotifier(notifier creatorReconnectNotifier) {
 	e.notifier = notifier
 }
 
 // SetObserver wires metrics/observability hooks into EventSub flows.
-func (e *EventSub) SetObserver(observer events.EventSink) {
+func (e *EventSubService) SetObserver(observer events.EventSink) {
 	e.observer = observer
 }
 
 // SyncReconnectRequiredGauge refreshes the reconnect-required gauge from storage.
-func (e *EventSub) SyncReconnectRequiredGauge(ctx context.Context) {
+func (e *EventSubService) SyncReconnectRequiredGauge(ctx context.Context) {
 	if e == nil || e.observer == nil {
 		return
 	}
@@ -82,7 +82,7 @@ func (e *EventSub) SyncReconnectRequiredGauge(ctx context.Context) {
 
 // ReconcileEventSubsOnce performs a single reconciliation pass: removes orphaned
 // EventSub subscriptions and creates missing ones for active creators.
-func (e *EventSub) ReconcileEventSubsOnce(ctx context.Context) error {
+func (e *EventSubService) ReconcileEventSubsOnce(ctx context.Context) error {
 	creators, err := e.store.ListActiveCreators(ctx)
 	if err != nil {
 		return fmt.Errorf("list active creators: %w", err)
@@ -170,7 +170,7 @@ func (e *EventSub) ReconcileEventSubsOnce(ctx context.Context) error {
 
 // DeleteEventSubsForCreator removes all EventSub subscriptions for a given creator.
 // Best-effort: logs failures but continues.
-func (e *EventSub) DeleteEventSubsForCreator(ctx context.Context, creatorID string) error {
+func (e *EventSubService) DeleteEventSubsForCreator(ctx context.Context, creatorID string) error {
 	subs, err := e.twitch.ListEventSubs(ctx, ListEventSubsOpts{UserID: creatorID})
 	if err != nil {
 		return fmt.Errorf("list eventsubs for delete: %w", err)
@@ -209,14 +209,14 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 }
 
 // FindInactiveEventSubCreators returns creators missing required EventSub subscriptions.
-func (e *EventSub) FindInactiveEventSubCreators(ctx context.Context, creators []Creator) []Creator {
+func (e *EventSubService) FindInactiveEventSubCreators(ctx context.Context, creators []Creator) []Creator {
 	inactive := make([]Creator, 0, len(creators))
 	for _, c := range creators {
 		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		active, err := e.IsEventSubActiveForCreator(checkCtx, c.ID)
 		cancel()
 		if err != nil {
-			e.log.Warn("eventsub verify failed", "creator_id", c.ID, "creator_name", c.Name, "error", err)
+			e.log.Warn("eventsub verify failed", "creator_id", c.ID, "creator_login", c.TwitchLogin, "error", err)
 			inactive = append(inactive, c)
 			continue
 		}
@@ -228,7 +228,7 @@ func (e *EventSub) FindInactiveEventSubCreators(ctx context.Context, creators []
 }
 
 // EnsureEventSubForCreators creates required EventSub subscriptions for creators.
-func (e *EventSub) EnsureEventSubForCreators(ctx context.Context, creators []Creator) error {
+func (e *EventSubService) EnsureEventSubForCreators(ctx context.Context, creators []Creator) error {
 	if len(creators) == 0 {
 		return nil
 	}
@@ -244,7 +244,7 @@ func (e *EventSub) EnsureEventSubForCreators(ctx context.Context, creators []Cre
 }
 
 // IsEventSubActiveForCreator reports whether required EventSub types are active.
-func (e *EventSub) IsEventSubActiveForCreator(ctx context.Context, creatorID string) (bool, error) {
+func (e *EventSubService) IsEventSubActiveForCreator(ctx context.Context, creatorID string) (bool, error) {
 	foundTypes, err := e.twitch.EnabledEventSubTypes(ctx, creatorID)
 	if err != nil {
 		return false, fmt.Errorf("fetch enabled eventsub types: %w", err)
@@ -260,7 +260,7 @@ func (e *EventSub) IsEventSubActiveForCreator(ctx context.Context, creatorID str
 }
 
 // DumpCurrentSubscribers refreshes the cached subscriber set for creator and returns count.
-func (e *EventSub) DumpCurrentSubscribers(ctx context.Context, creator Creator) (int, error) {
+func (e *EventSubService) DumpCurrentSubscribers(ctx context.Context, creator Creator) (int, error) {
 	if ctx == nil {
 		return 0, errNilContext
 	}
@@ -313,7 +313,7 @@ func (e *EventSub) DumpCurrentSubscribers(ctx context.Context, creator Creator) 
 	return total, nil
 }
 
-func (e *EventSub) refreshCreatorAccessToken(ctx context.Context, creator Creator) (Creator, error) {
+func (e *EventSubService) refreshCreatorAccessToken(ctx context.Context, creator Creator) (Creator, error) {
 	tok, err := e.twitch.RefreshToken(ctx, creator.RefreshToken)
 	if err != nil {
 		e.emitTokenRefresh(ctx, "failed")
@@ -337,7 +337,7 @@ func (e *EventSub) refreshCreatorAccessToken(ctx context.Context, creator Creato
 	return creator, nil
 }
 
-func (e *EventSub) clearCreatorReconnectRequired(ctx context.Context, creator Creator, at time.Time) error {
+func (e *EventSubService) clearCreatorReconnectRequired(ctx context.Context, creator Creator, at time.Time) error {
 	if creator.AuthStatus != CreatorAuthReconnectRequired {
 		return nil
 	}
@@ -349,7 +349,7 @@ func (e *EventSub) clearCreatorReconnectRequired(ctx context.Context, creator Cr
 	return nil
 }
 
-func (e *EventSub) markCreatorReconnectRequired(ctx context.Context, creator Creator, errorCode string) {
+func (e *EventSubService) markCreatorReconnectRequired(ctx context.Context, creator Creator, errorCode string) {
 	at := time.Now().UTC()
 	transitioned, err := e.store.MarkCreatorAuthReconnectRequired(ctx, creator.ID, errorCode, at)
 	if err != nil {
@@ -379,7 +379,7 @@ func isUnauthorized(err error) bool {
 	return err != nil && errors.Is(err, ErrUnauthorized)
 }
 
-func (e *EventSub) emitTokenRefresh(ctx context.Context, result string) {
+func (e *EventSubService) emitTokenRefresh(ctx context.Context, result string) {
 	if e == nil || e.observer == nil {
 		return
 	}
@@ -389,7 +389,7 @@ func (e *EventSub) emitTokenRefresh(ctx context.Context, result string) {
 	})
 }
 
-func (e *EventSub) emitAuthTransition(ctx context.Context, from, to, reason string) {
+func (e *EventSubService) emitAuthTransition(ctx context.Context, from, to, reason string) {
 	if e == nil || e.observer == nil {
 		return
 	}
@@ -403,7 +403,7 @@ func (e *EventSub) emitAuthTransition(ctx context.Context, from, to, reason stri
 	})
 }
 
-func (e *EventSub) emitReconnectNotification(ctx context.Context, result string) {
+func (e *EventSubService) emitReconnectNotification(ctx context.Context, result string) {
 	if e == nil || e.observer == nil {
 		return
 	}

@@ -49,7 +49,7 @@ type Controller struct {
 	subEnd  subEndHandler
 }
 
-// New creates an HTTP Controller from the provided dependencies.
+// New creates an HTTP controller from the provided dependencies.
 func New(deps Dependencies) *Controller {
 	logger := deps.Logger
 	if logger == nil {

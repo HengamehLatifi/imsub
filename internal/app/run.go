@@ -24,7 +24,7 @@ import (
 	"imsub/internal/transport/http/server"
 	telegrambot "imsub/internal/transport/telegram/bot"
 	telegramclient "imsub/internal/transport/telegram/client"
-	telegramgroupops "imsub/internal/transport/telegram/groupops"
+	telegramgroups "imsub/internal/transport/telegram/groups"
 	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
@@ -99,11 +99,11 @@ func Run() error {
 		return err
 	}
 
-	eventSubSvc := core.NewEventSub(s, twitchAPI, logger)
-	reconcileSvc := core.NewReconciler(s, eventSubSvc.DumpCurrentSubscribers, logger)
-	subscriptionSvc := core.NewSubscription(s)
-	oauthSvc := core.NewOAuth(s, twitchAPI)
-	creatorSvc := core.NewCreator(s, eventSubSvc, logger)
+	eventSubSvc := core.NewEventSubService(s, twitchAPI, logger)
+	reconcileSvc := core.NewReconcilerService(s, eventSubSvc.DumpCurrentSubscribers, logger)
+	subscriptionSvc := core.NewSubscriptionService(s)
+	oauthSvc := core.NewOAuthService(s, twitchAPI)
+	creatorSvc := core.NewCreatorService(s, eventSubSvc, logger)
 	creatorStatusUC := usecase.NewCreatorStatusUseCase(creatorSvc, eventSink)
 	viewerOAuthUC := usecase.NewViewerOAuthUseCase(oauthSvc, eventSink)
 	creatorOAuthUC := usecase.NewCreatorOAuthUseCase(oauthSvc, eventSink)
@@ -116,7 +116,7 @@ func Run() error {
 	eventSubTask := jobs.NewEventSubTask(eventSubSvc)
 	integrityTask := jobs.NewIntegrityAuditTask(s, logger, eventSink)
 	tgClient := telegramclient.New(tgBot, tgLimiter, logger)
-	tgGroupOps := telegramgroupops.New(tgBot, tgLimiter, logger, s)
+	tgGroups := telegramgroups.New(tgBot, tgLimiter, logger, s)
 
 	flowController := telegrambot.New(telegrambot.Dependencies{
 		Config:              cfg,
@@ -126,7 +126,7 @@ func Run() error {
 		TelegramBot:         tgBot,
 		TelegramHandler:     tgHandler,
 		TelegramClient:      tgClient,
-		TelegramGroupOps:    tgGroupOps,
+		TelegramGroups:      tgGroups,
 		CreatorStatus:       creatorStatusUC,
 		ViewerOAuth:         viewerOAuthUC,
 		CreatorOAuth:        creatorOAuthUC,
@@ -135,8 +135,8 @@ func Run() error {
 		CreatorActivation:   creatorActivationUC,
 		SubscriptionEnd:     subscriptionEndUC,
 	})
-	viewerAccessUC := usecase.NewViewerAccessUseCase(core.NewViewer(s, flowController.ViewerGroupOps(), logger, eventSink), eventSink)
-	resetSvc := core.NewResetter(s, flowController.KickFromGroup, logger)
+	viewerAccessUC := usecase.NewViewerAccessUseCase(core.NewViewerService(s, flowController.ViewerGroupOps(), logger, eventSink), eventSink)
+	resetSvc := core.NewResetService(s, flowController.KickFromGroup, logger)
 	resetSvc.SetEventSubCleaner(eventSubSvc)
 	flowController.SetViewerAccessUseCase(viewerAccessUC)
 	flowController.SetResetUseCase(usecase.NewResetUseCase(resetSvc, eventSink))
