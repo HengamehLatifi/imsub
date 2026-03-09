@@ -1,6 +1,11 @@
 package bot
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"imsub/internal/core"
+)
 
 func TestJoinNonEmptyLines(t *testing.T) {
 	t.Parallel()
@@ -76,5 +81,32 @@ func TestBuildSubscriptionEndViewIncludesSubscribeMarkup(t *testing.T) {
 	view := buildSubscriptionEndView("en", "viewer1", "streamer1")
 	if view.text == "" || view.opts.Markup == nil {
 		t.Fatalf("buildSubscriptionEndView() = %+v, want text and markup", view)
+	}
+}
+
+func TestBuildSubscriptionEndViewEscapesViewerLogin(t *testing.T) {
+	t.Parallel()
+
+	view := buildSubscriptionEndView("en", "<viewer>", "streamer1")
+	if !strings.Contains(view.text, "&lt;viewer&gt;") {
+		t.Fatalf("buildSubscriptionEndView() text = %q, want escaped viewer login", view.text)
+	}
+	if strings.Contains(view.text, "<viewer>") {
+		t.Fatalf("buildSubscriptionEndView() text = %q, did not expect raw viewer login", view.text)
+	}
+}
+
+func TestBuildSubscriptionStartViewIncludesJoinButtons(t *testing.T) {
+	t.Parallel()
+
+	view := buildSubscriptionStartView("en", "streamer1", core.JoinTargets{
+		JoinLinks: []core.JoinLink{{
+			CreatorName: "streamer1",
+			GroupName:   "VIP",
+			InviteLink:  "https://t.me/+invite",
+		}},
+	})
+	if view.text == "" || view.opts.Markup == nil {
+		t.Fatalf("buildSubscriptionStartView() = %+v, want text and markup", view)
 	}
 }

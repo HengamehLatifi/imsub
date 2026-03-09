@@ -13,6 +13,7 @@ import (
 type viewerAccessServiceStub struct {
 	loadIdentityFn     func(context.Context, int64) (core.UserIdentity, bool, error)
 	buildJoinTargetsFn func(context.Context, int64, string) (core.JoinTargets, error)
+	buildForCreatorFn  func(context.Context, string, int64, string) (core.JoinTargets, error)
 }
 
 func (s viewerAccessServiceStub) LoadIdentity(ctx context.Context, telegramUserID int64) (core.UserIdentity, bool, error) {
@@ -23,8 +24,44 @@ func (s viewerAccessServiceStub) BuildJoinTargets(ctx context.Context, telegramU
 	return s.buildJoinTargetsFn(ctx, telegramUserID, twitchUserID)
 }
 
+func (s viewerAccessServiceStub) BuildJoinTargetsForCreator(ctx context.Context, creatorID string, telegramUserID int64, twitchUserID string) (core.JoinTargets, error) {
+	return s.buildForCreatorFn(ctx, creatorID, telegramUserID, twitchUserID)
+}
+
 type viewerAccessObserverStub struct {
 	events []events.Event
+}
+
+func TestViewerAccessLoadAccessForCreator(t *testing.T) {
+	t.Parallel()
+
+	obs := &viewerAccessObserverStub{}
+	uc := NewViewerAccessUseCase(viewerAccessServiceStub{
+		loadIdentityFn: func(context.Context, int64) (core.UserIdentity, bool, error) {
+			return core.UserIdentity{TelegramUserID: 7, TwitchUserID: "tw-1"}, true, nil
+		},
+		buildJoinTargetsFn: func(context.Context, int64, string) (core.JoinTargets, error) {
+			t.Fatal("BuildJoinTargets should not be used in creator-scoped load")
+			return core.JoinTargets{}, nil
+		},
+		buildForCreatorFn: func(_ context.Context, creatorID string, telegramUserID int64, twitchUserID string) (core.JoinTargets, error) {
+			if creatorID != "c1" || telegramUserID != 7 || twitchUserID != "tw-1" {
+				t.Fatalf("BuildJoinTargetsForCreator(%q, %d, %q) got unexpected args", creatorID, telegramUserID, twitchUserID)
+			}
+			return core.JoinTargets{JoinLinks: []core.JoinLink{{CreatorName: "alpha"}}}, nil
+		},
+	}, obs)
+
+	got, err := uc.LoadAccessForCreator(t.Context(), "c1", 7)
+	if err != nil {
+		t.Fatalf("LoadAccessForCreator() error = %v", err)
+	}
+	if !got.HasIdentity || len(got.Targets.JoinLinks) != 1 {
+		t.Fatalf("LoadAccessForCreator() = %+v, want linked identity with one join link", got)
+	}
+	if len(obs.events) != 0 {
+		t.Fatalf("LoadAccessForCreator() emitted events = %+v, want none", obs.events)
+	}
 }
 
 func (o *viewerAccessObserverStub) Emit(_ context.Context, evt events.Event) {

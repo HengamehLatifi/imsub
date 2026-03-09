@@ -153,11 +153,30 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 				WriteHTTPError(w, BadGatewayError("store error", err))
 				return
 			}
+			// The subscriber cache update is the authoritative side effect here.
+			// Proactive DMs are best-effort and must not fail the webhook.
+			if c.subStart != nil {
+				if err := c.subStart(
+					ctx,
+					env.Subscription.Condition.BroadcasterUserID,
+					env.Event.BroadcasterUserLogin,
+					env.Event.UserID,
+					env.Event.UserLogin,
+				); err != nil {
+					logger.Warn("subscription start follow-up failed",
+						"broadcaster_id", env.Subscription.Condition.BroadcasterUserID,
+						"user_id", env.Event.UserID,
+						"error", err,
+					)
+				}
+			}
 			if !markProcessed() {
 				return
 			}
 			result = eventStatusNotificationSubscribe
 		case core.EventTypeChannelSubEnd:
+			// Subscription end revokes access, so a processing failure must fail
+			// the webhook instead of silently skipping enforcement.
 			if err := c.subEnd(
 				ctx,
 				env.Subscription.Condition.BroadcasterUserID,

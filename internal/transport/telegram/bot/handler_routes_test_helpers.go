@@ -476,6 +476,15 @@ func (s *routeTestStore) Creator(_ context.Context, creatorID string) (core.Crea
 	return s.ownedCreator, true, nil
 }
 
+func (s *routeTestStore) ResolveTelegramUserIDByTwitch(_ context.Context, twitchUserID string) (int64, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.viewerIdentityOK || s.viewerIdentity.TwitchUserID != twitchUserID {
+		return 0, false, nil
+	}
+	return s.viewerIdentity.TelegramUserID, true, nil
+}
+
 func (s *routeTestStore) ManagedGroupByChatID(_ context.Context, chatID int64) (core.ManagedGroup, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -645,6 +654,9 @@ func (routeTestStoreStub) LoadCreatorsByIDs(context.Context, []string, func(core
 	return nil, nil
 }
 func (routeTestStoreStub) UpsertCreator(context.Context, core.Creator) error { return nil }
+func (routeTestStoreStub) ResolveTelegramUserIDByTwitch(context.Context, string) (int64, bool, error) {
+	return 0, false, nil
+}
 func (routeTestStoreStub) DeleteCreatorData(context.Context, int64) (int, []string, error) {
 	return 0, nil, nil
 }

@@ -161,16 +161,17 @@ func Run() error {
 	flowController.RegisterTelegramHandlers()
 
 	httpController := handlers.New(handlers.Dependencies{
-		Config:          cfg,
-		Store:           s,
-		Logger:          logger,
-		Events:          eventSink,
-		TelegramUpdates: tgUpdates,
-		ViewerOAuth:     flowController.HandleViewerOAuthCallback,
-		CreatorOAuth:    flowController.HandleCreatorOAuthCallback,
-		SubscriptionEnd: flowController.HandleSubscriptionEnd,
-		BlocklistBan:    blocklistSvc.HandleBanEvent,
-		BlocklistUnban:  blocklistSvc.HandleUnbanEvent,
+		Config:            cfg,
+		Store:             s,
+		Logger:            logger,
+		Events:            eventSink,
+		TelegramUpdates:   tgUpdates,
+		ViewerOAuth:       flowController.HandleViewerOAuthCallback,
+		CreatorOAuth:      flowController.HandleCreatorOAuthCallback,
+		SubscriptionStart: flowController.HandleSubscriptionStart,
+		SubscriptionEnd:   flowController.HandleSubscriptionEnd,
+		BlocklistBan:      blocklistSvc.HandleBanEvent,
+		BlocklistUnban:    blocklistSvc.HandleUnbanEvent,
 	})
 
 	g, gctx := errgroup.WithContext(ctx)

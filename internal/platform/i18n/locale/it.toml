@@ -271,6 +271,9 @@ other = "✅ <b>Niente da reimpostare al momento.</b>\n\nNon ho trovato dati vie
 [sub_end_partial]
 other = "⚠️ <b>Abbonamento terminato</b>\n\nIl tuo abbonamento a <b>%s</b> non e' piu' attivo, quindi l'accesso al gruppo Telegram e' stato rimosso.\n\n➡️ Dopo esserti riabbonato su Twitch, torna qui e usa /start per ottenere un nuovo link."
 
+[sub_start_ready]
+other = "🎉 <b>Abbonamento attivo</b>\n\nIl tuo abbonamento a <b>%s</b> e' attivo. Ecco i tuoi nuovi link di accesso Telegram."
+
 [user_generic_name]
 other = "amico"
 

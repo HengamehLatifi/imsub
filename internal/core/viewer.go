@@ -86,6 +86,22 @@ func (v *ViewerService) BuildJoinTargets(ctx context.Context, telegramUserID int
 	}, nil
 }
 
+// BuildJoinTargetsForCreator resolves invite links for a single creator only.
+func (v *ViewerService) BuildJoinTargetsForCreator(ctx context.Context, creatorID string, telegramUserID int64, twitchUserID string) (JoinTargets, error) {
+	plan, err := v.resolver.resolveForCreator(ctx, creatorID, telegramUserID, twitchUserID)
+	if err != nil {
+		return JoinTargets{}, err
+	}
+
+	v.cache.sync(ctx, telegramUserID, plan)
+	joinLinks := v.invites.build(ctx, telegramUserID, plan.inviteGroups)
+
+	return JoinTargets{
+		ActiveCreatorNames: plan.activeCreatorNames,
+		JoinLinks:          joinLinks,
+	}, nil
+}
+
 // resolveJoinPlan exposes the resolver seam for focused package tests.
 func (v *ViewerService) resolveJoinPlan(ctx context.Context, telegramUserID int64, twitchUserID string) (resolvedJoinPlan, error) {
 	return v.resolver.resolve(ctx, telegramUserID, twitchUserID)
@@ -134,7 +150,28 @@ func (r *viewerEligibilityResolver) resolve(ctx context.Context, telegramUserID 
 		r.log.Warn("build join targets list active creator groups failed", "error", err)
 		return resolvedJoinPlan{}, fmt.Errorf("list active creator groups: %w", err)
 	}
+	return r.resolveActiveCreators(ctx, active, telegramUserID, twitchUserID)
+}
 
+func (r *viewerEligibilityResolver) resolveForCreator(ctx context.Context, creatorID string, telegramUserID int64, twitchUserID string) (resolvedJoinPlan, error) {
+	active, err := r.store.ListActiveCreatorGroups(ctx)
+	if err != nil {
+		r.log.Warn("build creator join targets list active creator groups failed", "creator_id", creatorID, "error", err)
+		return resolvedJoinPlan{}, fmt.Errorf("list active creator groups: %w", err)
+	}
+	// TODO: Replace this with a creator-scoped store read if active creator count
+	// grows enough for the full scan to matter.
+	filtered := make([]ActiveCreatorGroups, 0, 1)
+	for _, item := range active {
+		if item.Creator.ID == creatorID {
+			filtered = append(filtered, item)
+			break
+		}
+	}
+	return r.resolveActiveCreators(ctx, filtered, telegramUserID, twitchUserID)
+}
+
+func (r *viewerEligibilityResolver) resolveActiveCreators(ctx context.Context, active []ActiveCreatorGroups, telegramUserID int64, twitchUserID string) (resolvedJoinPlan, error) {
 	out := resolvedJoinPlan{
 		activeCreatorNames: make([]string, 0, len(active)),
 		inviteGroups:       make([]resolvedJoinGroup, 0, len(active)),

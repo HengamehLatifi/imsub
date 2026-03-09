@@ -11,6 +11,7 @@ import (
 type viewerAccessService interface {
 	LoadIdentity(ctx context.Context, telegramUserID int64) (core.UserIdentity, bool, error)
 	BuildJoinTargets(ctx context.Context, telegramUserID int64, twitchUserID string) (core.JoinTargets, error)
+	BuildJoinTargetsForCreator(ctx context.Context, creatorID string, telegramUserID int64, twitchUserID string) (core.JoinTargets, error)
 }
 
 // ViewerAccessResult is the application-layer result for the linked viewer flow.
@@ -58,6 +59,27 @@ func (u *ViewerAccessUseCase) LoadAccess(ctx context.Context, telegramUserID int
 		return ViewerAccessResult{}, fmt.Errorf("build join targets: %w", err)
 	}
 	u.recordResult(ctx, "linked")
+	return ViewerAccessResult{
+		HasIdentity: true,
+		Identity:    identity,
+		Targets:     targets,
+	}, nil
+}
+
+// LoadAccessForCreator resolves linked viewer identity and join targets for one creator only.
+func (u *ViewerAccessUseCase) LoadAccessForCreator(ctx context.Context, creatorID string, telegramUserID int64) (ViewerAccessResult, error) {
+	identity, found, err := u.svc.LoadIdentity(ctx, telegramUserID)
+	if err != nil {
+		return ViewerAccessResult{}, fmt.Errorf("load viewer identity: %w", err)
+	}
+	if !found {
+		return ViewerAccessResult{}, nil
+	}
+
+	targets, err := u.svc.BuildJoinTargetsForCreator(ctx, creatorID, telegramUserID, identity.TwitchUserID)
+	if err != nil {
+		return ViewerAccessResult{}, fmt.Errorf("build creator join targets: %w", err)
+	}
 	return ViewerAccessResult{
 		HasIdentity: true,
 		Identity:    identity,

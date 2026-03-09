@@ -372,6 +372,43 @@ const (
 )
 
 var errReconnectNotificationSend = errors.New("send reconnect-required notification")
+var errSubscriptionStartSend = errors.New("send subscription start dm")
+
+// HandleSubscriptionStart proactively sends fresh invites after a Twitch subscription starts.
+func (c *Bot) HandleSubscriptionStart(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, _ string) error {
+	if c.viewerAccess == nil || c.store == nil {
+		return nil
+	}
+	telegramUserID, found, err := c.store.ResolveTelegramUserIDByTwitch(ctx, twitchUserID)
+	if err != nil {
+		return fmt.Errorf("resolve telegram user by twitch: %w", err)
+	}
+	if !found {
+		c.log().Debug("skip subscription start dm for unlinked twitch user", "broadcaster_id", broadcasterID, "twitch_user_id", twitchUserID)
+		return nil
+	}
+	access, err := c.viewerAccess.LoadAccessForCreator(ctx, broadcasterID, telegramUserID)
+	if err != nil {
+		return fmt.Errorf("load viewer access for creator: %w", err)
+	}
+	if !access.HasIdentity || len(access.Targets.JoinLinks) == 0 {
+		return nil
+	}
+
+	lang := "en"
+	if access.Identity.Language != "" {
+		lang = i18n.NormalizeLanguage(access.Identity.Language)
+	}
+	creatorName := broadcasterLogin
+	if creatorName == "" && len(access.Targets.ActiveCreatorNames) > 0 {
+		creatorName = access.Targets.ActiveCreatorNames[0]
+	}
+	view := buildSubscriptionStartView(lang, creatorName, access.Targets)
+	if messageID := c.sendMsg(ctx, telegramUserID, view.text, &view.opts); messageID == 0 {
+		return errSubscriptionStartSend
+	}
+	return nil
+}
 
 // HandleSubscriptionEnd revokes Telegram group access after a Twitch subscription ends.
 func (c *Bot) HandleSubscriptionEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) error {

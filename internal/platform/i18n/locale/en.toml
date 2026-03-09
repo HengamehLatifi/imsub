@@ -271,6 +271,9 @@ other = "✅ <b>Nothing to reset right now.</b>\n\nI couldn't find linked viewer
 [sub_end_partial]
 other = "⚠️ <b>Subscription ended</b>\n\nYour subscription to <b>%s</b> is no longer active, so your Telegram group access was removed.\n\n➡️ After you resubscribe on Twitch, come back here and use /start to get a new join link."
 
+[sub_start_ready]
+other = "🎉 <b>Subscription active</b>\n\nYour subscription to <b>%s</b> is active. Here are your fresh Telegram join links."
+
 [user_generic_name]
 other = "there"
 

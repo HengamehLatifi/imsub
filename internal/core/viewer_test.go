@@ -374,6 +374,59 @@ func TestBuildJoinTargetsSkipsBlockedCreator(t *testing.T) {
 	}
 }
 
+func TestBuildJoinTargetsForCreatorScopesToCreator(t *testing.T) {
+	t.Parallel()
+
+	var added []int64
+	svc := NewViewerService(
+		&viewerFakeStore{
+			listActiveCreatorGroups: func(_ context.Context) ([]ActiveCreatorGroups, error) {
+				return []ActiveCreatorGroups{
+					{
+						Creator: Creator{ID: "c1", TwitchLogin: "alpha"},
+						Groups:  []ManagedGroup{{ChatID: 101, CreatorID: "c1", GroupName: "VIP"}},
+					},
+					{
+						Creator: Creator{ID: "c2", TwitchLogin: "beta"},
+						Groups:  []ManagedGroup{{ChatID: 202, CreatorID: "c2", GroupName: "Plus"}},
+					},
+				}, nil
+			},
+			isSubscriberFn: func(_ context.Context, creatorID, twitchUserID string) (bool, error) {
+				return creatorID == "c1" && twitchUserID == "tw-1", nil
+			},
+			addMembershipFn: func(_ context.Context, chatID, _ int64) error {
+				added = append(added, chatID)
+				return nil
+			},
+		},
+		&fakeGroupOps{
+			createInviteFn: func(_ context.Context, groupChatID, telegramUserID int64, name string) (string, error) {
+				if groupChatID != 101 || telegramUserID != 7 || name != "alpha" {
+					t.Fatalf("CreateInviteLink(%d, %d, %q) got unexpected args", groupChatID, telegramUserID, name)
+				}
+				return "https://t.me/+alpha", nil
+			},
+		},
+		nil,
+		nil,
+	)
+
+	got, err := svc.BuildJoinTargetsForCreator(t.Context(), "c1", 7, "tw-1")
+	if err != nil {
+		t.Fatalf("BuildJoinTargetsForCreator() error = %v", err)
+	}
+	if !slices.Equal(got.ActiveCreatorNames, []string{"alpha"}) {
+		t.Fatalf("BuildJoinTargetsForCreator() active names = %v, want [alpha]", got.ActiveCreatorNames)
+	}
+	if len(got.JoinLinks) != 1 || got.JoinLinks[0].InviteLink != "https://t.me/+alpha" {
+		t.Fatalf("BuildJoinTargetsForCreator() join links = %+v, want one creator-scoped invite", got.JoinLinks)
+	}
+	if !slices.Equal(added, []int64{101}) {
+		t.Fatalf("BuildJoinTargetsForCreator() added memberships = %v, want [101]", added)
+	}
+}
+
 func TestResolveJoinPlanUsesActiveCreatorGroupsStoreRead(t *testing.T) {
 	t.Parallel()
 

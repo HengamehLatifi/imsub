@@ -2,13 +2,16 @@ package bot
 
 import (
 	"fmt"
+	"html"
 	"strings"
 
+	"imsub/internal/core"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/transport/telegram/client"
 	"imsub/internal/transport/telegram/ui"
 
 	"github.com/mymmrac/telego"
+	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 type sharedView struct {
@@ -64,10 +67,21 @@ func buildCreatorReconnectRequiredView(lang, reconnectURL string) sharedView {
 
 func buildSubscriptionEndView(lang, viewerLogin, broadcasterLogin string) sharedView {
 	return sharedView{
-		text: fmt.Sprintf(i18n.Translate(lang, msgSubEndPartial), viewerLogin),
+		text: fmt.Sprintf(i18n.Translate(lang, msgSubEndPartial), html.EscapeString(viewerLogin)),
 		opts: client.MessageOptions{
 			ParseMode: telego.ModeHTML,
 			Markup:    ui.SubEndSubscribeMarkup(lang, broadcasterLogin),
+		},
+	}
+}
+
+func buildSubscriptionStartView(lang, broadcasterLogin string, targets core.JoinTargets) sharedView {
+	joinRows := renderJoinButtons(targets, lang)
+	return sharedView{
+		text: fmt.Sprintf(i18n.Translate(lang, msgSubStartReady), html.EscapeString(broadcasterLogin)),
+		opts: client.MessageOptions{
+			ParseMode: telego.ModeHTML,
+			Markup:    tu.InlineKeyboard(joinRows...),
 		},
 	}
 }

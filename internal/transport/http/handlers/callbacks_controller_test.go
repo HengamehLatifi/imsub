@@ -69,11 +69,12 @@ func newController(store controllerStore, sink events.EventSink, viewer viewerOA
 		Config: config.Config{
 			TwitchEventSubSecret: "secret",
 		},
-		Store:           store,
-		Events:          sink,
-		ViewerOAuth:     viewer,
-		CreatorOAuth:    creator,
-		SubscriptionEnd: subEnd,
+		Store:             store,
+		Events:            sink,
+		ViewerOAuth:       viewer,
+		CreatorOAuth:      creator,
+		SubscriptionStart: nil,
+		SubscriptionEnd:   subEnd,
 	})
 }
 
@@ -273,6 +274,87 @@ func TestEventSubWebhookSubscribeFailureDoesNotMarkProcessed(t *testing.T) {
 	}
 	if len(obs.events) != 1 || obs.events[0].Outcome != "notification_subscribe_store_failed" {
 		t.Errorf("eventsub events = %+v, want notification_subscribe_store_failed", obs.events)
+	}
+}
+
+func TestEventSubWebhookSubscribeInvokesStartHandler(t *testing.T) {
+	t.Parallel()
+
+	obs := &callbacksFakeObserver{}
+	startCalls := 0
+	c := New(Dependencies{
+		Config: config.Config{
+			TwitchEventSubSecret: "secret",
+		},
+		Store: &callbacksFakeStore{
+			eventProcessedFn: func(_ context.Context, _ string) (bool, error) { return false, nil },
+			markEventFn: func(context.Context, string, time.Duration) (bool, error) {
+				return false, nil
+			},
+		},
+		Events: obs,
+		SubscriptionStart: func(_ context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) error {
+			startCalls++
+			if broadcasterID != "c1" || broadcasterLogin != "alpha" || twitchUserID != "u1" || twitchLogin != "viewer1" {
+				t.Fatalf("SubscriptionStart(%q, %q, %q, %q) got unexpected args", broadcasterID, broadcasterLogin, twitchUserID, twitchLogin)
+			}
+			return nil
+		},
+	})
+
+	body := []byte(`{"subscription":{"type":"channel.subscribe","condition":{"broadcaster_user_id":"c1"}},"event":{"broadcaster_user_login":"alpha","user_id":"u1","user_login":"viewer1"}}`)
+	req := signedEventSubRequest(t, "secret", "msg-sub-start", time.Now().UTC().Format(time.RFC3339), "notification", body)
+	rec := httptest.NewRecorder()
+
+	c.EventSubWebhook(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("EventSubWebhook(subscribe start).StatusCode = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+	if startCalls != 1 {
+		t.Fatalf("SubscriptionStart call count = %d, want 1", startCalls)
+	}
+	if len(obs.events) != 1 || obs.events[0].Outcome != "notification_subscribe" {
+		t.Fatalf("eventsub events = %+v, want notification_subscribe", obs.events)
+	}
+}
+
+func TestEventSubWebhookSubscribeStartFailureStillAcknowledged(t *testing.T) {
+	t.Parallel()
+
+	obs := &callbacksFakeObserver{}
+	markCalls := 0
+	c := New(Dependencies{
+		Config: config.Config{
+			TwitchEventSubSecret: "secret",
+		},
+		Store: &callbacksFakeStore{
+			eventProcessedFn: func(_ context.Context, _ string) (bool, error) { return false, nil },
+			markEventFn: func(context.Context, string, time.Duration) (bool, error) {
+				markCalls++
+				return false, nil
+			},
+		},
+		Events: obs,
+		SubscriptionStart: func(context.Context, string, string, string, string) error {
+			return errors.New("dm failed")
+		},
+	})
+
+	body := []byte(`{"subscription":{"type":"channel.subscribe","condition":{"broadcaster_user_id":"c1"}},"event":{"broadcaster_user_login":"alpha","user_id":"u1","user_login":"viewer1"}}`)
+	req := signedEventSubRequest(t, "secret", "msg-sub-start-fail", time.Now().UTC().Format(time.RFC3339), "notification", body)
+	rec := httptest.NewRecorder()
+
+	c.EventSubWebhook(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("EventSubWebhook(subscribe start failure).StatusCode = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+	if markCalls != 1 {
+		t.Fatalf("MarkEventProcessed call count = %d, want 1", markCalls)
+	}
+	if len(obs.events) != 1 || obs.events[0].Outcome != "notification_subscribe" {
+		t.Fatalf("eventsub events = %+v, want notification_subscribe", obs.events)
 	}
 }
 

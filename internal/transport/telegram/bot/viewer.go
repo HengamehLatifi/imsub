@@ -23,6 +23,7 @@ const (
 	msgOAuthExchangeFail = "oauth_exchange_fail"
 	msgOAuthUserInfoFail = "oauth_userinfo_fail"
 	msgOAuthSaveFail     = "oauth_save_fail"
+	msgSubStartReady     = "sub_start_ready"
 	msgSubEndPartial     = "sub_end_partial"
 
 	btnLinkTwitch = "btn_link_twitch"
