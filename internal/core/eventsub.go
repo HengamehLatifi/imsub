@@ -19,7 +19,7 @@ type eventSubStore interface {
 	AddToSubscriberDump(ctx context.Context, tmpKey string, userIDs []string) error
 	FinalizeSubscriberDump(ctx context.Context, creatorID, tmpKey string, hasData bool) error
 	CleanupSubscriberDump(ctx context.Context, tmpKey string)
-	UpdateCreatorTokens(ctx context.Context, creatorID, accessToken, refreshToken string) error
+	UpdateCreatorTokens(ctx context.Context, creatorID, accessToken, refreshToken string, grantedScopes []string) error
 	MarkCreatorAuthReconnectRequired(ctx context.Context, creatorID, errorCode string, at time.Time) (transitioned bool, err error)
 	MarkCreatorAuthHealthy(ctx context.Context, creatorID string, at time.Time) error
 	UpdateCreatorLastSync(ctx context.Context, creatorID string, at time.Time) error
@@ -138,15 +138,11 @@ func (e *EventSubService) ReconcileEventSubsOnce(ctx context.Context) error {
 		enabledTypes[sub.Type] = true
 	}
 
-	requiredTypes := []string{
-		EventTypeChannelSubscribe,
-		EventTypeChannelSubEnd,
-	}
 	inactive := make([]Creator, 0, len(creators))
 	for _, creator := range creators {
 		enabledTypes := enabledByCreator[creator.ID]
 		missing := false
-		for _, eventType := range requiredTypes {
+		for _, eventType := range requiredEventSubTypes(creator) {
 			if !enabledTypes[eventType] {
 				missing = true
 				break
@@ -233,7 +229,7 @@ func (e *EventSubService) EnsureEventSubForCreators(ctx context.Context, creator
 		return nil
 	}
 	for _, c := range creators {
-		for _, eventType := range []string{EventTypeChannelSubscribe, EventTypeChannelSubEnd} {
+		for _, eventType := range requiredEventSubTypes(c) {
 			e.log.Debug("ensuring eventsub", "creator_id", c.ID, "type", eventType)
 			if err := e.twitch.CreateEventSub(ctx, c.ID, eventType, "1"); err != nil {
 				return fmt.Errorf("creating %s for creator %s: %w", eventType, c.ID, err)
@@ -257,6 +253,14 @@ func (e *EventSubService) IsEventSubActiveForCreator(ctx context.Context, creato
 	}
 	e.log.Debug("eventsub active check verified", "creator_id", creatorID)
 	return true, nil
+}
+
+func requiredEventSubTypes(creator Creator) []string {
+	types := []string{EventTypeChannelSubscribe, EventTypeChannelSubEnd}
+	if creator.BlocklistSyncEnabled {
+		types = append(types, EventTypeChannelBan, EventTypeChannelUnban)
+	}
+	return types
 }
 
 // DumpCurrentSubscribers refreshes the cached subscriber set for creator and returns count.
@@ -314,27 +318,9 @@ func (e *EventSubService) DumpCurrentSubscribers(ctx context.Context, creator Cr
 }
 
 func (e *EventSubService) refreshCreatorAccessToken(ctx context.Context, creator Creator) (Creator, error) {
-	tok, err := e.twitch.RefreshToken(ctx, creator.RefreshToken)
-	if err != nil {
-		e.emitTokenRefresh(ctx, "failed")
-		return creator, fmt.Errorf("refresh token call: %w", err)
-	}
-	e.emitTokenRefresh(ctx, "ok")
-	if err := e.store.UpdateCreatorTokens(ctx, creator.ID, tok.AccessToken, tok.RefreshToken); err != nil {
-		return creator, fmt.Errorf("update creator tokens in store: %w", err)
-	}
-	now := time.Now().UTC()
-	if err := e.clearCreatorReconnectRequired(ctx, creator, now); err != nil {
-		return creator, err
-	}
-	creator.AccessToken = tok.AccessToken
-	if tok.RefreshToken != "" {
-		creator.RefreshToken = tok.RefreshToken
-	}
-	creator.AuthStatus = CreatorAuthHealthy
-	creator.AuthErrorCode = ""
-	creator.AuthStatusAt = now
-	return creator, nil
+	return refreshCreatorAccessToken(ctx, creator, e.twitch, e.store, func(result string) {
+		e.emitTokenRefresh(ctx, result)
+	})
 }
 
 func (e *EventSubService) clearCreatorReconnectRequired(ctx context.Context, creator Creator, at time.Time) error {

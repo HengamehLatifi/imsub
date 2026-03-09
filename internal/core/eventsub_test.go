@@ -15,7 +15,7 @@ import (
 type eventsubFakeStore struct {
 	listActiveCreatorsFn  func(ctx context.Context) ([]Creator, error)
 	reconnectCountFn      func(ctx context.Context) (int, error)
-	updateTokensFn        func(ctx context.Context, creatorID, accessToken, refreshToken string) error
+	updateTokensFn        func(ctx context.Context, creatorID, accessToken, refreshToken string, grantedScopes []string) error
 	markReconnectFn       func(ctx context.Context, creatorID, errorCode string, at time.Time) (bool, error)
 	markHealthyFn         func(ctx context.Context, creatorID string, at time.Time) error
 	updateLastSyncFn      func(ctx context.Context, creatorID string, at time.Time) error
@@ -40,9 +40,9 @@ func (f *eventsubFakeStore) CreatorAuthReconnectRequiredCount(ctx context.Contex
 	return 0, nil
 }
 
-func (f *eventsubFakeStore) UpdateCreatorTokens(ctx context.Context, creatorID, accessToken, refreshToken string) error {
+func (f *eventsubFakeStore) UpdateCreatorTokens(ctx context.Context, creatorID, accessToken, refreshToken string, grantedScopes []string) error {
 	if f.updateTokensFn != nil {
-		return f.updateTokensFn(ctx, creatorID, accessToken, refreshToken)
+		return f.updateTokensFn(ctx, creatorID, accessToken, refreshToken, grantedScopes)
 	}
 	return nil
 }
@@ -109,6 +109,7 @@ type eventSubFakeTwitch struct {
 	createEventSubFn     func(ctx context.Context, broadcasterID, eventType, version string) error
 	enabledEventSubFn    func(ctx context.Context, creatorID string) (map[string]bool, error)
 	listSubscriberPageFn func(ctx context.Context, accessToken, broadcasterID, cursor string) (userIDs []string, nextCursor string, err error)
+	listBannedUserPageFn func(ctx context.Context, accessToken, broadcasterID, cursor string) (userIDs []string, nextCursor string, err error)
 	listEventSubsFn      func(ctx context.Context, opts ListEventSubsOpts) ([]EventSubSubscription, error)
 	deleteEventSubFn     func(ctx context.Context, subscriptionID string) error
 }
@@ -169,6 +170,13 @@ func (m *eventSubFakeTwitch) EnabledEventSubTypes(ctx context.Context, creatorID
 func (m *eventSubFakeTwitch) ListSubscriberPage(ctx context.Context, accessToken, broadcasterID, cursor string) ([]string, string, error) {
 	if m.listSubscriberPageFn != nil {
 		return m.listSubscriberPageFn(ctx, accessToken, broadcasterID, cursor)
+	}
+	return nil, "", nil
+}
+
+func (m *eventSubFakeTwitch) ListBannedUserPage(ctx context.Context, accessToken, broadcasterID, cursor string) ([]string, string, error) {
+	if m.listBannedUserPageFn != nil {
+		return m.listBannedUserPageFn(ctx, accessToken, broadcasterID, cursor)
 	}
 	return nil, "", nil
 }
@@ -249,10 +257,13 @@ func TestDumpCurrentSubscribersRefreshOnUnauthorized(t *testing.T) {
 				return nil
 			},
 			cleanupDumpFn: func(_ context.Context, tmpKey string) { cleanupKey = tmpKey },
-			updateTokensFn: func(_ context.Context, creatorID, accessToken, refreshToken string) error {
+			updateTokensFn: func(_ context.Context, creatorID, accessToken, refreshToken string, grantedScopes []string) error {
 				updatedTokens = true
 				if creatorID != "c1" || accessToken != "fresh" || refreshToken != "fresh-r" {
 					t.Fatalf("updateTokensFn() args = creator=%q access=%q refresh=%q, want creator=\"c1\" access=\"fresh\" refresh=\"fresh-r\"", creatorID, accessToken, refreshToken)
+				}
+				if len(grantedScopes) != 0 {
+					t.Fatalf("updateTokensFn() scopes = %v, want empty when refresh response omits scopes", grantedScopes)
 				}
 				return nil
 			},
@@ -519,5 +530,45 @@ func TestReconcileEventSubsOnce(t *testing.T) {
 	}
 	if !slices.Equal(created, wantCreated) {
 		t.Errorf("ReconcileEventSubsOnce() created = %v, want %v", created, wantCreated)
+	}
+}
+
+func TestReconcileEventSubsOnceCreatesBanSubscriptionsForBlocklistCreators(t *testing.T) {
+	t.Parallel()
+
+	var created []string
+	svc := NewEventSubService(
+		&eventsubFakeStore{
+			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
+				return []Creator{{ID: "c1", BlocklistSyncEnabled: true}}, nil
+			},
+		},
+		&eventSubFakeTwitch{
+			listEventSubsFn: func(_ context.Context, _ ListEventSubsOpts) ([]EventSubSubscription, error) {
+				return []EventSubSubscription{
+					{ID: "sub1", Status: "enabled", Type: EventTypeChannelSubscribe, BroadcasterID: "c1"},
+					{ID: "sub2", Status: "enabled", Type: EventTypeChannelSubEnd, BroadcasterID: "c1"},
+				}, nil
+			},
+			createEventSubFn: func(_ context.Context, broadcasterID, eventType, _ string) error {
+				created = append(created, broadcasterID+":"+eventType)
+				return nil
+			},
+		},
+		slog.New(slog.DiscardHandler),
+	)
+
+	if err := svc.ReconcileEventSubsOnce(t.Context()); err != nil {
+		t.Fatalf("ReconcileEventSubsOnce() returned error %v, want nil", err)
+	}
+
+	want := []string{
+		"c1:" + EventTypeChannelSubscribe,
+		"c1:" + EventTypeChannelSubEnd,
+		"c1:" + EventTypeChannelBan,
+		"c1:" + EventTypeChannelUnban,
+	}
+	if !slices.Equal(created, want) {
+		t.Fatalf("ReconcileEventSubsOnce() created = %v, want %v", created, want)
 	}
 }

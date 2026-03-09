@@ -276,6 +276,58 @@ func TestEventSubWebhookSubscribeFailureDoesNotMarkProcessed(t *testing.T) {
 	}
 }
 
+func TestEventSubWebhookBanPassesPermanentFlag(t *testing.T) {
+	t.Parallel()
+
+	obs := &callbacksFakeObserver{}
+	markCalls := 0
+	banCalls := 0
+	c := New(Dependencies{
+		Config: config.Config{
+			TwitchEventSubSecret: "secret",
+		},
+		Store: &callbacksFakeStore{
+			eventProcessedFn: func(_ context.Context, _ string) (bool, error) {
+				return false, nil
+			},
+			markEventFn: func(context.Context, string, time.Duration) (bool, error) {
+				markCalls++
+				return false, nil
+			},
+		},
+		Events: obs,
+		BlocklistBan: func(_ context.Context, creatorID, twitchUserID string, isPermanent bool) error {
+			banCalls++
+			if creatorID != "c1" || twitchUserID != "u1" {
+				t.Fatalf("BlocklistBan(%q, %q) got unexpected args", creatorID, twitchUserID)
+			}
+			if isPermanent {
+				t.Fatal("BlocklistBan isPermanent = true, want false for timeout payload")
+			}
+			return nil
+		},
+	})
+
+	body := []byte(`{"subscription":{"type":"channel.ban","condition":{"broadcaster_user_id":"c1"}},"event":{"user_id":"u1","user_login":"viewer1","is_permanent":false}}`)
+	req := signedEventSubRequest(t, "secret", "msg-ban-timeout", time.Now().UTC().Format(time.RFC3339), "notification", body)
+	rec := httptest.NewRecorder()
+
+	c.EventSubWebhook(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("EventSubWebhook(ban).StatusCode = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+	if banCalls != 1 {
+		t.Fatalf("BlocklistBan call count = %d, want 1", banCalls)
+	}
+	if markCalls != 1 {
+		t.Fatalf("MarkEventProcessed call count = %d, want 1", markCalls)
+	}
+	if len(obs.events) != 1 || obs.events[0].Outcome != "notification_ban" {
+		t.Fatalf("eventsub events = %+v, want notification_ban", obs.events)
+	}
+}
+
 func signedEventSubRequest(t *testing.T, secret, messageID, ts, messageType string, body []byte) *http.Request {
 	t.Helper()
 	mac := hmac.New(sha256.New, []byte(secret))

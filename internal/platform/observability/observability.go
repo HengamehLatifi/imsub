@@ -27,6 +27,8 @@ type Metrics struct {
 	backgroundJobsTotal  *prometheus.CounterVec
 	backgroundJobTime    *prometheus.HistogramVec
 	creatorTokenRefresh  *prometheus.CounterVec
+	creatorBlocklistSync *prometheus.CounterVec
+	creatorBlockEnforce  *prometheus.CounterVec
 	creatorAuthChange    *prometheus.CounterVec
 	creatorsReconnect    prometheus.Gauge
 	creatorReconnectDM   *prometheus.CounterVec
@@ -108,6 +110,20 @@ func New() *Metrics {
 			prometheus.CounterOpts{
 				Name: "imsub_creator_token_refresh_total",
 				Help: "Creator token refresh attempts by result.",
+			},
+			[]string{"result"},
+		),
+		creatorBlocklistSync: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_creator_blocklist_sync_total",
+				Help: "Creator blocklist sync item counts by result.",
+			},
+			[]string{"result"},
+		),
+		creatorBlockEnforce: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_creator_blocklist_enforcement_total",
+				Help: "Creator blocklist enforcement actions by result.",
 			},
 			[]string{"result"},
 		),
@@ -232,6 +248,8 @@ func New() *Metrics {
 		m.backgroundJobsTotal,
 		m.backgroundJobTime,
 		m.creatorTokenRefresh,
+		m.creatorBlocklistSync,
+		m.creatorBlockEnforce,
 		m.creatorAuthChange,
 		m.creatorsReconnect,
 		m.creatorReconnectDM,
@@ -259,6 +277,22 @@ func (m *Metrics) CreatorTokenRefresh(result string) {
 		return
 	}
 	m.creatorTokenRefresh.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// CreatorBlocklistSync records creator blocklist sync counts by result.
+func (m *Metrics) CreatorBlocklistSync(result string, count int) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.creatorBlocklistSync.WithLabelValues(httputil.LabelOrUnknown(result)).Add(float64(count))
+}
+
+// CreatorBlocklistEnforcement records creator blocklist enforcement actions by result.
+func (m *Metrics) CreatorBlocklistEnforcement(result string, count int) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.creatorBlockEnforce.WithLabelValues(httputil.LabelOrUnknown(result)).Add(float64(count))
 }
 
 // CreatorAuthTransition records a creator auth state transition.
@@ -419,6 +453,10 @@ func (m *Metrics) Emit(_ context.Context, evt events.Event) {
 		m.ViewerInviteLink(evt.Outcome)
 	case events.NameCreatorTokenRefresh:
 		m.CreatorTokenRefresh(evt.Outcome)
+	case events.NameCreatorBlocklistSync:
+		m.CreatorBlocklistSync(evt.Outcome, evt.Count)
+	case events.NameCreatorBlocklistEnforcement:
+		m.CreatorBlocklistEnforcement(evt.Outcome, evt.Count)
 	case events.NameCreatorAuthTransition:
 		m.CreatorAuthTransition(evt.Fields["from"], evt.Fields["to"], evt.Fields["reason"])
 	case events.NameCreatorsReconnectRequired:

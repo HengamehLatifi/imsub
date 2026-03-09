@@ -107,6 +107,9 @@ func TestOAuthStartCreatorScope(t *testing.T) {
 	if !strings.Contains(body, "channel%3Aread%3Asubscriptions") {
 		t.Errorf("OAuthStart(state=%q).Body = %q, want body containing creator scope", "state-1", body)
 	}
+	if !strings.Contains(body, "moderation%3Aread") {
+		t.Errorf("OAuthStart(state=%q).Body = %q, want body containing moderation scope", "state-1", body)
+	}
 }
 
 func TestTelegramWebhookQueueUnavailable(t *testing.T) {

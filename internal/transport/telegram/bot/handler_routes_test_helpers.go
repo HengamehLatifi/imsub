@@ -352,6 +352,7 @@ type routeTestStore struct {
 	managedGroupsByChatID map[int64]core.ManagedGroup
 	trackedMembersByGroup map[int64]map[int64]bool
 	untrackedUpserts      []routeTestUntrackedUpsert
+	blockedByCreatorUser  map[string]map[string]bool
 }
 
 type routeTestUntrackedUpsert struct {
@@ -382,6 +383,18 @@ func (s *routeTestStore) setManagedGroup(group core.ManagedGroup) {
 		s.managedGroupsByChatID = make(map[int64]core.ManagedGroup)
 	}
 	s.managedGroupsByChatID[group.ChatID] = group
+}
+
+func (s *routeTestStore) setCreatorBlocked(creatorID, twitchUserID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.blockedByCreatorUser == nil {
+		s.blockedByCreatorUser = make(map[string]map[string]bool)
+	}
+	if s.blockedByCreatorUser[creatorID] == nil {
+		s.blockedByCreatorUser[creatorID] = make(map[string]bool)
+	}
+	s.blockedByCreatorUser[creatorID][twitchUserID] = true
 }
 
 func (s *routeTestStore) hasManagedGroup(chatID int64) bool {
@@ -454,11 +467,29 @@ func (s *routeTestStore) OwnedCreatorForUser(_ context.Context, ownerTelegramID 
 	return s.ownedCreator, true, nil
 }
 
+func (s *routeTestStore) Creator(_ context.Context, creatorID string) (core.Creator, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.ownedCreatorOK || s.ownedCreator.ID != creatorID {
+		return core.Creator{}, false, nil
+	}
+	return s.ownedCreator, true, nil
+}
+
 func (s *routeTestStore) ManagedGroupByChatID(_ context.Context, chatID int64) (core.ManagedGroup, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	group, ok := s.managedGroupsByChatID[chatID]
 	return group, ok, nil
+}
+
+func (s *routeTestStore) IsCreatorBlocked(_ context.Context, creatorID, twitchUserID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.blockedByCreatorUser == nil || s.blockedByCreatorUser[creatorID] == nil {
+		return false, nil
+	}
+	return s.blockedByCreatorUser[creatorID][twitchUserID], nil
 }
 
 func (s *routeTestStore) ListManagedGroupsByCreator(_ context.Context, creatorID string) ([]core.ManagedGroup, error) {
@@ -471,6 +502,15 @@ func (s *routeTestStore) ListManagedGroupsByCreator(_ context.Context, creatorID
 		}
 	}
 	return groups, nil
+}
+
+func (s *routeTestStore) CreatorBlockedUserCount(_ context.Context, creatorID string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.blockedByCreatorUser == nil || s.blockedByCreatorUser[creatorID] == nil {
+		return 0, nil
+	}
+	return int64(len(s.blockedByCreatorUser[creatorID])), nil
 }
 
 func (s *routeTestStore) DeleteManagedGroup(_ context.Context, chatID int64) error {
@@ -608,8 +648,11 @@ func (routeTestStoreStub) UpsertCreator(context.Context, core.Creator) error { r
 func (routeTestStoreStub) DeleteCreatorData(context.Context, int64) (int, []string, error) {
 	return 0, nil, nil
 }
-func (routeTestStoreStub) UpdateCreatorTokens(context.Context, string, string, string) error {
+func (routeTestStoreStub) UpdateCreatorTokens(context.Context, string, string, string, []string) error {
 	return nil
+}
+func (routeTestStoreStub) IsCreatorBlocked(context.Context, string, string) (bool, error) {
+	return false, nil
 }
 func (routeTestStoreStub) MarkCreatorAuthReconnectRequired(context.Context, string, string, time.Time) (bool, error) {
 	return false, nil

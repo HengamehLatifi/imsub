@@ -102,6 +102,13 @@ func parseCallbackAction(data string) (callbackAction, bool) {
 			}
 			return action, true
 		case callbackVerbPick, callbackVerbExecute:
+			if len(parts) == 3 {
+				action.target = parts[2]
+				if action.verb != callbackVerbExecute || action.target != creatorCallbackTargetBlocklist {
+					return callbackAction{}, false
+				}
+				return action, true
+			}
 			if len(parts) != 4 {
 				return callbackAction{}, false
 			}
@@ -152,12 +159,13 @@ func parseCallbackAction(data string) (callbackAction, bool) {
 }
 
 const (
-	creatorCallbackTargetGroups = "groups"
-	creatorCallbackTargetGroup  = "group"
+	creatorCallbackTargetGroups    = "groups"
+	creatorCallbackTargetGroup     = "group"
+	creatorCallbackTargetBlocklist = "blocklist"
 )
 
 func (a callbackAction) validCreatorTarget() bool {
-	return a.target == creatorCallbackTargetGroups
+	return a.target == creatorCallbackTargetGroups || a.target == creatorCallbackTargetBlocklist
 }
 
 func (o resetOrigin) valid() bool {
@@ -208,6 +216,10 @@ func creatorMenuCallback() string {
 
 func creatorGroupExecuteCallback(chatID int64) string {
 	return callbackAction{domain: callbackDomainCreator, verb: callbackVerbExecute, target: creatorCallbackTargetGroup, chatID: chatID}.String()
+}
+
+func creatorBlocklistToggleCallback() string {
+	return callbackAction{domain: callbackDomainCreator, verb: callbackVerbExecute, target: creatorCallbackTargetBlocklist}.String()
 }
 
 func resetOpenCallback(origin resetOrigin) string {

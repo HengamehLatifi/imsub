@@ -19,6 +19,17 @@ type SubscriptionsResponse struct {
 	} `json:"pagination"`
 }
 
+// BannedUsersResponse is Twitch /helix/moderation/banned response body.
+type BannedUsersResponse struct {
+	Data []struct {
+		UserID    string `json:"user_id"`
+		ExpiresAt string `json:"expires_at"`
+	} `json:"data"`
+	Pagination struct {
+		Cursor string `json:"cursor"`
+	} `json:"pagination"`
+}
+
 // EventSubListResponse is Twitch EventSub list response body.
 type EventSubListResponse struct {
 	Data []struct {

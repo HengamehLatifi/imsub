@@ -122,6 +122,8 @@ func TestEmitProjectsEventSubEvents(t *testing.T) {
 
 	m := New()
 	m.Emit(t.Context(), events.Event{Name: events.NameCreatorTokenRefresh, Outcome: "ok"})
+	m.Emit(t.Context(), events.Event{Name: events.NameCreatorBlocklistSync, Outcome: "ok", Count: 4})
+	m.Emit(t.Context(), events.Event{Name: events.NameCreatorBlocklistEnforcement, Outcome: "ok", Count: 2})
 	m.Emit(t.Context(), events.Event{Name: events.NameCreatorAuthTransition, Fields: map[string]string{
 		"from":   "healthy",
 		"to":     "reconnect_required",
@@ -137,6 +139,8 @@ func TestEmitProjectsEventSubEvents(t *testing.T) {
 	body := rec.Body.String()
 	needles := []string{
 		`imsub_creator_token_refresh_total{result="ok"} 1`,
+		`imsub_creator_blocklist_sync_total{result="ok"} 4`,
+		`imsub_creator_blocklist_enforcement_total{result="ok"} 2`,
 		`imsub_creator_auth_state_transitions_total{from="healthy",reason="token_refresh_failed",to="reconnect_required"} 1`,
 		`imsub_creators_reconnect_required 3`,
 		`imsub_creator_reconnect_notifications_total{result="failed"} 1`,

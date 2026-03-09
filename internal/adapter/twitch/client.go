@@ -31,6 +31,7 @@ var (
 	errEventSubList        = errors.New("eventsub list failed")
 	errEventSubDelete      = errors.New("eventsub delete failed")
 	errSubList             = errors.New("subscriptions list failed")
+	errBannedUsersList     = errors.New("banned users list failed")
 )
 
 const appTokenRefreshSkew = 30 * time.Second
@@ -514,4 +515,48 @@ func (c *Client) ListSubscriberPage(ctx context.Context, accessToken, broadcaste
 		userIDs = append(userIDs, sub.UserID)
 	}
 	return userIDs, sr.Pagination.Cursor, nil
+}
+
+// ListBannedUserPage implements the core.TwitchAPI interface.
+func (c *Client) ListBannedUserPage(ctx context.Context, accessToken, broadcasterID, cursor string) ([]string, string, error) {
+	endpoint := fmt.Sprintf("https://api.twitch.tv/helix/moderation/banned?broadcaster_id=%s&first=100", url.QueryEscape(broadcasterID))
+	if cursor != "" {
+		endpoint += "&after=" + url.QueryEscape(cursor)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("create banned users request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Client-Id", c.cfg.TwitchClientID)
+
+	resp, err := c.client.Do(req) // #nosec G704 -- req URL is a fixed Twitch endpoint built in this package
+	if err != nil {
+		return nil, "", fmt.Errorf("do banned users request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, "", fmt.Errorf("banned users list status 401: %w", core.ErrUnauthorized)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := responseBodyString(resp)
+		if readErr != nil {
+			return nil, "", fmt.Errorf("%w: status %d: read body: %w", errBannedUsersList, resp.StatusCode, readErr)
+		}
+		return nil, "", fmt.Errorf("%w: status %d: %s", errBannedUsersList, resp.StatusCode, body)
+	}
+
+	var br BannedUsersResponse
+	if err := json.NewDecoder(resp.Body).Decode(&br); err != nil {
+		return nil, "", fmt.Errorf("decode banned users response: %w", err)
+	}
+	userIDs := make([]string, 0, len(br.Data))
+	for _, item := range br.Data {
+		if item.ExpiresAt != "" {
+			continue
+		}
+		userIDs = append(userIDs, item.UserID)
+	}
+	return userIDs, br.Pagination.Cursor, nil
 }

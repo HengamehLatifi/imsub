@@ -381,6 +381,137 @@ func TestCreatorLogsInvalidOptionalTimestampFields(t *testing.T) {
 	}
 }
 
+func TestCreatorRoundTripPersistsBlocklistFields(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := t.Context()
+
+	banSyncAt := time.Date(2026, 3, 8, 11, 30, 0, 0, time.UTC)
+	if err := s.UpsertCreator(ctx, core.Creator{
+		ID:                   "c1",
+		TwitchLogin:          "creator",
+		OwnerTelegramID:      900,
+		GrantedScopes:        []string{core.ScopeChannelReadSubscriptions, core.ScopeModerationRead},
+		BlocklistSyncEnabled: true,
+		LastBanSyncAt:        banSyncAt,
+	}); err != nil {
+		t.Fatalf("UpsertCreator failed: %v", err)
+	}
+
+	got, ok, err := s.Creator(ctx, "c1")
+	if err != nil {
+		t.Fatalf("Creator(c1) failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("Creator(c1) not found, want found")
+	}
+	if !slices.Equal(got.GrantedScopes, []string{core.ScopeChannelReadSubscriptions, core.ScopeModerationRead}) {
+		t.Fatalf("Creator(c1).GrantedScopes = %v, want both creator scopes", got.GrantedScopes)
+	}
+	if !got.BlocklistSyncEnabled {
+		t.Fatal("Creator(c1).BlocklistSyncEnabled = false, want true")
+	}
+	if !got.LastBanSyncAt.Equal(banSyncAt) {
+		t.Fatalf("Creator(c1).LastBanSyncAt = %v, want %v", got.LastBanSyncAt, banSyncAt)
+	}
+}
+
+func TestCreatorBlocklistCacheHelpers(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := t.Context()
+
+	ok, err := s.IsCreatorBlocked(ctx, "c1", "tw-1")
+	if err != nil {
+		t.Fatalf("IsCreatorBlocked initial failed: %v", err)
+	}
+	if ok {
+		t.Fatal("expected initial creator blocklist lookup to be false")
+	}
+
+	if err := s.AddCreatorBlockedUser(ctx, "c1", "tw-1"); err != nil {
+		t.Fatalf("AddCreatorBlockedUser failed: %v", err)
+	}
+	ok, err = s.IsCreatorBlocked(ctx, "c1", "tw-1")
+	if err != nil {
+		t.Fatalf("IsCreatorBlocked after add failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected added blocked user to be present")
+	}
+
+	if err := s.RemoveCreatorBlockedUser(ctx, "c1", "tw-1"); err != nil {
+		t.Fatalf("RemoveCreatorBlockedUser failed: %v", err)
+	}
+	ok, err = s.IsCreatorBlocked(ctx, "c1", "tw-1")
+	if err != nil {
+		t.Fatalf("IsCreatorBlocked after remove failed: %v", err)
+	}
+	if ok {
+		t.Fatal("expected removed blocked user to be absent")
+	}
+
+	count, err := s.CreatorBlockedUserCount(ctx, "c1")
+	if err != nil {
+		t.Fatalf("CreatorBlockedUserCount failed: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("CreatorBlockedUserCount after remove = %d, want 0", count)
+	}
+
+	if err := s.AddCreatorBlockedUser(ctx, "c1", "tw-2"); err != nil {
+		t.Fatalf("AddCreatorBlockedUser tw-2 failed: %v", err)
+	}
+	count, err = s.CreatorBlockedUserCount(ctx, "c1")
+	if err != nil {
+		t.Fatalf("CreatorBlockedUserCount after add failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("CreatorBlockedUserCount after add = %d, want 1", count)
+	}
+}
+
+func TestCreatorBlocklistDumpFinalizeReplacesPreviousCache(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := t.Context()
+
+	if err := s.AddCreatorBlockedUser(ctx, "c1", "stale"); err != nil {
+		t.Fatalf("seed AddCreatorBlockedUser failed: %v", err)
+	}
+
+	tmpKey := s.NewCreatorBlocklistDumpKey("c1")
+	if err := s.AddToCreatorBlocklistDump(ctx, tmpKey, []string{"tw-1", "tw-2"}); err != nil {
+		t.Fatalf("AddToCreatorBlocklistDump failed: %v", err)
+	}
+	if err := s.FinalizeCreatorBlocklistDump(ctx, "c1", tmpKey, true); err != nil {
+		t.Fatalf("FinalizeCreatorBlocklistDump failed: %v", err)
+	}
+
+	members, err := s.rdb.SMembers(ctx, keyCreatorBlockedUsers("c1")).Result()
+	if err != nil {
+		t.Fatalf("SMembers blocklist failed: %v", err)
+	}
+	slices.Sort(members)
+	if !slices.Equal(members, []string{"tw-1", "tw-2"}) {
+		t.Fatalf("creator blocklist members = %v, want [tw-1 tw-2]", members)
+	}
+
+	if err := s.FinalizeCreatorBlocklistDump(ctx, "c1", s.NewCreatorBlocklistDumpKey("c1"), false); err != nil {
+		t.Fatalf("FinalizeCreatorBlocklistDump empty failed: %v", err)
+	}
+	members, err = s.rdb.SMembers(ctx, keyCreatorBlockedUsers("c1")).Result()
+	if err != nil {
+		t.Fatalf("SMembers blocklist after empty finalize failed: %v", err)
+	}
+	if len(members) != 0 {
+		t.Fatalf("creator blocklist members after empty finalize = %v, want empty", members)
+	}
+}
+
 func TestOAuthStateRoundTrip(t *testing.T) {
 	t.Parallel()
 

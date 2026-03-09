@@ -51,6 +51,14 @@ var htmlCustomEmojiReplacementTable = []customEmojiReplacement{
 		customID: "5271604874419647061",
 	},
 	{
+		standard: "▶️",
+		customID: "5348125953090403204",
+	},
+	{
+		standard: "⏸️",
+		customID: "5359543311897998264",
+	},
+	{
 		standard: "🎉",
 		customID: "5461151367559141950",
 	},

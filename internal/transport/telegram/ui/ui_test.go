@@ -132,6 +132,7 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	creatorCallbacks := CreatorMenuCallbacks{
 		Refresh:      "creator:refresh",
 		ManageGroups: "creator:open:groups",
+		Blocklist:    "creator:exec:blocklist",
 		Reset:        "reset:open:creator",
 	}
 	creatorMenu := CreatorMainMenuMarkup("en", CreatorMenuCallbacks{
@@ -158,8 +159,8 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	}
 
 	reconnectMenu := CreatorStatusMenuMarkup("en", "https://example.com/reconnect", creatorCallbacks)
-	if reconnectMenu == nil || len(reconnectMenu.InlineKeyboard) != 3 {
-		t.Fatalf("CreatorStatusMenuMarkup(%q, reconnectURL) = %+v, want 3 rows", "en", reconnectMenu)
+	if reconnectMenu == nil || len(reconnectMenu.InlineKeyboard) != 4 {
+		t.Fatalf("CreatorStatusMenuMarkup(%q, reconnectURL) = %+v, want 4 rows", "en", reconnectMenu)
 	}
 	if reconnectMenu.InlineKeyboard[0][0].URL != "https://example.com/reconnect" {
 		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) first url = %q, want %q", "en", reconnectMenu.InlineKeyboard[0][0].URL, "https://example.com/reconnect")
@@ -176,8 +177,14 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	if reconnectMenu.InlineKeyboard[1][0].IconCustomEmojiID != manageButtonEmojiID {
 		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) manage icon = %q, want %q", "en", reconnectMenu.InlineKeyboard[1][0].IconCustomEmojiID, manageButtonEmojiID)
 	}
-	if reconnectMenu.InlineKeyboard[2][0].CallbackData != creatorCallbacks.Reset {
-		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) second callback = %+v, want CallbackData=%q", "en", reconnectMenu.InlineKeyboard[2][0], creatorCallbacks.Reset)
+	if reconnectMenu.InlineKeyboard[2][0].CallbackData != creatorCallbacks.Blocklist {
+		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) blocklist callback = %+v, want CallbackData=%q", "en", reconnectMenu.InlineKeyboard[2][0], creatorCallbacks.Blocklist)
+	}
+	if reconnectMenu.InlineKeyboard[2][0].IconCustomEmojiID != blocklistButtonEmojiID {
+		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) blocklist icon = %q, want %q", "en", reconnectMenu.InlineKeyboard[2][0].IconCustomEmojiID, blocklistButtonEmojiID)
+	}
+	if reconnectMenu.InlineKeyboard[3][0].CallbackData != creatorCallbacks.Reset {
+		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) reset callback = %+v, want CallbackData=%q", "en", reconnectMenu.InlineKeyboard[3][0], creatorCallbacks.Reset)
 	}
 
 	extra := WithMainMenu("en", viewerCallbacks, []telego.InlineKeyboardButton{CallbackButton("X", "x")})
@@ -189,8 +196,8 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	}
 
 	creatorExtra := WithCreatorMainMenu("en", creatorCallbacks, []telego.InlineKeyboardButton{CallbackButton("X", "x")})
-	if creatorExtra == nil || len(creatorExtra.InlineKeyboard) != 4 {
-		t.Errorf("WithCreatorMainMenu(%q, rows=1) = %+v, want 4 rows", "en", creatorExtra)
+	if creatorExtra == nil || len(creatorExtra.InlineKeyboard) != 5 {
+		t.Errorf("WithCreatorMainMenu(%q, rows=1) = %+v, want 5 rows", "en", creatorExtra)
 	}
 	if creatorExtra.InlineKeyboard[1][0].CallbackData != creatorCallbacks.Refresh {
 		t.Errorf("WithCreatorMainMenu(%q, rows=1) refresh callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[1][0], creatorCallbacks.Refresh)
@@ -198,19 +205,25 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	if creatorExtra.InlineKeyboard[2][0].CallbackData != creatorCallbacks.ManageGroups {
 		t.Errorf("WithCreatorMainMenu(%q, rows=1) manage callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[2][0], creatorCallbacks.ManageGroups)
 	}
-	if creatorExtra.InlineKeyboard[3][0].CallbackData != creatorCallbacks.Reset {
-		t.Errorf("WithCreatorMainMenu(%q, rows=1) reset callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[3][0], creatorCallbacks.Reset)
+	if creatorExtra.InlineKeyboard[3][0].CallbackData != creatorCallbacks.Blocklist {
+		t.Errorf("WithCreatorMainMenu(%q, rows=1) blocklist callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[3][0], creatorCallbacks.Blocklist)
+	}
+	if creatorExtra.InlineKeyboard[4][0].CallbackData != creatorCallbacks.Reset {
+		t.Errorf("WithCreatorMainMenu(%q, rows=1) reset callback = %+v, want CallbackData=%q", "en", creatorExtra.InlineKeyboard[4][0], creatorCallbacks.Reset)
 	}
 
 	creatorReconnectExtra := WithCreatorStatusMenu("en", "https://example.com/reconnect", creatorCallbacks, []telego.InlineKeyboardButton{CallbackButton("X", "x")})
-	if creatorReconnectExtra == nil || len(creatorReconnectExtra.InlineKeyboard) != 4 {
-		t.Errorf("WithCreatorStatusMenu(%q, reconnectURL, rows=1) = %+v, want 4 rows", "en", creatorReconnectExtra)
+	if creatorReconnectExtra == nil || len(creatorReconnectExtra.InlineKeyboard) != 5 {
+		t.Errorf("WithCreatorStatusMenu(%q, reconnectURL, rows=1) = %+v, want 5 rows", "en", creatorReconnectExtra)
 	}
 	if creatorReconnectExtra.InlineKeyboard[1][0].URL != "https://example.com/reconnect" {
 		t.Errorf("WithCreatorStatusMenu(%q, reconnectURL, rows=1) reconnect url = %q, want %q", "en", creatorReconnectExtra.InlineKeyboard[1][0].URL, "https://example.com/reconnect")
 	}
 	if creatorReconnectExtra.InlineKeyboard[2][0].CallbackData != creatorCallbacks.ManageGroups {
 		t.Errorf("WithCreatorStatusMenu(%q, reconnectURL, rows=1) manage callback = %+v, want CallbackData=%q", "en", creatorReconnectExtra.InlineKeyboard[2][0], creatorCallbacks.ManageGroups)
+	}
+	if creatorReconnectExtra.InlineKeyboard[3][0].CallbackData != creatorCallbacks.Blocklist {
+		t.Errorf("WithCreatorStatusMenu(%q, reconnectURL, rows=1) blocklist callback = %+v, want CallbackData=%q", "en", creatorReconnectExtra.InlineKeyboard[3][0], creatorCallbacks.Blocklist)
 	}
 
 	resetPicker := ResetScopePickerMarkup("en", "reset:pick:viewer:viewer", "reset:pick:viewer:creator", "reset:pick:viewer:both", "reset:back:viewer")

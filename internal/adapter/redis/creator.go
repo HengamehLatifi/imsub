@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"imsub/internal/core"
@@ -45,17 +46,20 @@ func (s *Store) parseCreatorHash(vals map[string]string, fallbackID string) core
 		updatedAt = time.Now().UTC()
 	}
 	c := core.Creator{
-		ID:              vals["id"],
-		TwitchLogin:     vals["twitch_login"],
-		OwnerTelegramID: ownerID,
-		AccessToken:     vals["access_token"],
-		RefreshToken:    vals["refresh_token"],
-		UpdatedAt:       updatedAt,
-		AuthStatus:      core.CreatorAuthStatus(vals["auth_status"]),
-		AuthErrorCode:   vals["auth_error_code"],
-		AuthStatusAt:    parseCreatorTimeField(s.log(), fallbackID, vals, "auth_status_changed_at"),
-		LastSyncAt:      parseCreatorTimeField(s.log(), fallbackID, vals, "last_subscriber_sync_at"),
-		LastNoticeAt:    parseCreatorTimeField(s.log(), fallbackID, vals, "last_reconnect_notice_at"),
+		ID:                   vals["id"],
+		TwitchLogin:          vals["twitch_login"],
+		OwnerTelegramID:      ownerID,
+		AccessToken:          vals["access_token"],
+		RefreshToken:         vals["refresh_token"],
+		GrantedScopes:        parseCreatorScopes(vals["granted_scopes"]),
+		UpdatedAt:            updatedAt,
+		AuthStatus:           core.CreatorAuthStatus(vals["auth_status"]),
+		AuthErrorCode:        vals["auth_error_code"],
+		AuthStatusAt:         parseCreatorTimeField(s.log(), fallbackID, vals, "auth_status_changed_at"),
+		LastSyncAt:           parseCreatorTimeField(s.log(), fallbackID, vals, "last_subscriber_sync_at"),
+		LastBanSyncAt:        parseCreatorTimeField(s.log(), fallbackID, vals, "last_ban_sync_at"),
+		LastNoticeAt:         parseCreatorTimeField(s.log(), fallbackID, vals, "last_reconnect_notice_at"),
+		BlocklistSyncEnabled: vals["blocklist_sync_enabled"] == "1",
 	}
 	if c.TwitchLogin == "" {
 		c.TwitchLogin = vals["name"]
@@ -70,6 +74,21 @@ func (s *Store) parseCreatorHash(vals map[string]string, fallbackID string) core
 		c.AuthStatus = core.CreatorAuthHealthy
 	}
 	return c
+}
+
+func parseCreatorScopes(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // Creator returns the creator with the given ID, or false if not found.
@@ -226,14 +245,16 @@ func (s *Store) UpsertCreator(ctx context.Context, c core.Creator) error {
 	}
 
 	pipe.HSet(ctx, keyCreator(c.ID), map[string]string{
-		"id":                c.ID,
-		"twitch_login":      c.TwitchLogin,
-		"owner_telegram_id": strconv.FormatInt(c.OwnerTelegramID, 10),
-		"access_token":      c.AccessToken,
-		"refresh_token":     c.RefreshToken,
-		"updated_at":        time.Now().UTC().Format(time.RFC3339),
-		"auth_status":       string(c.AuthStatus),
-		"auth_error_code":   c.AuthErrorCode,
+		"id":                     c.ID,
+		"twitch_login":           c.TwitchLogin,
+		"owner_telegram_id":      strconv.FormatInt(c.OwnerTelegramID, 10),
+		"access_token":           c.AccessToken,
+		"refresh_token":          c.RefreshToken,
+		"granted_scopes":         strings.Join(c.GrantedScopes, ","),
+		"updated_at":             time.Now().UTC().Format(time.RFC3339),
+		"auth_status":            string(c.AuthStatus),
+		"auth_error_code":        c.AuthErrorCode,
+		"blocklist_sync_enabled": boolToRedis(c.BlocklistSyncEnabled),
 	})
 	if !c.AuthStatusAt.IsZero() {
 		pipe.HSet(ctx, keyCreator(c.ID), "auth_status_changed_at", c.AuthStatusAt.UTC().Format(time.RFC3339))
@@ -244,6 +265,11 @@ func (s *Store) UpsertCreator(ctx context.Context, c core.Creator) error {
 		pipe.HSet(ctx, keyCreator(c.ID), "last_subscriber_sync_at", c.LastSyncAt.UTC().Format(time.RFC3339))
 	} else {
 		pipe.HDel(ctx, keyCreator(c.ID), "last_subscriber_sync_at")
+	}
+	if !c.LastBanSyncAt.IsZero() {
+		pipe.HSet(ctx, keyCreator(c.ID), "last_ban_sync_at", c.LastBanSyncAt.UTC().Format(time.RFC3339))
+	} else {
+		pipe.HDel(ctx, keyCreator(c.ID), "last_ban_sync_at")
 	}
 	if !c.LastNoticeAt.IsZero() {
 		pipe.HSet(ctx, keyCreator(c.ID), "last_reconnect_notice_at", c.LastNoticeAt.UTC().Format(time.RFC3339))
@@ -256,6 +282,13 @@ func (s *Store) UpsertCreator(ctx context.Context, c core.Creator) error {
 		return fmt.Errorf("redis exec upsert creator: %w", err)
 	}
 	return nil
+}
+
+func boolToRedis(v bool) string {
+	if v {
+		return "1"
+	}
+	return "0"
 }
 
 // DeleteCreatorData removes a creator and cleans up member reverse-index entries.
@@ -290,13 +323,16 @@ func (s *Store) DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (d
 }
 
 // UpdateCreatorTokens replaces the creator's OAuth access and refresh tokens.
-func (s *Store) UpdateCreatorTokens(ctx context.Context, creatorID, accessToken, refreshToken string) error {
+func (s *Store) UpdateCreatorTokens(ctx context.Context, creatorID, accessToken, refreshToken string, grantedScopes []string) error {
 	fields := map[string]any{
 		"access_token": accessToken,
 		"updated_at":   time.Now().UTC().Format(time.RFC3339),
 	}
 	if refreshToken != "" {
 		fields["refresh_token"] = refreshToken
+	}
+	if len(grantedScopes) > 0 {
+		fields["granted_scopes"] = strings.Join(grantedScopes, ",")
 	}
 	if err := s.rdb.HSet(ctx, keyCreator(creatorID), fields).Err(); err != nil {
 		return fmt.Errorf("redis hset update creator tokens: %w", err)
@@ -344,6 +380,26 @@ func (s *Store) MarkCreatorAuthHealthy(ctx context.Context, creatorID string, at
 func (s *Store) UpdateCreatorLastSync(ctx context.Context, creatorID string, at time.Time) error {
 	if err := s.rdb.HSet(ctx, keyCreator(creatorID), "last_subscriber_sync_at", at.UTC().Format(time.RFC3339)).Err(); err != nil {
 		return fmt.Errorf("redis hset creator last sync: %w", err)
+	}
+	return nil
+}
+
+// UpdateCreatorLastBanSync stores the timestamp of the last successful blocklist sync.
+func (s *Store) UpdateCreatorLastBanSync(ctx context.Context, creatorID string, at time.Time) error {
+	if err := s.rdb.HSet(ctx, keyCreator(creatorID), "last_ban_sync_at", at.UTC().Format(time.RFC3339)).Err(); err != nil {
+		return fmt.Errorf("redis hset creator last ban sync: %w", err)
+	}
+	return nil
+}
+
+// UpdateCreatorBlocklistSyncEnabled stores whether blocklist sync is enabled for the creator.
+func (s *Store) UpdateCreatorBlocklistSyncEnabled(ctx context.Context, creatorID string, enabled bool) error {
+	fields := map[string]any{
+		"blocklist_sync_enabled": boolToRedis(enabled),
+		"updated_at":             time.Now().UTC().Format(time.RFC3339),
+	}
+	if err := s.rdb.HSet(ctx, keyCreator(creatorID), fields).Err(); err != nil {
+		return fmt.Errorf("redis hset creator blocklist sync enabled: %w", err)
 	}
 	return nil
 }

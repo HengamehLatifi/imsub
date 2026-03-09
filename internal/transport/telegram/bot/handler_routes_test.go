@@ -476,6 +476,41 @@ func TestRegisterTelegramHandlersDeclinesMismatchedJoinRequest(t *testing.T) {
 	h.caller.assertExactMethods(t, "declineChatJoinRequest")
 }
 
+func TestRegisterTelegramHandlersDeclinesBlockedJoinRequest(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:                   "creator-1",
+		OwnerTelegramID:      77,
+		BlocklistSyncEnabled: true,
+	})
+	h.store.setManagedGroup(core.ManagedGroup{
+		ChatID:    -1005,
+		CreatorID: "creator-1",
+		GroupName: "VIP",
+	})
+	h.store.setViewerIdentity(core.UserIdentity{
+		TelegramUserID: 102,
+		TwitchUserID:   "tw-102",
+		TwitchLogin:    "viewer102",
+	})
+	h.store.setCreatorBlocked("creator-1", "tw-102")
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 42,
+		ChatJoinRequest: &telego.ChatJoinRequest{
+			Chat: telego.Chat{ID: -1005},
+			From: telego.User{ID: 102},
+			InviteLink: &telego.ChatInviteLink{
+				Name: "imsub-102-creator",
+			},
+		},
+	})
+
+	h.caller.assertExactMethods(t, "declineChatJoinRequest")
+}
+
 func TestRegisterTelegramHandlersRegisterGroupBlocksWhenBotLacksRequiredPermissions(t *testing.T) {
 	t.Parallel()
 

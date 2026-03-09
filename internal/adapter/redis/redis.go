@@ -94,6 +94,7 @@ func keyUserTrackedGroups(telegramUserID int64) string {
 }
 func keyUsersSet() string                            { return "imsub:users" }
 func keyCreatorSubscribers(creatorID string) string  { return "imsub:creator:subscribers:" + creatorID }
+func keyCreatorBlockedUsers(creatorID string) string { return "imsub:creator:blocked:" + creatorID }
 func keyTwitchToTelegram(twitchUserID string) string { return "imsub:twitch_to_tg:" + twitchUserID }
 func keyCreator(creatorID string) string             { return "imsub:creator:" + creatorID }
 func keyCreatorsSet() string                         { return "imsub:creators" }

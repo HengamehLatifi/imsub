@@ -19,6 +19,9 @@ other = "Ricollega account creator"
 [btn_manage_groups]
 other = "Gestisci gruppi"
 
+[btn_blocklist_sync]
+other = "Sync blocklist"
+
 [btn_manage_group]
 other = "Gestisci Gruppo - %s"
 
@@ -95,7 +98,7 @@ other = "🎙️ <b>Setup Creator</b>\n\nCollega il tuo account creator Twitch c
 other = "🔄 <b>Ricollega account creator</b>\n\nIl tuo account creator ha bisogno di una nuova autorizzazione Twitch per permettere a ImSub di continuare a sincronizzare i subscriber.\n\n<b>Passaggi</b>\n1. Tocca <b>Ricollega account creator</b>\n2. Approva l'accesso su Twitch\n3. Torna su Telegram e controlla di nuovo <b>/creator</b>\n\nSe il pulsante non apre Twitch, usa <b>Copia link</b> qui sotto."
 
 [creator_registered_html]
-other = "✅ <b>Account creator collegato</b>\n🎙️ <b>Twitch:</b> %s\n\n<b>Stato setup</b>\n%s\n%s\n%s\n• Subscriber attuali in cache: %s\n\n➡️ <b>Prossimo step</b>\nSe il gruppo non e' ancora collegato, esegui /registergroup nel gruppo Telegram che vuoi proteggere.\nDevi essere <b>admin</b> li'.\n\n<b>Stato gruppo attuale</b>\n%s"
+other = "✅ <b>Account creator collegato</b>\n🎙️ <b>Twitch:</b> %s\n\n<b>Stato setup</b>\n%s\n%s\n%s\n%s\n\n➡️ <b>Prossimo step</b>\nSe il gruppo non e' ancora collegato, esegui /registergroup nel gruppo Telegram che vuoi proteggere.\nDevi essere <b>admin</b> li'.\n\n<b>Stato gruppo attuale</b>\n%s"
 
 [creator_registered_no_group_html]
 other = "✅ <b>Account creator collegato</b>\n🎙️ <b>Twitch:</b> %s\n\n<b>Stato account</b>\n%s\n%s\n\n➡️ <b>Prossimo step</b>\nEsegui /registergroup nel gruppo Telegram che vuoi proteggere.\nDevi essere <b>admin</b> li'.\n\n⏳ La sincronizzazione subscriber partira' automaticamente dopo il collegamento del gruppo.\n\n<b>Stato gruppo attuale</b>\n%s"
@@ -118,6 +121,18 @@ other = "✅ <b>Gruppo scollegato</b>\n<b>%s</b> e' stato rimosso dal tuo accoun
 [creator_group_unavailable_html]
 other = "⚠️ Questo gruppo non e' piu' collegato al tuo account creator."
 
+[creator_blocklist_enabled]
+other = "• Sync ban Twitch: ▶️ <b>Attiva</b>"
+
+[creator_blocklist_disabled]
+other = "• Sync ban Twitch: ⏸️ <b>Disattivata</b>"
+
+[creator_blocklist_on_notice]
+other = "▶️ Sync ban Twitch attivata. ImSub revochera' l'accesso agli utenti collegati bannati in modo permanente."
+
+[creator_blocklist_off_notice]
+other = "⏸️ Sync ban Twitch disattivata. La cache blocklist esistente non viene piu' applicata."
+
 [creator_last_sync_at]
 other = "• Ultima sincronizzazione riuscita: <b>%s</b>"
 
@@ -132,6 +147,12 @@ other = "<b>⏳ sincronizzazione...</b>"
 
 [creator_subscribers_ready]
 other = "<b>%d</b>"
+
+[creator_subscribers_cached]
+other = "• Subscriber attuali in cache: %s"
+
+[creator_banned_users_cached]
+other = "• Utenti bannati in cache: <b>%d</b>"
 
 [creator_userinfo_fail]
 other = "⚠️ <b>Impossibile leggere i dati dell'account Twitch</b>\nRiprova con /creator tra poco."

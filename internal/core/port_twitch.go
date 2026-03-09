@@ -13,6 +13,7 @@ type TwitchAPI interface {
 	CreateEventSub(ctx context.Context, broadcasterID, eventType, version string) error
 	EnabledEventSubTypes(ctx context.Context, creatorID string) (map[string]bool, error)
 	ListSubscriberPage(ctx context.Context, accessToken, broadcasterID, cursor string) (userIDs []string, nextCursor string, err error)
+	ListBannedUserPage(ctx context.Context, accessToken, broadcasterID, cursor string) (userIDs []string, nextCursor string, err error)
 	ListEventSubs(ctx context.Context, opts ListEventSubsOpts) ([]EventSubSubscription, error)
 	DeleteEventSub(ctx context.Context, subscriptionID string) error
 }

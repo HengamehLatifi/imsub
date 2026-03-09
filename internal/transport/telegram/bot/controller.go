@@ -67,6 +67,7 @@ type Dependencies struct {
 	TelegramClient      *client.Client
 	TelegramGroups      *telegramgroups.Client
 	CreatorStatus       *usecase.CreatorStatusUseCase
+	CreatorBlocklist    *core.CreatorBlocklistService
 	ViewerOAuth         *usecase.ViewerOAuthUseCase
 	CreatorOAuth        *usecase.CreatorOAuthUseCase
 	ViewerAccess        *usecase.ViewerAccessUseCase
@@ -86,6 +87,7 @@ type controllerStore interface {
 	ManagedGroupByChatID(ctx context.Context, chatID int64) (core.ManagedGroup, bool, error)
 	ListManagedGroups(ctx context.Context) ([]core.ManagedGroup, error)
 	DeleteManagedGroup(ctx context.Context, chatID int64) error
+	IsCreatorBlocked(ctx context.Context, creatorID, twitchUserID string) (bool, error)
 	CountUntrackedGroupMembers(ctx context.Context, chatID int64) (int, error)
 	IsTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) (bool, error)
 	AddTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64, source string, at time.Time) error
@@ -107,6 +109,7 @@ type Bot struct {
 	telegramGroups *telegramgroups.Client
 
 	creatorStatus       *usecase.CreatorStatusUseCase
+	creatorBlocklist    *core.CreatorBlocklistService
 	viewerOAuth         *usecase.ViewerOAuthUseCase
 	creatorOAuth        *usecase.CreatorOAuthUseCase
 	viewerAccess        *usecase.ViewerAccessUseCase
@@ -135,6 +138,7 @@ func New(deps Dependencies) *Bot {
 		telegramClient:      deps.TelegramClient,
 		telegramGroups:      deps.TelegramGroups,
 		creatorStatus:       deps.CreatorStatus,
+		creatorBlocklist:    deps.CreatorBlocklist,
 		viewerOAuth:         deps.ViewerOAuth,
 		creatorOAuth:        deps.CreatorOAuth,
 		viewerAccess:        deps.ViewerAccess,

@@ -62,5 +62,6 @@ type EventSubEnvelope struct {
 		UserID               string `json:"user_id"`
 		UserLogin            string `json:"user_login"`
 		BroadcasterUserLogin string `json:"broadcaster_user_login"`
+		IsPermanent          bool   `json:"is_permanent"`
 	} `json:"event"`
 }

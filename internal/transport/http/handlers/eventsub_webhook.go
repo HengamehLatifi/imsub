@@ -28,6 +28,10 @@ const (
 	eventStatusNotificationSubscribe            = "notification_subscribe"
 	eventStatusNotificationSubEndFailed         = "notification_subscription_end_failed"
 	eventStatusNotificationSubEnd               = "notification_subscription_end"
+	eventStatusNotificationBanFailed            = "notification_ban_failed"
+	eventStatusNotificationBan                  = "notification_ban"
+	eventStatusNotificationUnbanFailed          = "notification_unban_failed"
+	eventStatusNotificationUnban                = "notification_unban"
 	eventStatusNotificationOther                = "notification_other"
 	eventStatusIgnoredMessageType               = "ignored_message_type"
 )
@@ -169,6 +173,30 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			result = eventStatusNotificationSubEnd
+		case core.EventTypeChannelBan:
+			if c.blockBan != nil {
+				if err := c.blockBan(ctx, env.Subscription.Condition.BroadcasterUserID, env.Event.UserID, env.Event.IsPermanent); err != nil {
+					result = eventStatusNotificationBanFailed
+					WriteHTTPError(w, BadGatewayError("processing failed", err))
+					return
+				}
+			}
+			if !markProcessed() {
+				return
+			}
+			result = eventStatusNotificationBan
+		case core.EventTypeChannelUnban:
+			if c.blockUnban != nil {
+				if err := c.blockUnban(ctx, env.Subscription.Condition.BroadcasterUserID, env.Event.UserID, true); err != nil {
+					result = eventStatusNotificationUnbanFailed
+					WriteHTTPError(w, BadGatewayError("processing failed", err))
+					return
+				}
+			}
+			if !markProcessed() {
+				return
+			}
+			result = eventStatusNotificationUnban
 		default:
 			if !markProcessed() {
 				return

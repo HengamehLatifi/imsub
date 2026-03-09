@@ -8,9 +8,10 @@ import (
 )
 
 type creatorFakeStore struct {
-	getOwnedFn   func(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
-	listGroupsFn func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
-	countFn      func(ctx context.Context, creatorID string) (int64, error)
+	getOwnedFn    func(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
+	listGroupsFn  func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
+	countFn       func(ctx context.Context, creatorID string) (int64, error)
+	bannedCountFn func(ctx context.Context, creatorID string) (int64, error)
 }
 
 func (f *creatorFakeStore) OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (Creator, bool, error) {
@@ -23,6 +24,13 @@ func (f *creatorFakeStore) OwnedCreatorForUser(ctx context.Context, ownerTelegra
 func (f *creatorFakeStore) CreatorSubscriberCount(ctx context.Context, creatorID string) (int64, error) {
 	if f.countFn != nil {
 		return f.countFn(ctx, creatorID)
+	}
+	return 0, nil
+}
+
+func (f *creatorFakeStore) CreatorBlockedUserCount(ctx context.Context, creatorID string) (int64, error) {
+	if f.bannedCountFn != nil {
+		return f.bannedCountFn(ctx, creatorID)
 	}
 	return 0, nil
 }
@@ -55,6 +63,9 @@ func TestLoadStatus(t *testing.T) {
 			countFn: func(_ context.Context, _ string) (int64, error) {
 				return 12, nil
 			},
+			bannedCountFn: func(_ context.Context, _ string) (int64, error) {
+				return 3, nil
+			},
 		},
 		&fakeChecker{
 			activeFn: func(_ context.Context, _ string) (bool, error) {
@@ -82,6 +93,12 @@ func TestLoadStatus(t *testing.T) {
 	}
 	if got, want := status.SubscriberCount, int64(12); got != want {
 		t.Errorf("LoadStatus(%q).SubscriberCount = %d, want %d", "c1", got, want)
+	}
+	if got, want := status.HasBannedUserCount, true; got != want {
+		t.Errorf("LoadStatus(%q).HasBannedUserCount = %t, want %t", "c1", got, want)
+	}
+	if got, want := status.BannedUserCount, int64(3); got != want {
+		t.Errorf("LoadStatus(%q).BannedUserCount = %d, want %d", "c1", got, want)
 	}
 	if got, want := status.Auth, CreatorAuthReconnectRequired; got != want {
 		t.Errorf("LoadStatus(%q).Auth = %q, want %q", "c1", got, want)
@@ -120,5 +137,8 @@ func TestLoadStatusErrorsDegradeToUnknown(t *testing.T) {
 	}
 	if got, want := status.HasSubscriberCount, false; got != want {
 		t.Errorf("LoadStatus(%q).HasSubscriberCount = %t, want %t", "c1", got, want)
+	}
+	if got, want := status.HasBannedUserCount, false; got != want {
+		t.Errorf("LoadStatus(%q).HasBannedUserCount = %t, want %t", "c1", got, want)
 	}
 }

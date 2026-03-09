@@ -45,7 +45,7 @@ func (c *Controller) OAuthStart(w http.ResponseWriter, r *http.Request) {
 	case core.OAuthModeViewer:
 		scope = ""
 	case core.OAuthModeCreator:
-		scope = core.ScopeChannelReadSubscriptions
+		scope = strings.Join([]string{core.ScopeChannelReadSubscriptions, core.ScopeModerationRead}, " ")
 	default:
 		renderOAuthError(w, oauthErrorPage{
 			Status:  http.StatusBadRequest,

@@ -16,6 +16,7 @@ const (
 	btnRefresh          = "btn_refresh"
 	btnReconnect        = "btn_reconnect_creator"
 	btnManageGroups     = "btn_manage_groups"
+	btnBlocklistSync    = "btn_blocklist_sync"
 	btnReset            = "btn_reset"
 	btnSubscribe        = "btn_subscribe"
 	btnResetViewerData  = "btn_reset_viewer_data"
@@ -28,13 +29,14 @@ const (
 	msgLinkedStatusWithSubsHTML         = "linked_status_with_subs_html"
 	msgLinkedStatusWithSubsNoGroupsHTML = "linked_status_with_subs_no_groups_html"
 
-	refreshButtonEmojiID = "5258420634785947640"
-	linkButtonEmojiID    = "5257991477358763590"
-	deleteButtonEmojiID  = "5258130763148172425"
-	backButtonEmojiID    = "5258236805890710909"
-	manageButtonEmojiID  = "5258096772776991776"
-	groupButtonEmojiID   = "5258513401784573443"
-	unregisterEmojiID    = "5258084656674250503"
+	refreshButtonEmojiID   = "5258420634785947640"
+	linkButtonEmojiID      = "5257991477358763590"
+	deleteButtonEmojiID    = "5258130763148172425"
+	backButtonEmojiID      = "5258236805890710909"
+	manageButtonEmojiID    = "5258096772776991776"
+	blocklistButtonEmojiID = "5275969776668134187"
+	groupButtonEmojiID     = "5258513401784573443"
+	unregisterEmojiID      = "5258084656674250503"
 )
 
 // MainMenuCallbacks defines callback data for the viewer main menu.
@@ -47,6 +49,7 @@ type MainMenuCallbacks struct {
 type CreatorMenuCallbacks struct {
 	Refresh      string
 	ManageGroups string
+	Blocklist    string
 	Reset        string
 }
 
@@ -72,6 +75,9 @@ func CreatorStatusMenuMarkup(lang, reconnectURL string, callbacks CreatorMenuCal
 	}
 	if strings.TrimSpace(callbacks.ManageGroups) != "" {
 		rows = append(rows, tu.InlineKeyboardRow(ManageButton(i18n.Translate(lang, btnManageGroups), callbacks.ManageGroups)))
+	}
+	if strings.TrimSpace(callbacks.Blocklist) != "" {
+		rows = append(rows, tu.InlineKeyboardRow(BlocklistButton(i18n.Translate(lang, btnBlocklistSync), callbacks.Blocklist)))
 	}
 	rows = append(rows, tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnReset), callbacks.Reset)))
 	return tu.InlineKeyboard(rows...)
@@ -212,6 +218,11 @@ func DeleteButton(text, data string) telego.InlineKeyboardButton {
 // ManageButton creates a creator group-management action button.
 func ManageButton(text, data string) telego.InlineKeyboardButton {
 	return IconCallbackButton(text, data, manageButtonEmojiID)
+}
+
+// BlocklistButton creates a creator ban-sync toggle button.
+func BlocklistButton(text, data string) telego.InlineKeyboardButton {
+	return IconCallbackButton(text, data, blocklistButtonEmojiID)
 }
 
 // GroupButton creates a managed-group selection button.

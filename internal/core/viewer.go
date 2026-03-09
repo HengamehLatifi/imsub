@@ -105,6 +105,7 @@ type resolvedJoinPlan struct {
 type viewerResolverStore interface {
 	ListActiveCreatorGroups(ctx context.Context) ([]ActiveCreatorGroups, error)
 	IsCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) (bool, error)
+	IsCreatorBlocked(ctx context.Context, creatorID, twitchUserID string) (bool, error)
 }
 
 type viewerMembershipChecker interface {
@@ -150,6 +151,19 @@ func (r *viewerEligibilityResolver) resolve(ctx context.Context, telegramUserID 
 				out.untrackedGroups = append(out.untrackedGroups, group.ChatID)
 			}
 			continue
+		}
+		if item.Creator.BlocklistSyncEnabled {
+			isBlocked, err := r.store.IsCreatorBlocked(ctx, item.Creator.ID, twitchUserID)
+			if err != nil {
+				r.log.Warn("build join targets is creator blocked failed", "creator_id", item.Creator.ID, "error", err)
+				continue
+			}
+			if isBlocked {
+				for _, group := range item.Groups {
+					out.untrackedGroups = append(out.untrackedGroups, group.ChatID)
+				}
+				continue
+			}
 		}
 
 		out.activeCreatorNames = append(out.activeCreatorNames, item.Creator.TwitchLogin)

@@ -16,6 +16,7 @@ type viewerFakeStore struct {
 	listActiveCreatorGroups func(ctx context.Context) ([]ActiveCreatorGroups, error)
 	listGroupsFn            func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
 	isSubscriberFn          func(ctx context.Context, creatorID, twitchUserID string) (bool, error)
+	isBlockedFn             func(ctx context.Context, creatorID, twitchUserID string) (bool, error)
 	removeMembershipFn      func(ctx context.Context, chatID, telegramUserID int64) error
 	addMembershipFn         func(ctx context.Context, chatID, telegramUserID int64) error
 }
@@ -60,6 +61,13 @@ func (f *viewerFakeStore) ListActiveCreatorGroups(ctx context.Context) ([]Active
 func (f *viewerFakeStore) IsCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) (bool, error) {
 	if f.isSubscriberFn != nil {
 		return f.isSubscriberFn(ctx, creatorID, twitchUserID)
+	}
+	return false, nil
+}
+
+func (f *viewerFakeStore) IsCreatorBlocked(ctx context.Context, creatorID, twitchUserID string) (bool, error) {
+	if f.isBlockedFn != nil {
+		return f.isBlockedFn(ctx, creatorID, twitchUserID)
 	}
 	return false, nil
 }
@@ -323,6 +331,46 @@ func TestBuildJoinTargetsRecordsMetrics(t *testing.T) {
 		return a.Name == b.Name && a.Outcome == b.Outcome && a.Count == b.Count && viewerMapsEqual(a.Fields, b.Fields)
 	}) {
 		t.Fatalf("events = %+v, want %+v", obs.events, wantEvents)
+	}
+}
+
+func TestBuildJoinTargetsSkipsBlockedCreator(t *testing.T) {
+	t.Parallel()
+
+	var removed []int64
+	svc := NewViewerService(
+		&viewerFakeStore{
+			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
+				return []Creator{{ID: "c1", TwitchLogin: "alpha", BlocklistSyncEnabled: true}}, nil
+			},
+			listGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
+				return []ManagedGroup{{ChatID: 101, CreatorID: creatorID, GroupName: "A"}}, nil
+			},
+			isSubscriberFn: func(_ context.Context, _, _ string) (bool, error) {
+				return true, nil
+			},
+			isBlockedFn: func(_ context.Context, _, _ string) (bool, error) {
+				return true, nil
+			},
+			removeMembershipFn: func(_ context.Context, chatID, _ int64) error {
+				removed = append(removed, chatID)
+				return nil
+			},
+		},
+		&fakeGroupOps{},
+		nil,
+		nil,
+	)
+
+	got, err := svc.BuildJoinTargets(t.Context(), 7, "tw-1")
+	if err != nil {
+		t.Fatalf("BuildJoinTargets() error = %v", err)
+	}
+	if len(got.ActiveCreatorNames) != 0 || len(got.JoinLinks) != 0 {
+		t.Fatalf("BuildJoinTargets() = %+v, want no active creators or join links for blocked user", got)
+	}
+	if !slices.Equal(removed, []int64{101}) {
+		t.Fatalf("removed memberships = %v, want [101]", removed)
 	}
 }
 

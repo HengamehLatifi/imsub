@@ -57,7 +57,7 @@ func buildCreatorReconnectRequiredView(lang, reconnectURL string) sharedView {
 		text: i18n.Translate(lang, msgCreatorReconnectNeeded),
 		opts: client.MessageOptions{
 			ParseMode: telego.ModeHTML,
-			Markup:    ui.CreatorStatusMenuMarkup(lang, reconnectURL, creatorStatusMenuCallbacks(false)),
+			Markup:    ui.CreatorStatusMenuMarkup(lang, reconnectURL, creatorStatusMenuCallbacks(false, false)),
 		},
 	}
 }

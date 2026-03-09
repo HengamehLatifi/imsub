@@ -128,6 +128,9 @@ func (o *OAuthService) LinkCreator(ctx context.Context, code string, payload OAu
 	if !slices.Contains(tok.Scope, ScopeChannelReadSubscriptions) {
 		return CreatorResult{}, &FlowError{Kind: KindScopeMissing, Cause: errMissingScope}
 	}
+	if !slices.Contains(tok.Scope, ScopeModerationRead) {
+		return CreatorResult{}, &FlowError{Kind: KindScopeMissing, Cause: errMissingScope}
+	}
 
 	broadcasterID, broadcasterLogin, broadcasterDisplayName, err := o.api.FetchUser(ctx, tok.AccessToken)
 	if err != nil {
@@ -141,6 +144,7 @@ func (o *OAuthService) LinkCreator(ctx context.Context, code string, payload OAu
 		OwnerTelegramID: payload.TelegramUserID,
 		AccessToken:     tok.AccessToken,
 		RefreshToken:    tok.RefreshToken,
+		GrantedScopes:   append([]string(nil), tok.Scope...),
 		UpdatedAt:       now,
 		AuthStatus:      CreatorAuthHealthy,
 		AuthStatusAt:    now,

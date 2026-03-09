@@ -99,6 +99,24 @@ func TestSendTransformsConfiguredEmojiForHTMLByDefault(t *testing.T) {
 	caller.assertJSONFieldContains(t, "sendMessage", "text", `<tg-emoji emoji-id="5386367538735104399">⏳</tg-emoji>`)
 }
 
+func TestSendTransformsPlayPauseEmojiForHTML(t *testing.T) {
+	t.Parallel()
+
+	caller := &recordingCaller{
+		results: map[string]json.RawMessage{
+			"sendMessage": json.RawMessage(`{"message_id":99,"date":0,"chat":{"id":100,"type":"private"}}`),
+		},
+	}
+	c := newTestClient(t, caller)
+
+	c.Send(t.Context(), 100, "▶️ Start ⏸️ Stop", &MessageOptions{
+		ParseMode: telego.ModeHTML,
+	})
+
+	caller.assertJSONFieldContains(t, "sendMessage", "text", `<tg-emoji emoji-id="5348125953090403204">▶️</tg-emoji>`)
+	caller.assertJSONFieldContains(t, "sendMessage", "text", `<tg-emoji emoji-id="5359543311897998264">⏸️</tg-emoji>`)
+}
+
 func TestSendLeavesPlainTextEmojiUntouched(t *testing.T) {
 	t.Parallel()
 

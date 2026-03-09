@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 )
@@ -66,6 +67,10 @@ func (f *fakeAPI) EnabledEventSubTypes(_ context.Context, _ string) (map[string]
 }
 
 func (f *fakeAPI) ListSubscriberPage(_ context.Context, _, _, _ string) (userIDs []string, nextCursor string, err error) {
+	return nil, "", errors.New("not implemented")
+}
+
+func (f *fakeAPI) ListBannedUserPage(_ context.Context, _, _, _ string) (userIDs []string, nextCursor string, err error) {
 	return nil, "", errors.New("not implemented")
 }
 
@@ -156,7 +161,7 @@ func TestLinkCreatorUpsertSetsUpdatedAt(t *testing.T) {
 				return TokenResponse{
 					AccessToken:  "at",
 					RefreshToken: "rt",
-					Scope:        []string{ScopeChannelReadSubscriptions},
+					Scope:        []string{ScopeChannelReadSubscriptions, ScopeModerationRead},
 				}, nil
 			},
 			fetchUserFn: func(_ context.Context, _ string) (id, login, displayName string, err error) {
@@ -181,6 +186,9 @@ func TestLinkCreatorUpsertSetsUpdatedAt(t *testing.T) {
 	}
 	if got.Creator.AuthStatus != CreatorAuthHealthy {
 		t.Errorf("LinkCreator() Creator.AuthStatus = %q, want %q", got.Creator.AuthStatus, CreatorAuthHealthy)
+	}
+	if !slices.Contains(saved.GrantedScopes, ScopeModerationRead) {
+		t.Errorf("LinkCreator() saved scopes = %v, want %q included", saved.GrantedScopes, ScopeModerationRead)
 	}
 }
 
@@ -212,7 +220,7 @@ func TestLinkCreatorReconnectClearsAuthDegradation(t *testing.T) {
 				return TokenResponse{
 					AccessToken:  "new-at",
 					RefreshToken: "new-rt",
-					Scope:        []string{ScopeChannelReadSubscriptions},
+					Scope:        []string{ScopeChannelReadSubscriptions, ScopeModerationRead},
 				}, nil
 			},
 			fetchUserFn: func(_ context.Context, _ string) (id, login, displayName string, err error) {
@@ -247,7 +255,7 @@ func TestLinkCreatorReconnectRejectsDifferentCreator(t *testing.T) {
 				return TokenResponse{
 					AccessToken:  "new-at",
 					RefreshToken: "new-rt",
-					Scope:        []string{ScopeChannelReadSubscriptions},
+					Scope:        []string{ScopeChannelReadSubscriptions, ScopeModerationRead},
 				}, nil
 			},
 			fetchUserFn: func(_ context.Context, _ string) (id, login, displayName string, err error) {

@@ -125,13 +125,16 @@ func viewerMainMenuMarkup(lang string) *telego.InlineKeyboardMarkup {
 	return telegramui.MainMenuMarkup(lang, viewerMainMenuCallbacks())
 }
 
-func creatorStatusMenuCallbacks(hasGroups bool) telegramui.CreatorMenuCallbacks {
+func creatorStatusMenuCallbacks(hasManageGroups, isActive bool) telegramui.CreatorMenuCallbacks {
 	callbacks := telegramui.CreatorMenuCallbacks{
 		Refresh: creatorRefreshCallback(),
 		Reset:   resetOpenCallback(resetOriginCreator),
 	}
-	if hasGroups {
+	if hasManageGroups {
 		callbacks.ManageGroups = creatorManageGroupsCallback()
+	}
+	if isActive {
+		callbacks.Blocklist = creatorBlocklistToggleCallback()
 	}
 	return callbacks
 }
@@ -303,6 +306,15 @@ func (c *Bot) onChatJoinRequest(ctx *tghandler.Context, req telego.ChatJoinReque
 		c.log().Warn("Approve join request rate limit wait failed", "error", waitErr)
 		return nil
 	}
+	if c.shouldDeclineJoinRequest(ctx, req.Chat.ID, req.From.ID) {
+		if err := c.tg.DeclineChatJoinRequest(ctx, &telego.DeclineChatJoinRequestParams{
+			ChatID: tu.ID(req.Chat.ID),
+			UserID: req.From.ID,
+		}); err != nil {
+			c.log().Warn("Decline blocked join request failed", "user_id", req.From.ID, "chat_id", req.Chat.ID, "error", err)
+		}
+		return nil
+	}
 	err = c.tg.ApproveChatJoinRequest(ctx, &telego.ApproveChatJoinRequestParams{
 		ChatID: tu.ID(req.Chat.ID),
 		UserID: req.From.ID,
@@ -311,6 +323,42 @@ func (c *Bot) onChatJoinRequest(ctx *tghandler.Context, req telego.ChatJoinReque
 		c.log().Warn("Approve join request failed", "user_id", req.From.ID, "chat_id", req.Chat.ID, "error", err)
 	}
 	return nil
+}
+
+func (c *Bot) shouldDeclineJoinRequest(ctx context.Context, chatID, telegramUserID int64) bool {
+	if c == nil || c.store == nil {
+		return false
+	}
+	group, ok, err := c.store.ManagedGroupByChatID(ctx, chatID)
+	if err != nil {
+		c.log().Warn("ManagedGroupByChatID for join request failed", "chat_id", chatID, "error", err)
+		return false
+	}
+	if !ok {
+		return false
+	}
+	creator, creatorFound, err := c.store.Creator(ctx, group.CreatorID)
+	if err != nil {
+		c.log().Warn("Creator for join request failed", "creator_id", group.CreatorID, "error", err)
+		return false
+	}
+	if !creatorFound || !creator.BlocklistSyncEnabled {
+		return false
+	}
+	identity, found, err := c.store.UserIdentity(ctx, telegramUserID)
+	if err != nil {
+		c.log().Warn("UserIdentity for join request failed", "telegram_user_id", telegramUserID, "error", err)
+		return false
+	}
+	if !found {
+		return false
+	}
+	blocked, err := c.store.IsCreatorBlocked(ctx, group.CreatorID, identity.TwitchUserID)
+	if err != nil {
+		c.log().Warn("IsCreatorBlocked for join request failed", "creator_id", group.CreatorID, "twitch_user_id", identity.TwitchUserID, "error", err)
+		return false
+	}
+	return blocked
 }
 
 const (

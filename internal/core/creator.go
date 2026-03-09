@@ -33,12 +33,15 @@ type Status struct {
 	LastSyncAt         time.Time
 	SubscriberCount    int64
 	HasSubscriberCount bool
+	BannedUserCount    int64
+	HasBannedUserCount bool
 }
 
 type creatorStore interface {
 	OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
 	ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error)
 	CreatorSubscriberCount(ctx context.Context, creatorID string) (int64, error)
+	CreatorBlockedUserCount(ctx context.Context, creatorID string) (int64, error)
 }
 
 // CreatorService provides creator domain/application read operations.
@@ -102,6 +105,14 @@ func (c *CreatorService) LoadStatus(ctx context.Context, creator Creator) (Statu
 	}
 	status.SubscriberCount = count
 	status.HasSubscriberCount = true
+	bannedCount, err := c.store.CreatorBlockedUserCount(ctx, creator.ID)
+	if err != nil {
+		c.log.Warn("creator status banned-user count failed", "creator_id", creator.ID, "error", err)
+		errs = append(errs, fmt.Errorf("banned user count: %w", err))
+		return status, errors.Join(errs...)
+	}
+	status.BannedUserCount = bannedCount
+	status.HasBannedUserCount = true
 	return status, errors.Join(errs...)
 }
 

@@ -24,6 +24,7 @@ type controllerStore interface {
 type viewerOAuthHandler func(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, twitchDisplayName string, err error)
 type creatorOAuthHandler func(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, creatorName string, err error)
 type subEndHandler func(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) error
+type creatorBlocklistEventHandler func(ctx context.Context, creatorID, twitchUserID string, isPermanent bool) error
 
 // Dependencies configure HTTP controller construction.
 type Dependencies struct {
@@ -35,18 +36,22 @@ type Dependencies struct {
 	ViewerOAuth     viewerOAuthHandler
 	CreatorOAuth    creatorOAuthHandler
 	SubscriptionEnd subEndHandler
+	BlocklistBan    creatorBlocklistEventHandler
+	BlocklistUnban  creatorBlocklistEventHandler
 }
 
 // Controller handles OAuth start/callback, EventSub, and Telegram webhooks.
 type Controller struct {
-	cfg     config.Config
-	store   controllerStore
-	logger  *slog.Logger
-	events  events.EventSink
-	updates chan<- telego.Update
-	viewer  viewerOAuthHandler
-	creator creatorOAuthHandler
-	subEnd  subEndHandler
+	cfg        config.Config
+	store      controllerStore
+	logger     *slog.Logger
+	events     events.EventSink
+	updates    chan<- telego.Update
+	viewer     viewerOAuthHandler
+	creator    creatorOAuthHandler
+	subEnd     subEndHandler
+	blockBan   creatorBlocklistEventHandler
+	blockUnban creatorBlocklistEventHandler
 }
 
 // New creates an HTTP controller from the provided dependencies.
@@ -56,14 +61,16 @@ func New(deps Dependencies) *Controller {
 		logger = slog.Default()
 	}
 	return &Controller{
-		cfg:     deps.Config,
-		store:   deps.Store,
-		logger:  logger,
-		events:  deps.Events,
-		updates: deps.TelegramUpdates,
-		viewer:  deps.ViewerOAuth,
-		creator: deps.CreatorOAuth,
-		subEnd:  deps.SubscriptionEnd,
+		cfg:        deps.Config,
+		store:      deps.Store,
+		logger:     logger,
+		events:     deps.Events,
+		updates:    deps.TelegramUpdates,
+		viewer:     deps.ViewerOAuth,
+		creator:    deps.CreatorOAuth,
+		subEnd:     deps.SubscriptionEnd,
+		blockBan:   deps.BlocklistBan,
+		blockUnban: deps.BlocklistUnban,
 	}
 }
 

@@ -46,6 +46,10 @@ const (
 	msgCreatorUnregisterConfirm  = "creator_unregister_confirm_html"
 	msgCreatorGroupUnregistered  = "creator_group_unregistered_html"
 	msgCreatorGroupUnavailable   = "creator_group_unavailable_html"
+	msgCreatorBlocklistEnabled   = "creator_blocklist_enabled"
+	msgCreatorBlocklistDisabled  = "creator_blocklist_disabled"
+	msgCreatorBlocklistOnNotice  = "creator_blocklist_on_notice"
+	msgCreatorBlocklistOffNotice = "creator_blocklist_off_notice"
 
 	btnRegisterCreatorOpen = "btn_register_creator_open"
 	btnReconnectCreator    = "btn_reconnect_creator"
@@ -83,6 +87,9 @@ func (c *Bot) handleCreatorCallback(ctx context.Context, userID int64, editMsgID
 	case callbackVerbExecute:
 		if action.target == creatorCallbackTargetGroup {
 			return c.executeCreatorGroupUnregister(ctx, userID, editMsgID, lang, action.chatID)
+		}
+		if action.target == creatorCallbackTargetBlocklist {
+			return c.toggleCreatorBlocklist(ctx, userID, editMsgID, lang)
 		}
 	case callbackVerbCancel:
 		c.log().Warn("unsupported creator callback verb", "telegram_user_id", userID, "verb", action.verb)
@@ -306,6 +313,31 @@ func creatorStatusDetailsText(status core.Status, lang string) string {
 	return joinNonEmptyLines(lastSyncLine, reconnectLine)
 }
 
+func creatorBannedUserCountText(status core.Status, lang string) string {
+	if !status.HasBannedUserCount {
+		return ""
+	}
+	return fmt.Sprintf(i18n.Translate(lang, "creator_banned_users_cached"), status.BannedUserCount)
+}
+
+func creatorCacheSummaryText(status core.Status, lang string) string {
+	subscriberLine := ""
+	if status.HasSubscriberCount {
+		subscriberLine = fmt.Sprintf(i18n.Translate(lang, "creator_subscribers_cached"), creatorSubscriberStatusText(status, lang))
+	}
+	return joinNonEmptyLines(subscriberLine, creatorBannedUserCountText(status, lang))
+}
+
+func creatorBlocklistStatusText(lang string, creator core.Creator, active bool) string {
+	if !active {
+		return ""
+	}
+	if creator.BlocklistSyncEnabled {
+		return i18n.Translate(lang, msgCreatorBlocklistEnabled)
+	}
+	return i18n.Translate(lang, msgCreatorBlocklistDisabled)
+}
+
 func formatStatusTime(ts time.Time) string {
 	if ts.IsZero() {
 		return "-"
@@ -415,6 +447,35 @@ func (c *Bot) executeCreatorGroupUnregister(ctx context.Context, telegramUserID 
 	}
 }
 
+func (c *Bot) toggleCreatorBlocklist(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
+	if c.creatorBlocklist == nil {
+		c.log().Warn("creator blocklist service unavailable")
+		return ""
+	}
+	res, ok := c.loadCreatorStatusResult(ctx, telegramUserID, lang, editMsgID)
+	if !ok {
+		return ""
+	}
+	enable := !res.Creator.BlocklistSyncEnabled
+	creator, _, err := c.creatorBlocklist.ToggleBlocklistSync(ctx, telegramUserID, enable)
+	if err != nil {
+		if errors.Is(err, core.ErrCreatorModerationScopeMissing) {
+			c.log().Warn("creator blocklist toggle requires reconnect", "telegram_user_id", telegramUserID, "creator_id", res.Creator.ID)
+			c.replyCreatorOAuthPrompt(ctx, telegramUserID, editMsgID, lang, true)
+			return ""
+		}
+		c.log().Warn("toggle creator blocklist sync failed", "telegram_user_id", telegramUserID, "enable", enable, "error", err)
+		view := buildCreatorStatusErrorView(lang)
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
+		return view.text
+	}
+	noticeKey := msgCreatorBlocklistOffNotice
+	if creator.BlocklistSyncEnabled {
+		noticeKey = msgCreatorBlocklistOnNotice
+	}
+	return c.replyCreatorStatusWithNotice(ctx, telegramUserID, editMsgID, lang, i18n.Translate(lang, noticeKey))
+}
+
 func (c *Bot) loadCreatorStatusResult(ctx context.Context, telegramUserID int64, lang string, editMsgID int) (usecase.CreatorStatusResult, bool) {
 	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -439,6 +500,26 @@ func (c *Bot) loadCreatorStatusResult(ctx context.Context, telegramUserID int64,
 		c.log().Warn("LoadStatus degraded", "creator_id", res.Creator.ID, "error", res.StatusError)
 	}
 	return res, true
+}
+
+func (c *Bot) replyCreatorStatusWithNotice(ctx context.Context, telegramUserID int64, editMsgID int, lang, notice string) string {
+	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	res, err := c.creatorStatus.LoadStatus(statusCtx, telegramUserID)
+	if err != nil || !res.HasCreator {
+		c.replyCreatorStatus(ctx, telegramUserID, editMsgID, lang)
+		return ""
+	}
+	reconnectURL := ""
+	if res.Status.Auth == core.CreatorAuthReconnectRequired {
+		reconnectURL, _ = c.creatorReconnectURL(ctx, telegramUserID, lang)
+	}
+	view := buildCreatorStatusView(lang, reconnectURL, res.Creator, res.Status, res.Groups)
+	if strings.TrimSpace(notice) != "" {
+		view.text = notice + "\n\n" + view.text
+	}
+	c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
+	return view.text
 }
 
 func findCreatorManagedGroup(groups []core.ManagedGroup, groupChatID int64) (core.ManagedGroup, bool) {
@@ -486,6 +567,9 @@ func buildCreatorStatusView(lang, reconnectURL string, creator core.Creator, sta
 	groupLines := CreatorGroupLines(lang, creator.TwitchLogin, groups)
 	authStatus := creatorAuthStatusText(status, lang)
 	statusDetails := creatorStatusDetailsText(status, lang)
+	isActive := len(groups) > 0
+	blocklistStatus := creatorBlocklistStatusText(lang, creator, isActive)
+	accountStatusDetails := joinNonEmptyLines(statusDetails, blocklistStatus)
 	statusMenuRows := creatorStatusMenuRows(lang, groups)
 
 	if len(groups) == 0 {
@@ -494,33 +578,33 @@ func buildCreatorStatusView(lang, reconnectURL string, creator core.Creator, sta
 				i18n.Translate(lang, msgCreatorRegisteredNoGroup),
 				profileDisplay,
 				authStatus,
-				statusDetails,
+				accountStatusDetails,
 				groupLines,
 			),
 			opts: client.MessageOptions{
 				ParseMode:      telego.ModeHTML,
 				DisablePreview: true,
-				Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(false), statusMenuRows...),
+				Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(false, false), statusMenuRows...),
 			},
 		}
 	}
 
 	eventSubStatus := creatorEventSubStatusText(status, lang)
-	subscriberStatus := creatorSubscriberStatusText(status, lang)
+	cacheSummary := creatorCacheSummaryText(status, lang)
 	return sharedView{
 		text: fmt.Sprintf(
 			i18n.Translate(lang, msgCreatorRegistered),
 			profileDisplay,
 			eventSubStatus,
 			authStatus,
-			statusDetails,
-			subscriberStatus,
+			accountStatusDetails,
+			cacheSummary,
 			groupLines,
 		),
 		opts: client.MessageOptions{
 			ParseMode:      telego.ModeHTML,
 			DisablePreview: true,
-			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(len(groups) > 1), statusMenuRows...),
+			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(len(groups) > 1, true), statusMenuRows...),
 		},
 	}
 }

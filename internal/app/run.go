@@ -100,7 +100,19 @@ func Run() error {
 	}
 
 	eventSubSvc := core.NewEventSubService(s, twitchAPI, logger)
-	reconcileSvc := core.NewReconcilerService(s, eventSubSvc.DumpCurrentSubscribers, logger)
+	var blocklistSvc *core.CreatorBlocklistService
+	reconcileSvc := core.NewReconcilerService(s, func(ctx context.Context, creator core.Creator) (int, error) {
+		count, err := eventSubSvc.DumpCurrentSubscribers(ctx, creator)
+		if err != nil {
+			return count, fmt.Errorf("dump current subscribers: %w", err)
+		}
+		if blocklistSvc != nil {
+			if _, err := blocklistSvc.SyncCreatorBlocklist(ctx, creator); err != nil {
+				return count, fmt.Errorf("sync creator blocklist: %w", err)
+			}
+		}
+		return count, nil
+	}, logger)
 	subscriptionSvc := core.NewSubscriptionService(s)
 	oauthSvc := core.NewOAuthService(s, twitchAPI)
 	creatorSvc := core.NewCreatorService(s, eventSubSvc, logger)
@@ -117,6 +129,7 @@ func Run() error {
 	integrityTask := jobs.NewIntegrityAuditTask(s, logger, eventSink)
 	tgClient := telegramclient.New(tgBot, tgLimiter, logger)
 	tgGroups := telegramgroups.New(tgBot, tgLimiter, logger, s)
+	blocklistSvc = core.NewCreatorBlocklistService(s, twitchAPI, tgGroups, logger)
 
 	flowController := telegrambot.New(telegrambot.Dependencies{
 		Config:              cfg,
@@ -128,6 +141,7 @@ func Run() error {
 		TelegramClient:      tgClient,
 		TelegramGroups:      tgGroups,
 		CreatorStatus:       creatorStatusUC,
+		CreatorBlocklist:    blocklistSvc,
 		ViewerOAuth:         viewerOAuthUC,
 		CreatorOAuth:        creatorOAuthUC,
 		GroupRegistration:   groupRegistrationUC,
@@ -141,6 +155,7 @@ func Run() error {
 	flowController.SetViewerAccessUseCase(viewerAccessUC)
 	flowController.SetResetUseCase(usecase.NewResetUseCase(resetSvc, eventSink))
 	eventSubSvc.SetObserver(eventSink)
+	blocklistSvc.SetObserver(eventSink)
 	eventSubSvc.SetNotifier(flowController)
 	eventSubSvc.SyncReconnectRequiredGauge(context.Background())
 	flowController.RegisterTelegramHandlers()
@@ -154,6 +169,8 @@ func Run() error {
 		ViewerOAuth:     flowController.HandleViewerOAuthCallback,
 		CreatorOAuth:    flowController.HandleCreatorOAuthCallback,
 		SubscriptionEnd: flowController.HandleSubscriptionEnd,
+		BlocklistBan:    blocklistSvc.HandleBanEvent,
+		BlocklistUnban:  blocklistSvc.HandleUnbanEvent,
 	})
 
 	g, gctx := errgroup.WithContext(ctx)

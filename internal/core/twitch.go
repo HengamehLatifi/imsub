@@ -10,10 +10,16 @@ var ErrUnauthorized = errors.New("twitch: unauthorized")
 const (
 	// ScopeChannelReadSubscriptions is the scope required to read channel subscribers.
 	ScopeChannelReadSubscriptions = "channel:read:subscriptions"
+	// ScopeModerationRead is the scope required to read the creator's moderation ban list.
+	ScopeModerationRead = "moderation:read"
 	// EventTypeChannelSubscribe is the Twitch EventSub type for new subscriptions.
 	EventTypeChannelSubscribe = "channel.subscribe"
 	// EventTypeChannelSubEnd is the Twitch EventSub type for ended subscriptions.
 	EventTypeChannelSubEnd = "channel.subscription.end"
+	// EventTypeChannelBan is the Twitch EventSub type for channel bans.
+	EventTypeChannelBan = "channel.ban"
+	// EventTypeChannelUnban is the Twitch EventSub type for channel unbans.
+	EventTypeChannelUnban = "channel.unban"
 )
 
 // ListEventSubsOpts configures the ListEventSubs query.

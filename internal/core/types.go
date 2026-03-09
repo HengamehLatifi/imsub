@@ -40,17 +40,20 @@ const (
 
 // Creator represents a Twitch broadcaster/creator and their OAuth state.
 type Creator struct {
-	ID              string
-	TwitchLogin     string
-	OwnerTelegramID int64
-	AccessToken     string `json:"access_token"`  // #nosec G117 -- stored OAuth field name must match serialized schema
-	RefreshToken    string `json:"refresh_token"` // #nosec G117 -- stored OAuth field name must match serialized schema
-	UpdatedAt       time.Time
-	AuthStatus      CreatorAuthStatus
-	AuthErrorCode   string
-	AuthStatusAt    time.Time
-	LastSyncAt      time.Time
-	LastNoticeAt    time.Time
+	ID                   string
+	TwitchLogin          string
+	OwnerTelegramID      int64
+	AccessToken          string `json:"access_token"`  // #nosec G117 -- stored OAuth field name must match serialized schema
+	RefreshToken         string `json:"refresh_token"` // #nosec G117 -- stored OAuth field name must match serialized schema
+	GrantedScopes        []string
+	UpdatedAt            time.Time
+	AuthStatus           CreatorAuthStatus
+	AuthErrorCode        string
+	AuthStatusAt         time.Time
+	LastSyncAt           time.Time
+	LastBanSyncAt        time.Time
+	LastNoticeAt         time.Time
+	BlocklistSyncEnabled bool
 }
 
 // GroupPolicy describes what the bot should do with users discovered in a group
