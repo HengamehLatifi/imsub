@@ -24,7 +24,7 @@ var errReconnectNotificationSend = errors.New("send reconnect-required notificat
 
 // HandleViewerOAuthCallback executes viewer OAuth callback side effects and notifications.
 func (c *Controller) HandleViewerOAuthCallback(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, twitchDisplayName string, err error) {
-	res, flowErr := c.app.ViewerOAuth.Complete(ctx, code, payload, lang)
+	res, flowErr := c.viewerOAuth.Complete(ctx, code, payload, lang)
 	if flowErr != nil {
 		var fe *core.FlowError
 		if errors.As(flowErr, &fe) {
@@ -62,7 +62,7 @@ func (c *Controller) HandleViewerOAuthCallback(ctx context.Context, code string,
 		c.deleteMessage(ctx, payload.TelegramUserID, payload.PromptMessageID)
 	}
 
-	access, buildErr := c.app.ViewerAccess.LoadAccess(ctx, payload.TelegramUserID)
+	access, buildErr := c.viewerAccess.LoadAccess(ctx, payload.TelegramUserID)
 	if buildErr != nil {
 		c.log().Warn("load viewer access failed after viewer oauth callback", "telegram_user_id", payload.TelegramUserID, "error", buildErr)
 		view := buildOAuthLoadStatusErrorView(lang)
@@ -79,7 +79,7 @@ func (c *Controller) HandleViewerOAuthCallback(ctx context.Context, code string,
 
 // HandleCreatorOAuthCallback executes creator OAuth callback side effects and notifications.
 func (c *Controller) HandleCreatorOAuthCallback(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, creatorName string, err error) {
-	res, flowErr := c.app.CreatorOAuth.Complete(ctx, code, payload)
+	res, flowErr := c.creatorOAuth.Complete(ctx, code, payload)
 	if flowErr != nil {
 		var fe *core.FlowError
 		if errors.As(flowErr, &fe) {
@@ -142,7 +142,7 @@ func (c *Controller) NotifyCreatorReconnectRequired(ctx context.Context, creator
 
 // HandleSubscriptionEnd applies subscription-end side effects for a viewer.
 func (c *Controller) HandleSubscriptionEnd(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) error {
-	res, err := c.app.SubscriptionEnd.Prepare(ctx, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin)
+	res, err := c.subscriptionEnd.Prepare(ctx, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin)
 	if err != nil {
 		c.log().Warn("process subscription end failed", "error", err)
 		return fmt.Errorf("prepare subscription end: %w", err)

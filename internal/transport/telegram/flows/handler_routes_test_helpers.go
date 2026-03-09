@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"imsub/internal/application"
 	"imsub/internal/core"
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/i18n"
@@ -63,28 +62,21 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 	store := &routeTestStore{}
 	limiter := ratelimit.NewRateLimiter(1000, 0)
 	t.Cleanup(limiter.Close)
-	appRuntime := application.NewRuntime(application.Dependencies{
-		CreatorStatus:       usecase.NewCreatorStatusUseCase(core.NewCreator(store, routeTestEventSubChecker{}, nil), nil),
-		GroupRegistration:   usecase.NewGroupRegistrationUseCase(store, nil),
-		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(store, nil, nil),
-		NewViewerAccess: func(groupOps core.GroupOps) *usecase.ViewerAccessUseCase {
-			return usecase.NewViewerAccessUseCase(core.NewViewer(store, groupOps, nil, nil), nil)
-		},
-		NewReset: func(kick func(ctx context.Context, groupChatID, telegramUserID int64) error) *usecase.ResetUseCase {
-			return usecase.NewResetUseCase(core.NewResetter(store, kick, nil), nil)
-		},
-	})
 
 	controller := New(Dependencies{
 		Config: config.Config{
 			PublicBaseURL: "https://example.com",
 		},
-		Store:           store,
-		TelegramLimiter: limiter,
-		TelegramBot:     bot,
-		TelegramHandler: bh,
-		App:             appRuntime,
+		Store:               store,
+		TelegramLimiter:     limiter,
+		TelegramBot:         bot,
+		TelegramHandler:     bh,
+		CreatorStatus:       usecase.NewCreatorStatusUseCase(core.NewCreator(store, routeTestEventSubChecker{}, nil), nil),
+		GroupRegistration:   usecase.NewGroupRegistrationUseCase(store, nil),
+		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(store, nil, nil),
 	})
+	controller.SetViewerAccessUseCase(usecase.NewViewerAccessUseCase(core.NewViewer(store, controller.ViewerGroupOps(), nil, nil), nil))
+	controller.SetResetUseCase(usecase.NewResetUseCase(core.NewResetter(store, controller.KickFromGroup, nil), nil))
 	controller.RegisterTelegramHandlers()
 
 	return routeTestHarness{

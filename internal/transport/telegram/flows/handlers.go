@@ -33,11 +33,11 @@ func (c *Controller) onUnknownMessage(ctx *tghandler.Context, message telego.Mes
 
 // helpMessageKey selects the help text variant for the user's linked account state.
 func (c *Controller) helpMessageKey(ctx context.Context, telegramUserID int64) (string, error) {
-	_, hasViewer, err := c.app.ViewerAccess.LoadIdentity(ctx, telegramUserID)
+	_, hasViewer, err := c.viewerAccess.LoadIdentity(ctx, telegramUserID)
 	if err != nil {
 		return "", fmt.Errorf("load viewer identity for help message: %w", err)
 	}
-	_, hasCreator, err := c.app.CreatorStatus.LoadOwnedCreator(ctx, telegramUserID)
+	_, hasCreator, err := c.creatorStatus.LoadOwnedCreator(ctx, telegramUserID)
 	if err != nil {
 		return "", fmt.Errorf("load owned creator for help message: %w", err)
 	}

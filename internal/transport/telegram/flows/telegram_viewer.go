@@ -25,7 +25,7 @@ func (c *Controller) handleViewerStart(ctx context.Context, telegramUserID int64
 }
 
 func (c *Controller) handleViewerStartForUser(ctx context.Context, telegramUserID int64, editMsgID int, lang, userName string) string {
-	access, err := c.app.ViewerAccess.LoadAccess(ctx, telegramUserID)
+	access, err := c.viewerAccess.LoadAccess(ctx, telegramUserID)
 	if err != nil {
 		view := buildViewerStatusErrorView(lang)
 		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)

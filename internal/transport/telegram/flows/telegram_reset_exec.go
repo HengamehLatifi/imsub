@@ -26,7 +26,7 @@ func (c *Controller) handleResetBothCommand(ctx context.Context, telegramUserID 
 }
 
 func (c *Controller) executeResetScope(ctx context.Context, telegramUserID int64, editMsgID int, lang string, scope usecase.ResetScope) string {
-	res, err := c.app.Reset.Execute(ctx, telegramUserID, scope)
+	res, err := c.reset.Execute(ctx, telegramUserID, scope)
 	if err != nil {
 		view := buildResetErrorView(lang)
 		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)

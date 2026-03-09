@@ -94,7 +94,7 @@ func (c *Controller) buildResetConfirmView(
 }
 
 func (c *Controller) resetViewerGroupCount(ctx context.Context, telegramUserID int64) int {
-	groupCount, err := c.app.Reset.CountViewerGroups(ctx, telegramUserID)
+	groupCount, err := c.reset.CountViewerGroups(ctx, telegramUserID)
 	if err != nil {
 		c.log().Warn("count viewer groups failed", "telegram_user_id", telegramUserID, "error", err)
 		return 0

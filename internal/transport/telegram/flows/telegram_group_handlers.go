@@ -62,7 +62,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 	})
 	isAdmin := err == nil && IsAdmin(member)
 
-	_, ok, err := c.app.CreatorStatus.LoadOwnedCreator(ctx, msg.From.ID)
+	_, ok, err := c.creatorStatus.LoadOwnedCreator(ctx, msg.From.ID)
 	if err != nil {
 		c.log().Warn("OnRegisterGroup getOwnedCreator failed", "error", err)
 		return nil
@@ -77,7 +77,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		c.sendMsg(ctx, msg.Chat.ID, view.text, &view.opts)
 		return nil
 	}
-	if !ok || c.app.GroupRegistration == nil {
+	if !ok || c.groupRegistration == nil {
 		view := buildGroupReplyView(lang, msgGroupNotCreator, msg.MessageID)
 		c.sendMsg(ctx, msg.Chat.ID, view.text, &view.opts)
 		return nil
@@ -88,7 +88,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		return nil
 	}
 
-	regRes, err := c.app.GroupRegistration.RegisterGroup(ctx, msg.From.ID, msg.Chat.ID, msg.Chat.Title)
+	regRes, err := c.groupRegistration.RegisterGroup(ctx, msg.From.ID, msg.Chat.ID, msg.Chat.Title)
 	if err != nil {
 		c.log().Warn("RegisterGroup failed", "chat_id", msg.Chat.ID, "owner_telegram_id", msg.From.ID, "error", err)
 		return nil
@@ -121,12 +121,12 @@ func (c *Controller) onUnregisterCommand(ctx *tghandler.Context, msg telego.Mess
 		return nil
 	}
 
-	if c.app.GroupUnregistration == nil {
+	if c.groupUnregistration == nil {
 		c.log().Warn("group unregistration use case unavailable")
 		return nil
 	}
 
-	res, err := c.app.GroupUnregistration.UnregisterGroup(ctx, msg.From.ID, msg.Chat.ID)
+	res, err := c.groupUnregistration.UnregisterGroup(ctx, msg.From.ID, msg.Chat.ID)
 	if err != nil {
 		c.log().Warn("UnregisterGroup failed", "chat_id", msg.Chat.ID, "owner_telegram_id", msg.From.ID, "error", err)
 		return nil
@@ -157,7 +157,7 @@ func (c *Controller) activateCreatorOnFirstGroupRegistration(parent context.Cont
 	baseCtx := context.WithoutCancel(parent)
 	ctx, cancel := context.WithTimeout(baseCtx, 3*time.Minute)
 	defer cancel()
-	res, err := c.app.CreatorActivation.Activate(ctx, creator)
+	res, err := c.creatorActivation.Activate(ctx, creator)
 	if err != nil {
 		c.log().Warn("creator activation failed after first group registration", "creator_id", creator.ID, "error", err)
 		view := buildTextView(lang, msgCreatorEventSubFail)

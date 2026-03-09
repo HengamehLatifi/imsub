@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"imsub/internal/application"
 	"imsub/internal/core"
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/ratelimit"
 	"imsub/internal/transport/telegram/client"
 	"imsub/internal/transport/telegram/groupops"
+	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
 	tghandler "github.com/mymmrac/telego/telegohandler"
@@ -58,13 +58,21 @@ const (
 
 // Dependencies configure Telegram flows controller construction.
 type Dependencies struct {
-	Config          config.Config
-	Store           controllerStore
-	TelegramLimiter *ratelimit.RateLimiter
-	Logger          *slog.Logger
-	TelegramBot     *telego.Bot
-	TelegramHandler *tghandler.BotHandler
-	App             *application.Runtime
+	Config              config.Config
+	Store               controllerStore
+	TelegramLimiter     *ratelimit.RateLimiter
+	Logger              *slog.Logger
+	TelegramBot         *telego.Bot
+	TelegramHandler     *tghandler.BotHandler
+	CreatorStatus       *usecase.CreatorStatusUseCase
+	ViewerOAuth         *usecase.ViewerOAuthUseCase
+	CreatorOAuth        *usecase.CreatorOAuthUseCase
+	ViewerAccess        *usecase.ViewerAccessUseCase
+	GroupRegistration   *usecase.GroupRegistrationUseCase
+	GroupUnregistration *usecase.GroupUnregistrationUseCase
+	CreatorActivation   *usecase.CreatorActivationUseCase
+	SubscriptionEnd     *usecase.SubscriptionEndUseCase
+	Reset               *usecase.ResetUseCase
 }
 
 type controllerStore interface {
@@ -96,7 +104,15 @@ type Controller struct {
 	telegramClient   *client.Client
 	telegramGroupOps *groupops.Client
 
-	app *application.TelegramRuntime
+	creatorStatus       *usecase.CreatorStatusUseCase
+	viewerOAuth         *usecase.ViewerOAuthUseCase
+	creatorOAuth        *usecase.CreatorOAuthUseCase
+	viewerAccess        *usecase.ViewerAccessUseCase
+	groupRegistration   *usecase.GroupRegistrationUseCase
+	groupUnregistration *usecase.GroupUnregistrationUseCase
+	creatorActivation   *usecase.CreatorActivationUseCase
+	subscriptionEnd     *usecase.SubscriptionEndUseCase
+	reset               *usecase.ResetUseCase
 
 	backgroundWG sync.WaitGroup
 }
@@ -108,15 +124,21 @@ func New(deps Dependencies) *Controller {
 		logger = slog.Default()
 	}
 	c := &Controller{
-		cfg:       deps.Config,
-		store:     deps.Store,
-		tgLimiter: deps.TelegramLimiter,
-		logger:    logger,
-		tg:        deps.TelegramBot,
-		tgHandler: deps.TelegramHandler,
-	}
-	if deps.App != nil {
-		c.app = deps.App.BindTelegram(c.ViewerGroupOps(), c.KickFromGroup)
+		cfg:                 deps.Config,
+		store:               deps.Store,
+		tgLimiter:           deps.TelegramLimiter,
+		logger:              logger,
+		tg:                  deps.TelegramBot,
+		tgHandler:           deps.TelegramHandler,
+		creatorStatus:       deps.CreatorStatus,
+		viewerOAuth:         deps.ViewerOAuth,
+		creatorOAuth:        deps.CreatorOAuth,
+		viewerAccess:        deps.ViewerAccess,
+		groupRegistration:   deps.GroupRegistration,
+		groupUnregistration: deps.GroupUnregistration,
+		creatorActivation:   deps.CreatorActivation,
+		subscriptionEnd:     deps.SubscriptionEnd,
+		reset:               deps.Reset,
 	}
 	return c
 }
@@ -126,6 +148,22 @@ func (c *Controller) log() *slog.Logger {
 		return slog.Default()
 	}
 	return c.logger
+}
+
+// SetViewerAccessUseCase wires the Telegram viewer access use case after controller construction.
+func (c *Controller) SetViewerAccessUseCase(uc *usecase.ViewerAccessUseCase) {
+	if c == nil {
+		return
+	}
+	c.viewerAccess = uc
+}
+
+// SetResetUseCase wires the Telegram reset use case after controller construction.
+func (c *Controller) SetResetUseCase(uc *usecase.ResetUseCase) {
+	if c == nil {
+		return
+	}
+	c.reset = uc
 }
 
 func (c *Controller) runBackground(ctx context.Context, fn func(context.Context)) {

@@ -12,7 +12,6 @@ import (
 
 	"imsub/internal/adapter/redis"
 	"imsub/internal/adapter/twitch"
-	"imsub/internal/application"
 	"imsub/internal/core"
 	"imsub/internal/events"
 	"imsub/internal/jobs"
@@ -103,38 +102,38 @@ func Run() error {
 	subscriptionSvc := core.NewSubscription(s)
 	oauthSvc := core.NewOAuth(s, twitchAPI)
 	creatorSvc := core.NewCreator(s, eventSubSvc, logger)
-	appRuntime := application.NewRuntime(application.Dependencies{
-		CreatorStatus:       usecase.NewCreatorStatusUseCase(creatorSvc, eventSink),
-		ViewerOAuth:         usecase.NewViewerOAuthUseCase(oauthSvc, eventSink),
-		CreatorOAuth:        usecase.NewCreatorOAuthUseCase(oauthSvc, eventSink),
-		GroupRegistration:   usecase.NewGroupRegistrationUseCase(s, eventSink),
-		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(s, eventSubSvc, eventSink),
-		CreatorActivation:   usecase.NewCreatorActivationUseCase(eventSubSvc, eventSink),
-		SubscriptionEnd:     usecase.NewSubscriptionEndUseCase(subscriptionSvc, eventSink),
-		NewViewerAccess: func(groupOps core.GroupOps) *usecase.ViewerAccessUseCase {
-			return usecase.NewViewerAccessUseCase(core.NewViewer(s, groupOps, logger, eventSink), eventSink)
-		},
-		NewReset: func(kick func(ctx context.Context, groupChatID, telegramUserID int64) error) *usecase.ResetUseCase {
-			r := core.NewResetter(s, kick, logger)
-			r.SetEventSubCleaner(eventSubSvc)
-			return usecase.NewResetUseCase(r, eventSink)
-		},
-		OperatorReadModel: operatorReadModel,
-	})
+	creatorStatusUC := usecase.NewCreatorStatusUseCase(creatorSvc, eventSink)
+	viewerOAuthUC := usecase.NewViewerOAuthUseCase(oauthSvc, eventSink)
+	creatorOAuthUC := usecase.NewCreatorOAuthUseCase(oauthSvc, eventSink)
+	groupRegistrationUC := usecase.NewGroupRegistrationUseCase(s, eventSink)
+	groupUnregistrationUC := usecase.NewGroupUnregistrationUseCase(s, eventSubSvc, eventSink)
+	creatorActivationUC := usecase.NewCreatorActivationUseCase(eventSubSvc, eventSink)
+	subscriptionEndUC := usecase.NewSubscriptionEndUseCase(subscriptionSvc, eventSink)
 	jobRunner := jobs.NewRunner(logger, eventSink)
 	subscriberTask := jobs.NewSubscriberTask(reconcileSvc)
 	eventSubTask := jobs.NewEventSubTask(eventSubSvc)
 	integrityTask := jobs.NewIntegrityAuditTask(s, logger, eventSink)
 
 	flowController := flows.New(flows.Dependencies{
-		Config:          cfg,
-		Store:           s,
-		TelegramLimiter: tgLimiter,
-		Logger:          logger,
-		TelegramBot:     tgBot,
-		TelegramHandler: tgHandler,
-		App:             appRuntime,
+		Config:              cfg,
+		Store:               s,
+		TelegramLimiter:     tgLimiter,
+		Logger:              logger,
+		TelegramBot:         tgBot,
+		TelegramHandler:     tgHandler,
+		CreatorStatus:       creatorStatusUC,
+		ViewerOAuth:         viewerOAuthUC,
+		CreatorOAuth:        creatorOAuthUC,
+		GroupRegistration:   groupRegistrationUC,
+		GroupUnregistration: groupUnregistrationUC,
+		CreatorActivation:   creatorActivationUC,
+		SubscriptionEnd:     subscriptionEndUC,
 	})
+	viewerAccessUC := usecase.NewViewerAccessUseCase(core.NewViewer(s, flowController.ViewerGroupOps(), logger, eventSink), eventSink)
+	resetSvc := core.NewResetter(s, flowController.KickFromGroup, logger)
+	resetSvc.SetEventSubCleaner(eventSubSvc)
+	flowController.SetViewerAccessUseCase(viewerAccessUC)
+	flowController.SetResetUseCase(usecase.NewResetUseCase(resetSvc, eventSink))
 	eventSubSvc.SetObserver(eventSink)
 	eventSubSvc.SetNotifier(flowController)
 	eventSubSvc.SyncReconnectRequiredGauge(context.Background())

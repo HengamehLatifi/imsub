@@ -49,7 +49,7 @@ const (
 // --- Creator flow ---
 
 func (c *Controller) handleCreatorStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
-	_, ok, err := c.app.CreatorStatus.LoadOwnedCreator(ctx, telegramUserID)
+	_, ok, err := c.creatorStatus.LoadOwnedCreator(ctx, telegramUserID)
 	if err != nil {
 		view := buildCreatorStatusErrorView(lang)
 		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
@@ -116,7 +116,7 @@ func (c *Controller) replyCreatorOAuthPrompt(ctx context.Context, telegramUserID
 func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int64, editMsgID int, lang string) {
 	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	res, err := c.app.CreatorStatus.LoadStatus(statusCtx, telegramUserID)
+	res, err := c.creatorStatus.LoadStatus(statusCtx, telegramUserID)
 	if err != nil {
 		if !res.HasCreator {
 			c.log().Warn("LoadStatus failed", "telegram_user_id", telegramUserID, "error", err)
@@ -274,12 +274,12 @@ func (c *Controller) replyCreatorGroupUnregisterConfirmForResult(
 }
 
 func (c *Controller) executeCreatorGroupUnregister(ctx context.Context, telegramUserID int64, editMsgID int, lang string, groupChatID int64) string {
-	if c.app.GroupUnregistration == nil {
+	if c.groupUnregistration == nil {
 		c.log().Warn("group unregistration use case unavailable")
 		return ""
 	}
 
-	res, err := c.app.GroupUnregistration.UnregisterGroup(ctx, telegramUserID, groupChatID)
+	res, err := c.groupUnregistration.UnregisterGroup(ctx, telegramUserID, groupChatID)
 	if err != nil {
 		c.log().Warn("UnregisterGroup from creator menu failed", "chat_id", groupChatID, "owner_telegram_id", telegramUserID, "error", err)
 		view := buildCreatorStatusErrorView(lang)
@@ -308,7 +308,7 @@ func (c *Controller) executeCreatorGroupUnregister(ctx context.Context, telegram
 func (c *Controller) loadCreatorStatusResult(ctx context.Context, telegramUserID int64, lang string, editMsgID int) (usecase.CreatorStatusResult, bool) {
 	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	res, err := c.app.CreatorStatus.LoadStatus(statusCtx, telegramUserID)
+	res, err := c.creatorStatus.LoadStatus(statusCtx, telegramUserID)
 	if err != nil {
 		if !res.HasCreator {
 			c.log().Warn("LoadStatus failed", "telegram_user_id", telegramUserID, "error", err)

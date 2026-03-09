@@ -42,7 +42,7 @@ func (c *Controller) handleResetAction(ctx context.Context, telegramUserID int64
 
 // renderResetPrompt is the entry point for /reset and reset callbacks.
 func (c *Controller) renderResetPrompt(ctx context.Context, telegramUserID int64, editMsgID int, lang string, origin resetOrigin) string {
-	scopes, err := c.app.Reset.LoadScopes(ctx, telegramUserID)
+	scopes, err := c.reset.LoadScopes(ctx, telegramUserID)
 	if err != nil {
 		view := buildResetErrorView(lang)
 		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
@@ -61,7 +61,7 @@ func (c *Controller) renderResetPrompt(ctx context.Context, telegramUserID int64
 }
 
 func (c *Controller) renderResetConfirm(ctx context.Context, telegramUserID int64, editMsgID int, lang string, origin resetOrigin, scope resetScope) string {
-	scopes, err := c.app.Reset.LoadScopes(ctx, telegramUserID)
+	scopes, err := c.reset.LoadScopes(ctx, telegramUserID)
 	if err != nil {
 		view := buildResetErrorView(lang)
 		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
@@ -80,7 +80,7 @@ func (c *Controller) renderResetConfirm(ctx context.Context, telegramUserID int6
 }
 
 func (c *Controller) handleResetBack(ctx context.Context, telegramUserID int64, editMsgID int, lang string, origin resetOrigin) string {
-	scopes, err := c.app.Reset.LoadScopes(ctx, telegramUserID)
+	scopes, err := c.reset.LoadScopes(ctx, telegramUserID)
 	if err != nil {
 		view := buildMainMenuTextView(lang, msgErrReset)
 		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
