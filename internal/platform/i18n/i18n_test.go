@@ -85,10 +85,10 @@ func TestTranslationLookup(t *testing.T) {
 	if err := Ensure(); err != nil {
 		t.Fatalf("Ensure failed: %v", err)
 	}
-	if got := Tr("it", "btn_refresh"); got == "btn_refresh" {
+	if got := Translate("it", "btn_refresh"); got == "btn_refresh" {
 		t.Fatal("expected translated message for known key")
 	}
-	if got := Tr("it", "nonexistent_key_for_test"); got != "nonexistent_key_for_test" {
+	if got := Translate("it", "nonexistent_key_for_test"); got != "nonexistent_key_for_test" {
 		t.Fatalf("expected key fallback, got %q", got)
 	}
 }

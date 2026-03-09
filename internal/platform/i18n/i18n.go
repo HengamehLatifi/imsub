@@ -26,48 +26,27 @@ var supportedLanguages = map[string]struct{}{
 var localeFS embed.FS
 
 var (
-	// ErrNilService indicates an operation was attempted on a nil Service.
-	ErrNilService = errors.New("i18n: nil service")
-
 	errMissingBaseLang = errors.New("i18n: missing base language")
 	errMissingKey      = errors.New("i18n: missing key in language")
 	errExtraKey        = errors.New("i18n: extra key in language")
 	errMissingDict     = errors.New("i18n: supported language has no dictionary")
 
-	defaultService = NewService()
+	defaultBundlePtr atomic.Pointer[goi18n.Bundle]
+	defaultInitOnce  sync.Once
+	defaultInitErr   error
 )
-
-// Service provides translation lookups backed by embedded locale catalogs.
-type Service struct {
-	bundlePtr atomic.Pointer[goi18n.Bundle]
-	initOnce  sync.Once
-	initErr   error
-}
-
-// NewService creates a new i18n service instance.
-func NewService() *Service {
-	return &Service{}
-}
 
 // Ensure initializes the default i18n service bundle.
 func Ensure() error {
-	return defaultService.Ensure()
-}
-
-// Ensure initializes the service i18n bundle. It is safe to call multiple times.
-func (s *Service) Ensure() error {
-	if s == nil {
-		return ErrNilService
-	}
-	s.initOnce.Do(func() {
+	defaultInitOnce.Do(func() {
 		bundle, err := loadBundle()
 		if err != nil {
-			s.initErr = err
+			defaultInitErr = err
 			return
 		}
-		s.bundlePtr.Store(bundle)
+		defaultBundlePtr.Store(bundle)
 	})
-	return s.initErr
+	return defaultInitErr
 }
 
 // NormalizeLanguage returns the two-letter language code for the given input,
@@ -92,15 +71,7 @@ func NormalizeLanguage(code string) string {
 
 // Translate translates the given key for the specified language.
 func Translate(lang, key string) string {
-	return defaultService.Translate(lang, key)
-}
-
-// Translate translates the given key for the specified language.
-func (s *Service) Translate(lang, key string) string {
-	if s == nil {
-		return key
-	}
-	bundle := s.bundlePtr.Load()
+	bundle := defaultBundlePtr.Load()
 	if bundle == nil {
 		return key
 	}
@@ -113,20 +84,6 @@ func (s *Service) Translate(lang, key string) string {
 		return key
 	}
 	return msg
-}
-
-// Tr translates the given key for the specified language.
-//
-// Deprecated: use Translate.
-func Tr(lang, key string) string {
-	return Translate(lang, key)
-}
-
-// Tr translates the given key for the specified language.
-//
-// Deprecated: use (*Service).Translate.
-func (s *Service) Tr(lang, key string) string {
-	return s.Translate(lang, key)
 }
 
 // loadCatalogs reads all embedded locale/*.toml files and returns them
