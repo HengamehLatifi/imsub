@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"imsub/internal/core"
+	"imsub/internal/events"
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/httputil"
 
@@ -19,12 +20,6 @@ type controllerStore interface {
 	AddCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) error
 }
 
-type metricsObserver interface {
-	TelegramWebhookResult(result string)
-	OAuthCallback(mode, result string)
-	EventSubMessage(messageType, subscriptionType, result string)
-}
-
 type viewerOAuthHandler func(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, twitchDisplayName string, err error)
 type creatorOAuthHandler func(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, creatorName string, err error)
 type subEndHandler func(ctx context.Context, broadcasterID, broadcasterLogin, twitchUserID, twitchLogin string) error
@@ -34,7 +29,7 @@ type Dependencies struct {
 	Config          config.Config
 	Store           controllerStore
 	Logger          *slog.Logger
-	Observer        metricsObserver
+	Events          events.EventSink
 	TelegramUpdates chan<- telego.Update
 	ViewerOAuth     viewerOAuthHandler
 	CreatorOAuth    creatorOAuthHandler
@@ -46,7 +41,7 @@ type Controller struct {
 	cfg     config.Config
 	store   controllerStore
 	logger  *slog.Logger
-	obs     metricsObserver
+	events  events.EventSink
 	updates chan<- telego.Update
 	viewer  viewerOAuthHandler
 	creator creatorOAuthHandler
@@ -63,7 +58,7 @@ func New(deps Dependencies) *Controller {
 		cfg:     deps.Config,
 		store:   deps.Store,
 		logger:  logger,
-		obs:     deps.Observer,
+		events:  deps.Events,
 		updates: deps.TelegramUpdates,
 		viewer:  deps.ViewerOAuth,
 		creator: deps.CreatorOAuth,

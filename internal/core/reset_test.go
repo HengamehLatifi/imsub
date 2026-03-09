@@ -11,6 +11,9 @@ import (
 type resetFakeStore struct {
 	Store
 	trackedGroupIDs      map[int64][]int64
+	activeCreators       []Creator
+	creatorGroups        map[string][]ManagedGroup
+	subscriberByCreator  map[string]map[string]bool
 	deleteAllUserDataErr error
 	getIdentityFn        func(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	getCreatorFn         func(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
@@ -24,6 +27,18 @@ type resetFakeStore struct {
 
 func (f *resetFakeStore) ListTrackedGroupIDsForUser(_ context.Context, telegramUserID int64) ([]int64, error) {
 	return append([]int64(nil), f.trackedGroupIDs[telegramUserID]...), nil
+}
+
+func (f *resetFakeStore) ListActiveCreators(context.Context) ([]Creator, error) {
+	return append([]Creator(nil), f.activeCreators...), nil
+}
+
+func (f *resetFakeStore) ListManagedGroupsByCreator(_ context.Context, creatorID string) ([]ManagedGroup, error) {
+	return append([]ManagedGroup(nil), f.creatorGroups[creatorID]...), nil
+}
+
+func (f *resetFakeStore) IsCreatorSubscriber(_ context.Context, creatorID, twitchUserID string) (bool, error) {
+	return f.subscriberByCreator[creatorID][twitchUserID], nil
 }
 
 func (f *resetFakeStore) UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error) {
@@ -69,6 +84,65 @@ func TestSubLinkedGroupIDsForUser(t *testing.T) {
 	}
 }
 
+func TestSubLinkedGroupIDsForUserIncludesCanonicalFallback(t *testing.T) {
+	t.Parallel()
+
+	st := &resetFakeStore{
+		getIdentityFn: func(context.Context, int64) (UserIdentity, bool, error) {
+			return UserIdentity{TwitchUserID: "tw-7"}, true, nil
+		},
+		activeCreators: []Creator{{ID: "c1"}, {ID: "c2"}},
+		creatorGroups: map[string][]ManagedGroup{
+			"c1": {{ChatID: 111}, {ChatID: 222}},
+			"c2": {{ChatID: 333}},
+		},
+		subscriberByCreator: map[string]map[string]bool{
+			"c1": {"tw-7": true},
+			"c2": {"tw-7": false},
+		},
+	}
+	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
+
+	got, err := svc.SubLinkedGroupIDsForUser(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("SubLinkedGroupIDsForUser(%d) returned error %v, want nil", 7, err)
+	}
+	want := []int64{111, 222}
+	if !slices.Equal(got, want) {
+		t.Errorf("SubLinkedGroupIDsForUser(%d) = %v, want %v", 7, got, want)
+	}
+}
+
+func TestSubLinkedGroupIDsForUserUnionsTrackedAndCanonicalGroups(t *testing.T) {
+	t.Parallel()
+
+	st := &resetFakeStore{
+		trackedGroupIDs: map[int64][]int64{
+			7: {222, 111},
+		},
+		getIdentityFn: func(context.Context, int64) (UserIdentity, bool, error) {
+			return UserIdentity{TwitchUserID: "tw-7"}, true, nil
+		},
+		activeCreators: []Creator{{ID: "c1"}},
+		creatorGroups: map[string][]ManagedGroup{
+			"c1": {{ChatID: 222}, {ChatID: 333}},
+		},
+		subscriberByCreator: map[string]map[string]bool{
+			"c1": {"tw-7": true},
+		},
+	}
+	svc := NewResetter(st, func(context.Context, int64, int64) error { return nil }, nil)
+
+	got, err := svc.SubLinkedGroupIDsForUser(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("SubLinkedGroupIDsForUser(%d) returned error %v, want nil", 7, err)
+	}
+	want := []int64{111, 222, 333}
+	if !slices.Equal(got, want) {
+		t.Errorf("SubLinkedGroupIDsForUser(%d) = %v, want %v", 7, got, want)
+	}
+}
+
 func TestResetViewerDataAndRevokeGroupAccess(t *testing.T) {
 	t.Parallel()
 
@@ -90,12 +164,16 @@ func TestResetViewerDataAndRevokeGroupAccess(t *testing.T) {
 		slog.New(slog.DiscardHandler),
 	)
 
-	count, err := svc.ResetViewerDataAndRevokeGroupAccess(t.Context(), 9)
+	var resolution GroupResolutionStats
+	count, resolution, err := svc.ResetViewerDataAndRevokeGroupAccess(t.Context(), 9)
 	if err != nil {
 		t.Fatalf("ResetViewerDataAndRevokeGroupAccess(%d) returned error %v, want nil", 9, err)
 	}
 	if count != 2 {
 		t.Errorf("ResetViewerDataAndRevokeGroupAccess(%d) count = %d, want %d", 9, count, 2)
+	}
+	if resolution.TrackedCount != 2 || resolution.TotalCount != 2 {
+		t.Errorf("ResetViewerDataAndRevokeGroupAccess(%d) resolution = %+v, want tracked=2 total=2", 9, resolution)
 	}
 	if !slices.Equal(kicked, []int64{100, 300}) {
 		t.Errorf("ResetViewerDataAndRevokeGroupAccess(%d) kicked groups = %v, want %v", 9, kicked, []int64{100, 300})
@@ -175,6 +253,9 @@ func TestExecuteBothReset(t *testing.T) {
 	}
 	if !slices.Equal(got.DeletedNames, []string{"c1", "c2"}) {
 		t.Errorf("ExecuteBothReset(%d).DeletedNames = %v, want %v", 7, got.DeletedNames, []string{"c1", "c2"})
+	}
+	if got.GroupResolution.TotalCount != 3 || got.GroupResolution.TrackedCount != 3 {
+		t.Errorf("ExecuteBothReset(%d).GroupResolution = %+v, want tracked=3 total=3", 7, got.GroupResolution)
 	}
 }
 

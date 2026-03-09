@@ -3,7 +3,9 @@ package flows
 import (
 	"context"
 	"log/slog"
+	"time"
 
+	"imsub/internal/application"
 	"imsub/internal/core"
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/ratelimit"
@@ -54,35 +56,34 @@ const (
 // Dependencies configure Telegram flows controller construction.
 type Dependencies struct {
 	Config          config.Config
-	Store           core.Store
+	Store           controllerStore
 	TelegramLimiter *ratelimit.RateLimiter
 	Logger          *slog.Logger
 	TelegramBot     *telego.Bot
 	TelegramHandler *tghandler.BotHandler
-	Services        Services
-	Factories       ServiceFactories
+	App             *application.Runtime
 }
 
-// Services are runtime services used by Telegram flows.
-type Services struct {
-	EventSub     *core.EventSub
-	Subscription *core.Subscription
-	OAuth        *core.OAuth
-	Viewer       *core.Viewer
-	Creator      *core.CreatorService
-	Reset        *core.Resetter
-}
-
-// ServiceFactories builds optional services when concrete instances are not provided.
-type ServiceFactories struct {
-	Viewer func(groupOps core.GroupOps) *core.Viewer
-	Reset  func(kick func(ctx context.Context, groupChatID, telegramUserID int64) error) *core.Resetter
+type controllerStore interface {
+	UserIdentity(ctx context.Context, telegramUserID int64) (core.UserIdentity, bool, error)
+	SaveOAuthState(ctx context.Context, state string, payload core.OAuthStatePayload, ttl time.Duration) error
+	Creator(ctx context.Context, creatorID string) (core.Creator, bool, error)
+	OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (core.Creator, bool, error)
+	ManagedGroupByChatID(ctx context.Context, chatID int64) (core.ManagedGroup, bool, error)
+	ListManagedGroups(ctx context.Context) ([]core.ManagedGroup, error)
+	DeleteManagedGroup(ctx context.Context, chatID int64) error
+	CountUntrackedGroupMembers(ctx context.Context, chatID int64) (int, error)
+	IsTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) (bool, error)
+	AddTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64, source string, at time.Time) error
+	RemoveTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
+	UpsertUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64, source, status string, at time.Time) error
+	RemoveUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
 }
 
 // Controller owns Telegram business flows and callback orchestration.
 type Controller struct {
 	cfg       config.Config
-	store     core.Store
+	store     controllerStore
 	tgLimiter *ratelimit.RateLimiter
 	logger    *slog.Logger
 
@@ -91,12 +92,7 @@ type Controller struct {
 	telegramClient   *client.Client
 	telegramGroupOps *groupops.Client
 
-	eventSubSvc     *core.EventSub
-	subscriptionSvc *core.Subscription
-	oauthSvc        *core.OAuth
-	viewerSvc       *core.Viewer
-	creatorSvc      *core.CreatorService
-	resetSvc        *core.Resetter
+	app *application.TelegramRuntime
 }
 
 // New creates a Telegram flows Controller from dependencies.
@@ -112,19 +108,9 @@ func New(deps Dependencies) *Controller {
 		logger:    logger,
 		tg:        deps.TelegramBot,
 		tgHandler: deps.TelegramHandler,
-
-		eventSubSvc:     deps.Services.EventSub,
-		subscriptionSvc: deps.Services.Subscription,
-		oauthSvc:        deps.Services.OAuth,
-		viewerSvc:       deps.Services.Viewer,
-		creatorSvc:      deps.Services.Creator,
-		resetSvc:        deps.Services.Reset,
 	}
-	if c.viewerSvc == nil && deps.Factories.Viewer != nil {
-		c.viewerSvc = deps.Factories.Viewer(c.ViewerGroupOps())
-	}
-	if c.resetSvc == nil && deps.Factories.Reset != nil {
-		c.resetSvc = deps.Factories.Reset(c.KickFromGroup)
+	if deps.App != nil {
+		c.app = deps.App.BindTelegram(c.ViewerGroupOps(), c.KickFromGroup)
 	}
 	return c
 }

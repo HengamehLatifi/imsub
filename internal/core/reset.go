@@ -17,6 +17,9 @@ type resetStore interface {
 	UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
 	ListTrackedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, error)
+	ListActiveCreators(ctx context.Context) ([]Creator, error)
+	ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error)
+	IsCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) (bool, error)
 	DeleteAllUserData(ctx context.Context, telegramUserID int64) error
 	DeleteCreatorData(ctx context.Context, ownerTelegramID int64) (deletedCount int, deletedNames []string, err error)
 }
@@ -29,6 +32,14 @@ type Resetter struct {
 	eventSubClean eventSubCleaner
 }
 
+// GroupResolutionStats describes how reset target groups were resolved.
+type GroupResolutionStats struct {
+	TrackedCount        int
+	CanonicalCount      int
+	CanonicalAddedCount int
+	TotalCount          int
+}
+
 // ScopeState describes which reset scopes currently exist for a user.
 type ScopeState struct {
 	Identity    UserIdentity
@@ -39,9 +50,10 @@ type ScopeState struct {
 
 // ViewerResetResult contains the outcome of a viewer reset.
 type ViewerResetResult struct {
-	HasIdentity bool
-	Identity    UserIdentity
-	GroupCount  int
+	HasIdentity     bool
+	Identity        UserIdentity
+	GroupCount      int
+	GroupResolution GroupResolutionStats
 }
 
 // CreatorResetResult contains the outcome of a creator reset.
@@ -52,11 +64,12 @@ type CreatorResetResult struct {
 
 // BothResetResult contains the outcome of running both reset scopes.
 type BothResetResult struct {
-	HasIdentity  bool
-	Identity     UserIdentity
-	GroupCount   int
-	DeletedCount int
-	DeletedNames []string
+	HasIdentity     bool
+	Identity        UserIdentity
+	GroupCount      int
+	GroupResolution GroupResolutionStats
+	DeletedCount    int
+	DeletedNames    []string
 }
 
 // NewResetter creates a Resetter with optional logger fallback.
@@ -108,14 +121,15 @@ func (r *Resetter) ExecuteViewerReset(ctx context.Context, telegramUserID int64)
 	if !hasIdentity {
 		return ViewerResetResult{HasIdentity: false}, nil
 	}
-	groupCount, err := r.ResetViewerDataAndRevokeGroupAccess(ctx, telegramUserID)
+	groupCount, resolution, err := r.ResetViewerDataAndRevokeGroupAccess(ctx, telegramUserID)
 	if err != nil {
 		return ViewerResetResult{}, fmt.Errorf("reset viewer data and revoke: %w", err)
 	}
 	return ViewerResetResult{
-		HasIdentity: true,
-		Identity:    identity,
-		GroupCount:  groupCount,
+		HasIdentity:     true,
+		Identity:        identity,
+		GroupCount:      groupCount,
+		GroupResolution: resolution,
 	}, nil
 }
 
@@ -139,8 +153,9 @@ func (r *Resetter) ExecuteBothReset(ctx context.Context, telegramUserID int64) (
 	}
 
 	groupCount := 0
+	var resolution GroupResolutionStats
 	if hasIdentity {
-		groupCount, err = r.ResetViewerDataAndRevokeGroupAccess(ctx, telegramUserID)
+		groupCount, resolution, err = r.ResetViewerDataAndRevokeGroupAccess(ctx, telegramUserID)
 		if err != nil {
 			return BothResetResult{}, fmt.Errorf("reset viewer data and revoke: %w", err)
 		}
@@ -152,17 +167,18 @@ func (r *Resetter) ExecuteBothReset(ctx context.Context, telegramUserID int64) (
 	}
 
 	return BothResetResult{
-		HasIdentity:  hasIdentity,
-		Identity:     identity,
-		GroupCount:   groupCount,
-		DeletedCount: deletedCount,
-		DeletedNames: deletedNames,
+		HasIdentity:     hasIdentity,
+		Identity:        identity,
+		GroupCount:      groupCount,
+		GroupResolution: resolution,
+		DeletedCount:    deletedCount,
+		DeletedNames:    deletedNames,
 	}, nil
 }
 
 // CountSubLinkedGroupsForUser returns the number of linked creator groups for the user.
 func (r *Resetter) CountSubLinkedGroupsForUser(ctx context.Context, telegramUserID int64) (int, error) {
-	groupIDs, err := r.SubLinkedGroupIDsForUser(ctx, telegramUserID)
+	groupIDs, _, err := r.resolveSubLinkedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
 		return 0, fmt.Errorf("sub linked group ids: %w", err)
 	}
@@ -170,22 +186,83 @@ func (r *Resetter) CountSubLinkedGroupsForUser(ctx context.Context, telegramUser
 }
 
 // SubLinkedGroupIDsForUser returns sorted linked creator group IDs for the user.
+// Tracked membership is used as a fast path, then canonical subscription state
+// is consulted to fill gaps when the cache is stale or incomplete.
 func (r *Resetter) SubLinkedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, error) {
+	groupIDs, _, err := r.resolveSubLinkedGroupIDsForUser(ctx, telegramUserID)
+	if err != nil {
+		return nil, err
+	}
+	return groupIDs, nil
+}
+
+func (r *Resetter) resolveSubLinkedGroupIDsForUser(ctx context.Context, telegramUserID int64) ([]int64, GroupResolutionStats, error) {
 	groupIDs, err := r.store.ListTrackedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
-		return nil, fmt.Errorf("list tracked group ids for user: %w", err)
+		return nil, GroupResolutionStats{}, fmt.Errorf("list tracked group ids for user: %w", err)
+	}
+	stats := GroupResolutionStats{TrackedCount: len(groupIDs)}
+	identity, hasIdentity, err := r.store.UserIdentity(ctx, telegramUserID)
+	if err != nil {
+		return nil, GroupResolutionStats{}, fmt.Errorf("load user identity for canonical group lookup: %w", err)
+	}
+	if hasIdentity && identity.TwitchUserID != "" {
+		derivedGroupIDs, err := r.canonicalGroupIDsForUser(ctx, identity.TwitchUserID)
+		if err != nil {
+			return nil, GroupResolutionStats{}, fmt.Errorf("canonical group ids for user: %w", err)
+		}
+		stats.CanonicalCount = len(derivedGroupIDs)
+		existing := make(map[int64]struct{}, len(groupIDs))
+		for _, groupID := range groupIDs {
+			existing[groupID] = struct{}{}
+		}
+		for _, groupID := range derivedGroupIDs {
+			if _, ok := existing[groupID]; !ok {
+				stats.CanonicalAddedCount++
+			}
+		}
+		groupIDs = append(groupIDs, derivedGroupIDs...)
 	}
 	slices.Sort(groupIDs)
-	return slices.Compact(groupIDs), nil
+	groupIDs = slices.Compact(groupIDs)
+	stats.TotalCount = len(groupIDs)
+	return groupIDs, stats, nil
+}
+
+func (r *Resetter) canonicalGroupIDsForUser(ctx context.Context, twitchUserID string) ([]int64, error) {
+	creators, err := r.store.ListActiveCreators(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active creators: %w", err)
+	}
+
+	groupIDs := make([]int64, 0)
+	for _, creator := range creators {
+		isSubscriber, err := r.store.IsCreatorSubscriber(ctx, creator.ID, twitchUserID)
+		if err != nil {
+			return nil, fmt.Errorf("is creator subscriber %s: %w", creator.ID, err)
+		}
+		if !isSubscriber {
+			continue
+		}
+		groups, err := r.store.ListManagedGroupsByCreator(ctx, creator.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list managed groups by creator %s: %w", creator.ID, err)
+		}
+		for _, group := range groups {
+			groupIDs = append(groupIDs, group.ChatID)
+		}
+	}
+	return groupIDs, nil
 }
 
 // ResetViewerDataAndRevokeGroupAccess kicks the user only from tracked groups
-// and deletes viewer data. Untracked/observed-only group presence is ignored
-// until a creator-configurable policy exists.
-func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, telegramUserID int64) (int, error) {
-	groupIDs, err := r.SubLinkedGroupIDsForUser(ctx, telegramUserID)
+// plus any canonically-derived eligible groups, then deletes viewer data.
+// Untracked/observed-only group presence is ignored until a
+// creator-configurable policy exists.
+func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, telegramUserID int64) (int, GroupResolutionStats, error) {
+	groupIDs, stats, err := r.resolveSubLinkedGroupIDsForUser(ctx, telegramUserID)
 	if err != nil {
-		return 0, fmt.Errorf("sub linked group ids: %w", err)
+		return 0, GroupResolutionStats{}, fmt.Errorf("sub linked group ids: %w", err)
 	}
 	for _, groupID := range groupIDs {
 		if err := r.kick(ctx, groupID, telegramUserID); err != nil {
@@ -193,9 +270,9 @@ func (r *Resetter) ResetViewerDataAndRevokeGroupAccess(ctx context.Context, tele
 		}
 	}
 	if err := r.store.DeleteAllUserData(ctx, telegramUserID); err != nil {
-		return 0, fmt.Errorf("delete all user data: %w", err)
+		return 0, GroupResolutionStats{}, fmt.Errorf("delete all user data: %w", err)
 	}
-	return len(groupIDs), nil
+	return len(groupIDs), stats, nil
 }
 
 // DeleteCreatorData removes creator data owned by ownerTelegramID.

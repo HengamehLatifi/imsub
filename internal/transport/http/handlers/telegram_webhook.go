@@ -5,15 +5,21 @@ import (
 	"io"
 	"net/http"
 
+	"imsub/internal/events"
+
 	"github.com/mymmrac/telego"
 )
 
 // TelegramWebhook validates and enqueues incoming Telegram webhook updates.
 func (c *Controller) TelegramWebhook(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	result := "error"
 	defer func() {
-		if c.obs != nil {
-			c.obs.TelegramWebhookResult(result)
+		if c.events != nil {
+			c.events.Emit(ctx, events.Event{
+				Name:    events.NameTelegramWebhook,
+				Outcome: result,
+			})
 		}
 	}()
 

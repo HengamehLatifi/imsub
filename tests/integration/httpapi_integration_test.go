@@ -20,6 +20,7 @@ import (
 
 	"imsub/internal/adapter/redis"
 	"imsub/internal/core"
+	"imsub/internal/events"
 	"imsub/internal/platform/config"
 	"imsub/internal/transport/http/handlers"
 
@@ -30,9 +31,7 @@ import (
 
 type integrationObserver struct{}
 
-func (integrationObserver) TelegramWebhookResult(_ string) {}
-func (integrationObserver) OAuthCallback(_, _ string)      {}
-func (integrationObserver) EventSubMessage(_, _, _ string) {}
+func (integrationObserver) Emit(_ context.Context, _ events.Event) {}
 
 func newIntegrationStore(t *testing.T) *redis.Store {
 	t.Helper()
@@ -69,10 +68,10 @@ func TestHTTPAPITwitchCallbackViewerConsumesState(t *testing.T) {
 
 	var called bool
 	api := handlers.New(handlers.Dependencies{
-		Config:   config.Config{},
-		Store:    store,
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Observer: integrationObserver{},
+		Config: config.Config{},
+		Store:  store,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Events: integrationObserver{},
 		ViewerOAuth: func(_ context.Context, code string, gotPayload core.OAuthStatePayload, lang string) (string, string, error) {
 			called = true
 			if code != "code-123" {
@@ -121,9 +120,9 @@ func TestHTTPAPIEventSubSubscribeDedupesAndWritesStore(t *testing.T) {
 		Config: config.Config{
 			TwitchEventSubSecret: secret,
 		},
-		Store:    store,
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Observer: integrationObserver{},
+		Store:  store,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Events: integrationObserver{},
 		ViewerOAuth: func(_ context.Context, _ string, _ core.OAuthStatePayload, _ string) (string, string, error) {
 			t.Fatal("viewer handler should not be called")
 			return "", "", nil
@@ -199,7 +198,7 @@ func TestHTTPAPITelegramWebhookEnqueuesUpdate(t *testing.T) {
 			TelegramWebhookSecret: "tg-secret",
 		},
 		Store:           store,
-		Observer:        integrationObserver{},
+		Events:          integrationObserver{},
 		TelegramUpdates: updates,
 	})
 

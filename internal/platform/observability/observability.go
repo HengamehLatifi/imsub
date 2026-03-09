@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"imsub/internal/events"
 	"imsub/internal/platform/httputil"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,19 +17,32 @@ import (
 
 // Metrics holds all Prometheus collectors used by the application.
 type Metrics struct {
-	registry            *prometheus.Registry
-	requestsTotal       *prometheus.CounterVec
-	requestDuration     *prometheus.HistogramVec
-	requestsInFlight    prometheus.Gauge
-	oauthCallbacksTotal *prometheus.CounterVec
-	eventsubTotal       *prometheus.CounterVec
-	telegramWebhook     *prometheus.CounterVec
-	backgroundJobsTotal *prometheus.CounterVec
-	backgroundJobTime   *prometheus.HistogramVec
-	creatorTokenRefresh *prometheus.CounterVec
-	creatorAuthChange   *prometheus.CounterVec
-	creatorsReconnect   prometheus.Gauge
-	creatorReconnectDM  *prometheus.CounterVec
+	registry             *prometheus.Registry
+	requestsTotal        *prometheus.CounterVec
+	requestDuration      *prometheus.HistogramVec
+	requestsInFlight     prometheus.Gauge
+	oauthCallbacksTotal  *prometheus.CounterVec
+	eventsubTotal        *prometheus.CounterVec
+	telegramWebhook      *prometheus.CounterVec
+	backgroundJobsTotal  *prometheus.CounterVec
+	backgroundJobTime    *prometheus.HistogramVec
+	creatorTokenRefresh  *prometheus.CounterVec
+	creatorAuthChange    *prometheus.CounterVec
+	creatorsReconnect    prometheus.Gauge
+	creatorReconnectDM   *prometheus.CounterVec
+	resetExecutions      *prometheus.CounterVec
+	resetGroupTargets    *prometheus.CounterVec
+	groupRegistrations   *prometheus.CounterVec
+	groupUnregistrations *prometheus.CounterVec
+	creatorActivation    *prometheus.CounterVec
+	subscriptionEnd      *prometheus.CounterVec
+	reconcileRepairs     *prometheus.CounterVec
+	viewerOAuth          *prometheus.CounterVec
+	creatorOAuth         *prometheus.CounterVec
+	creatorStatus        *prometheus.CounterVec
+	viewerAccess         *prometheus.CounterVec
+	viewerJoinTargets    *prometheus.CounterVec
+	viewerInviteLinks    *prometheus.CounterVec
 }
 
 // New creates and registers all Prometheus metrics.
@@ -115,6 +129,97 @@ func New() *Metrics {
 			},
 			[]string{"result"},
 		),
+		resetExecutions: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_reset_executions_total",
+				Help: "Reset executions by scope and result.",
+			},
+			[]string{"scope", "result"},
+		),
+		resetGroupTargets: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_reset_group_targets_total",
+				Help: "Viewer reset group target counts by source.",
+			},
+			[]string{"source"},
+		),
+		groupRegistrations: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_group_registrations_total",
+				Help: "Group registration attempts by outcome.",
+			},
+			[]string{"outcome"},
+		),
+		groupUnregistrations: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_group_unregistrations_total",
+				Help: "Group unregistration attempts by outcome.",
+			},
+			[]string{"outcome"},
+		),
+		creatorActivation: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_creator_activation_total",
+				Help: "Creator activation workflow results.",
+			},
+			[]string{"result"},
+		),
+		subscriptionEnd: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_subscription_end_total",
+				Help: "Subscription-end workflow results.",
+			},
+			[]string{"result"},
+		),
+		reconcileRepairs: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_reconciliation_repairs_total",
+				Help: "Reconciliation repair counts by repair type and outcome.",
+			},
+			[]string{"repair", "outcome"},
+		),
+		viewerOAuth: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_viewer_oauth_total",
+				Help: "Viewer OAuth completion results.",
+			},
+			[]string{"result"},
+		),
+		creatorOAuth: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_creator_oauth_total",
+				Help: "Creator OAuth completion results.",
+			},
+			[]string{"result"},
+		),
+		creatorStatus: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_creator_status_total",
+				Help: "Creator status workflow results.",
+			},
+			[]string{"result"},
+		),
+		viewerAccess: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_viewer_access_total",
+				Help: "Viewer access workflow results.",
+			},
+			[]string{"result"},
+		),
+		viewerJoinTargets: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_viewer_join_targets_total",
+				Help: "Viewer join-target counts by kind.",
+			},
+			[]string{"kind"},
+		),
+		viewerInviteLinks: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "imsub_viewer_invite_links_total",
+				Help: "Viewer invite-link creation attempts by result.",
+			},
+			[]string{"result"},
+		),
 	}
 
 	m.registry.MustRegister(
@@ -130,6 +235,19 @@ func New() *Metrics {
 		m.creatorAuthChange,
 		m.creatorsReconnect,
 		m.creatorReconnectDM,
+		m.resetExecutions,
+		m.resetGroupTargets,
+		m.groupRegistrations,
+		m.groupUnregistrations,
+		m.creatorActivation,
+		m.subscriptionEnd,
+		m.reconcileRepairs,
+		m.viewerOAuth,
+		m.creatorOAuth,
+		m.creatorStatus,
+		m.viewerAccess,
+		m.viewerJoinTargets,
+		m.viewerInviteLinks,
 	)
 
 	return m
@@ -169,6 +287,161 @@ func (m *Metrics) CreatorReconnectNotification(result string) {
 		return
 	}
 	m.creatorReconnectDM.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// ResetExecution records reset executions by scope and result.
+func (m *Metrics) ResetExecution(scope, result string) {
+	if m == nil {
+		return
+	}
+	m.resetExecutions.WithLabelValues(httputil.LabelOrUnknown(scope), httputil.LabelOrUnknown(result)).Inc()
+}
+
+// ResetGroupTargets records viewer reset target groups by source.
+func (m *Metrics) ResetGroupTargets(source string, groups int) {
+	if m == nil || groups <= 0 {
+		return
+	}
+	m.resetGroupTargets.WithLabelValues(httputil.LabelOrUnknown(source)).Add(float64(groups))
+}
+
+// GroupRegistration records a group registration attempt by outcome.
+func (m *Metrics) GroupRegistration(outcome string) {
+	if m == nil {
+		return
+	}
+	m.groupRegistrations.WithLabelValues(httputil.LabelOrUnknown(outcome)).Inc()
+}
+
+// GroupUnregistration records a group unregistration attempt by outcome.
+func (m *Metrics) GroupUnregistration(outcome string) {
+	if m == nil {
+		return
+	}
+	m.groupUnregistrations.WithLabelValues(httputil.LabelOrUnknown(outcome)).Inc()
+}
+
+// CreatorActivation records creator activation outcomes.
+func (m *Metrics) CreatorActivation(result string) {
+	if m == nil {
+		return
+	}
+	m.creatorActivation.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// SubscriptionEnd records subscription-end workflow outcomes.
+func (m *Metrics) SubscriptionEnd(result string) {
+	if m == nil {
+		return
+	}
+	m.subscriptionEnd.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// ReconciliationRepair records reconciliation repair counts by type and outcome.
+func (m *Metrics) ReconciliationRepair(repair, outcome string, count int) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.reconcileRepairs.WithLabelValues(httputil.LabelOrUnknown(repair), httputil.LabelOrUnknown(outcome)).Add(float64(count))
+}
+
+// ViewerOAuth records viewer OAuth completion results.
+func (m *Metrics) ViewerOAuth(result string) {
+	if m == nil {
+		return
+	}
+	m.viewerOAuth.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// CreatorOAuth records creator OAuth completion results.
+func (m *Metrics) CreatorOAuth(result string) {
+	if m == nil {
+		return
+	}
+	m.creatorOAuth.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// CreatorStatus records creator status workflow results.
+func (m *Metrics) CreatorStatus(result string) {
+	if m == nil {
+		return
+	}
+	m.creatorStatus.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// ViewerAccess records linked-viewer workflow results.
+func (m *Metrics) ViewerAccess(result string) {
+	if m == nil {
+		return
+	}
+	m.viewerAccess.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// ViewerJoinTargets records viewer join-target counts by kind.
+func (m *Metrics) ViewerJoinTargets(kind string, count int) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.viewerJoinTargets.WithLabelValues(httputil.LabelOrUnknown(kind)).Add(float64(count))
+}
+
+// ViewerInviteLink records viewer invite-link creation attempts.
+func (m *Metrics) ViewerInviteLink(result string) {
+	if m == nil {
+		return
+	}
+	m.viewerInviteLinks.WithLabelValues(httputil.LabelOrUnknown(result)).Inc()
+}
+
+// Emit projects application events into observability metrics.
+func (m *Metrics) Emit(_ context.Context, evt events.Event) {
+	if m == nil {
+		return
+	}
+	switch evt.Name {
+	case events.NameResetExecuted:
+		m.ResetExecution(evt.Fields["scope"], evt.Outcome)
+	case events.NameResetGroupTarget:
+		m.ResetGroupTargets(evt.Fields["source"], evt.Count)
+	case events.NameGroupRegistration:
+		m.GroupRegistration(evt.Outcome)
+	case events.NameGroupUnregistration:
+		m.GroupUnregistration(evt.Outcome)
+	case events.NameCreatorActivation:
+		m.CreatorActivation(evt.Outcome)
+	case events.NameSubscriptionEnd:
+		m.SubscriptionEnd(evt.Outcome)
+	case events.NameViewerOAuth:
+		m.ViewerOAuth(evt.Outcome)
+	case events.NameViewerJoinTarget:
+		m.ViewerJoinTargets(evt.Fields["kind"], evt.Count)
+	case events.NameViewerInviteLink:
+		m.ViewerInviteLink(evt.Outcome)
+	case events.NameCreatorTokenRefresh:
+		m.CreatorTokenRefresh(evt.Outcome)
+	case events.NameCreatorAuthTransition:
+		m.CreatorAuthTransition(evt.Fields["from"], evt.Fields["to"], evt.Fields["reason"])
+	case events.NameCreatorsReconnectRequired:
+		m.CreatorsReconnectRequired(evt.Count)
+	case events.NameCreatorReconnectNotice:
+		m.CreatorReconnectNotification(evt.Outcome)
+	case events.NameBackgroundJob:
+		m.BackgroundJob(evt.Fields["job"], evt.Outcome, evt.Duration)
+	case events.NameReconciliationRepair:
+		m.ReconciliationRepair(evt.Fields["repair"], evt.Outcome, evt.Count)
+	case events.NameOAuthCallback:
+		m.OAuthCallback(evt.Fields["mode"], evt.Outcome)
+	case events.NameEventSubMessage:
+		m.EventSubMessage(evt.Fields["message_type"], evt.Fields["subscription_type"], evt.Outcome)
+	case events.NameTelegramWebhook:
+		m.TelegramWebhookResult(evt.Outcome)
+	case events.NameCreatorOAuth:
+		m.CreatorOAuth(evt.Outcome)
+	case events.NameCreatorStatus:
+		m.CreatorStatus(evt.Outcome)
+	case events.NameViewerAccess:
+		m.ViewerAccess(evt.Outcome)
+	}
 }
 
 // Handler returns an HTTP handler that serves Prometheus metrics.

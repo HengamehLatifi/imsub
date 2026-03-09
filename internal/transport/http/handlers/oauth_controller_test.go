@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"imsub/internal/core"
+	"imsub/internal/events"
 	"imsub/internal/platform/config"
 
 	"github.com/mymmrac/telego"
@@ -40,16 +41,14 @@ func (f *oauthFakeStore) AddCreatorSubscriber(context.Context, string, string) e
 }
 
 type oauthFakeObserver struct {
-	telegramResult string
+	events []events.Event
 }
 
-func (f *oauthFakeObserver) TelegramWebhookResult(result string) {
-	f.telegramResult = result
+func (f *oauthFakeObserver) Emit(_ context.Context, evt events.Event) {
+	f.events = append(f.events, evt)
 }
-func (f *oauthFakeObserver) OAuthCallback(string, string)           {}
-func (f *oauthFakeObserver) EventSubMessage(string, string, string) {}
 
-func testController(store controllerStore, obs metricsObserver, updates chan<- telego.Update) *Controller {
+func testController(store controllerStore, sink events.EventSink, updates chan<- telego.Update) *Controller {
 	return New(Dependencies{
 		Config: config.Config{
 			TwitchClientID:        "client-id",
@@ -57,7 +56,7 @@ func testController(store controllerStore, obs metricsObserver, updates chan<- t
 			TelegramWebhookSecret: "secret",
 		},
 		Store:           store,
-		Observer:        obs,
+		Events:          sink,
 		TelegramUpdates: updates,
 	})
 }
@@ -122,8 +121,8 @@ func TestTelegramWebhookQueueUnavailable(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("TelegramWebhook(queue=nil).StatusCode = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
-	if obs.telegramResult != "updates_channel_unavailable" {
-		t.Errorf("TelegramWebhook(queue=nil) observer result = %q, want %q", obs.telegramResult, "updates_channel_unavailable")
+	if len(obs.events) != 1 || obs.events[0].Name != events.NameTelegramWebhook || obs.events[0].Outcome != "updates_channel_unavailable" {
+		t.Errorf("telegram events = %+v, want updates_channel_unavailable", obs.events)
 	}
 }
 
@@ -153,8 +152,8 @@ func TestTelegramWebhookEnqueueSuccess(t *testing.T) {
 	default:
 		t.Error("TelegramWebhook(queue=buffered) did not enqueue update")
 	}
-	if obs.telegramResult != "ok" {
-		t.Errorf("TelegramWebhook(queue=buffered) observer result = %q, want %q", obs.telegramResult, "ok")
+	if len(obs.events) != 1 || obs.events[0].Name != events.NameTelegramWebhook || obs.events[0].Outcome != "ok" {
+		t.Errorf("telegram events = %+v, want ok", obs.events)
 	}
 }
 

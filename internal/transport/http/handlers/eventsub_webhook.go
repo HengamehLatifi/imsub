@@ -9,6 +9,7 @@ import (
 
 	"imsub/internal/adapter/twitch"
 	"imsub/internal/core"
+	"imsub/internal/events"
 )
 
 const (
@@ -34,14 +35,22 @@ const (
 
 // EventSubWebhook verifies and processes Twitch EventSub webhook deliveries.
 func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	logger := c.logCtx(r.Context())
 	logger.Debug("eventsub webhook received", "method", r.Method, "path", r.URL.Path)
 	messageType := strings.TrimSpace(r.Header.Get("Twitch-Eventsub-Message-Type"))
 	subscriptionType := eventStatusUnknown
 	result := eventStatusError
 	defer func() {
-		if c.obs != nil {
-			c.obs.EventSubMessage(messageType, subscriptionType, result)
+		if c.events != nil {
+			c.events.Emit(ctx, events.Event{
+				Name:    events.NameEventSubMessage,
+				Outcome: result,
+				Fields: map[string]string{
+					"message_type":      messageType,
+					"subscription_type": subscriptionType,
+				},
+			})
 		}
 	}()
 
@@ -96,7 +105,6 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
 	alreadyProcessed, err := c.store.MarkEventProcessed(ctx, messageID, 24*time.Hour)
 	if err != nil {
 		result = eventStatusRedisError

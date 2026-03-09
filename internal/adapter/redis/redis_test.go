@@ -128,7 +128,7 @@ func TestDeleteAllUserDataRemovesTrackedGroupLinks(t *testing.T) {
 	}
 }
 
-func TestRepairUserCreatorReverseIndex(t *testing.T) {
+func TestRepairTrackedGroupReverseIndex(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -159,13 +159,9 @@ func TestRepairUserCreatorReverseIndex(t *testing.T) {
 		t.Fatalf("seed user 100 tracked groups failed: %v", err)
 	}
 
-	creators, err := s.ListCreators(ctx)
+	indexUsers, repairedUsers, missingLinks, staleLinks, err := s.RepairTrackedGroupReverseIndex(ctx)
 	if err != nil {
-		t.Fatalf("ListCreators failed: %v", err)
-	}
-	indexUsers, repairedUsers, missingLinks, staleLinks, err := s.RepairUserCreatorReverseIndex(ctx, creators)
-	if err != nil {
-		t.Fatalf("RepairUserCreatorReverseIndex failed: %v", err)
+		t.Fatalf("RepairTrackedGroupReverseIndex failed: %v", err)
 	}
 	if indexUsers != 2 || repairedUsers != 2 || missingLinks != 2 || staleLinks != 1 {
 		t.Fatalf("unexpected repair stats: users=%d repaired=%d missing=%d stale=%d", indexUsers, repairedUsers, missingLinks, staleLinks)

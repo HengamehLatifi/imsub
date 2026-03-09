@@ -6,6 +6,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"imsub/internal/events"
 )
 
 type viewerFakeStore struct {
@@ -79,6 +81,14 @@ func (f *fakeGroupOps) CreateInviteLink(ctx context.Context, groupChatID int64, 
 	return "", nil
 }
 
+type viewerObserverStub struct {
+	events []events.Event
+}
+
+func (o *viewerObserverStub) Emit(_ context.Context, evt events.Event) {
+	o.events = append(o.events, evt)
+}
+
 func TestBuildJoinTargets(t *testing.T) {
 	t.Parallel()
 
@@ -131,6 +141,7 @@ func TestBuildJoinTargets(t *testing.T) {
 			},
 		},
 		nil,
+		nil,
 	)
 
 	got, err := svc.BuildJoinTargets(t.Context(), 7, "tw-1")
@@ -163,6 +174,7 @@ func TestBuildJoinTargetsListError(t *testing.T) {
 		},
 		&fakeGroupOps{},
 		nil,
+		nil,
 	)
 
 	got, err := svc.BuildJoinTargets(t.Context(), 7, "tw-1")
@@ -172,4 +184,133 @@ func TestBuildJoinTargetsListError(t *testing.T) {
 	if len(got.ActiveCreatorNames) != 0 || len(got.JoinLinks) != 0 {
 		t.Fatalf("BuildJoinTargets(%d, %q) = %+v, want empty targets", 7, "tw-1", got)
 	}
+}
+
+func TestResolveJoinPlanDoesNotMutateTrackedMembership(t *testing.T) {
+	t.Parallel()
+
+	addCalls := 0
+	removeCalls := 0
+	svc := NewViewer(
+		&viewerFakeStore{
+			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
+				return []Creator{
+					{ID: "c1", Name: "alpha"},
+					{ID: "c2", Name: "beta"},
+				}, nil
+			},
+			listGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
+				switch creatorID {
+				case "c1":
+					return []ManagedGroup{{ChatID: 101, CreatorID: "c1", GroupName: "A"}}, nil
+				case "c2":
+					return []ManagedGroup{{ChatID: 202, CreatorID: "c2", GroupName: "B"}}, nil
+				}
+				return nil, nil
+			},
+			isSubscriberFn: func(_ context.Context, creatorID, _ string) (bool, error) {
+				return creatorID == "c1", nil
+			},
+			addMembershipFn: func(_ context.Context, _, _ int64) error {
+				addCalls++
+				return nil
+			},
+			removeMembershipFn: func(_ context.Context, _, _ int64) error {
+				removeCalls++
+				return nil
+			},
+		},
+		&fakeGroupOps{
+			isMemberFn: func(_ context.Context, _, _ int64) bool { return false },
+		},
+		nil,
+		nil,
+	)
+
+	got, err := svc.resolveJoinPlan(t.Context(), 7, "tw-1")
+	if err != nil {
+		t.Fatalf("resolveJoinPlan() error = %v", err)
+	}
+	if !slices.Equal(got.activeCreatorNames, []string{"alpha"}) {
+		t.Fatalf("activeCreatorNames = %v, want [alpha]", got.activeCreatorNames)
+	}
+	if len(got.inviteGroups) != 1 || got.inviteGroups[0].group.ChatID != 101 {
+		t.Fatalf("inviteGroups = %+v, want one invite group for 101", got.inviteGroups)
+	}
+	if !slices.Equal(got.untrackedGroups, []int64{202}) {
+		t.Fatalf("untrackedGroups = %v, want [202]", got.untrackedGroups)
+	}
+	if addCalls != 0 || removeCalls != 0 {
+		t.Fatalf("resolveJoinPlan mutated tracked membership: addCalls=%d removeCalls=%d", addCalls, removeCalls)
+	}
+}
+
+func TestBuildJoinTargetsRecordsMetrics(t *testing.T) {
+	t.Parallel()
+
+	obs := &viewerObserverStub{}
+	svc := NewViewer(
+		&viewerFakeStore{
+			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
+				return []Creator{
+					{ID: "c1", Name: "alpha"},
+					{ID: "c2", Name: "beta"},
+				}, nil
+			},
+			listGroupsFn: func(_ context.Context, creatorID string) ([]ManagedGroup, error) {
+				switch creatorID {
+				case "c1":
+					return []ManagedGroup{{ChatID: 101, CreatorID: "c1", GroupName: "A"}}, nil
+				case "c2":
+					return []ManagedGroup{{ChatID: 202, CreatorID: "c2", GroupName: "B"}}, nil
+				}
+				return nil, nil
+			},
+			isSubscriberFn: func(_ context.Context, creatorID, _ string) (bool, error) {
+				return creatorID == "c1", nil
+			},
+		},
+		&fakeGroupOps{
+			isMemberFn: func(_ context.Context, _, _ int64) bool { return false },
+			createInviteFn: func(_ context.Context, _ int64, _ int64, _ string) (string, error) {
+				return "https://invite", nil
+			},
+		},
+		nil,
+		obs,
+	)
+
+	got, err := svc.BuildJoinTargets(t.Context(), 7, "tw-1")
+	if err != nil {
+		t.Fatalf("BuildJoinTargets() error = %v", err)
+	}
+	if len(got.JoinLinks) != 1 {
+		t.Fatalf("JoinLinks = %+v, want 1 link", got.JoinLinks)
+	}
+
+	wantEvents := []events.Event{
+		{Name: events.NameViewerJoinTarget, Fields: map[string]string{"kind": "active_creators"}, Count: 1},
+		{Name: events.NameViewerJoinTarget, Fields: map[string]string{"kind": "invite_groups"}, Count: 1},
+		{Name: events.NameViewerJoinTarget, Fields: map[string]string{"kind": "cache_removes"}, Count: 1},
+		{Name: events.NameViewerJoinTarget, Fields: map[string]string{"kind": "cache_adds"}, Count: 1},
+		{Name: events.NameViewerInviteLink, Outcome: "ok"},
+		{Name: events.NameViewerJoinTarget, Fields: map[string]string{"kind": "join_links"}, Count: 1},
+	}
+	if !slices.EqualFunc(obs.events, wantEvents, func(a, b events.Event) bool {
+		return a.Name == b.Name && a.Outcome == b.Outcome && a.Count == b.Count && viewerMapsEqual(a.Fields, b.Fields)
+	}) {
+		t.Fatalf("events = %+v, want %+v", obs.events, wantEvents)
+	}
+}
+
+func viewerMapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }

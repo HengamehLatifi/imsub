@@ -8,6 +8,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"imsub/internal/events"
 )
 
 type eventsubFakeStore struct {
@@ -123,26 +125,11 @@ func (n *eventSubFakeNotifier) NotifyCreatorReconnectRequired(_ context.Context,
 }
 
 type eventSubFakeObserver struct {
-	refreshes      []string
-	transitions    []string
-	reconnectGauge []int
-	notifications  []string
+	events []events.Event
 }
 
-func (o *eventSubFakeObserver) CreatorTokenRefresh(result string) {
-	o.refreshes = append(o.refreshes, result)
-}
-
-func (o *eventSubFakeObserver) CreatorAuthTransition(from, to, reason string) {
-	o.transitions = append(o.transitions, from+"->"+to+":"+reason)
-}
-
-func (o *eventSubFakeObserver) CreatorsReconnectRequired(count int) {
-	o.reconnectGauge = append(o.reconnectGauge, count)
-}
-
-func (o *eventSubFakeObserver) CreatorReconnectNotification(result string) {
-	o.notifications = append(o.notifications, result)
+func (o *eventSubFakeObserver) Emit(_ context.Context, evt events.Event) {
+	o.events = append(o.events, evt)
 }
 
 func (m *eventSubFakeTwitch) ExchangeCode(ctx context.Context, code string) (TokenResponse, error) {
@@ -418,18 +405,33 @@ func TestDumpCurrentSubscribersMarksReconnectRequiredOnceOnRefreshFailure(t *tes
 	if len(notifier.notified) != 1 || notifier.notified[0].ID != "c1" {
 		t.Fatalf("notified creators = %+v, want one creator c1", notifier.notified)
 	}
-	if !slices.Equal(observer.refreshes, []string{"failed"}) {
-		t.Fatalf("refresh metrics = %v, want %v", observer.refreshes, []string{"failed"})
+	wantEvents := []events.Event{
+		{Name: events.NameCreatorTokenRefresh, Outcome: "failed"},
+		{Name: events.NameCreatorAuthTransition, Fields: map[string]string{
+			"from":   string(CreatorAuthHealthy),
+			"to":     string(CreatorAuthReconnectRequired),
+			"reason": creatorAuthErrorTokenRefreshFailed,
+		}},
+		{Name: events.NameCreatorsReconnectRequired, Count: 1},
+		{Name: events.NameCreatorReconnectNotice, Outcome: "ok"},
 	}
-	if !slices.Equal(observer.transitions, []string{"healthy->reconnect_required:" + creatorAuthErrorTokenRefreshFailed}) {
-		t.Fatalf("auth transitions = %v", observer.transitions)
+	if !slices.EqualFunc(observer.events, wantEvents, func(a, b events.Event) bool {
+		return a.Name == b.Name && a.Outcome == b.Outcome && a.Count == b.Count && eventSubMapsEqual(a.Fields, b.Fields)
+	}) {
+		t.Fatalf("events = %+v, want %+v", observer.events, wantEvents)
 	}
-	if !slices.Equal(observer.notifications, []string{"ok"}) {
-		t.Fatalf("notification metrics = %v, want [ok]", observer.notifications)
+}
+
+func eventSubMapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	if !slices.Equal(observer.reconnectGauge, []int{1}) {
-		t.Fatalf("reconnect gauge values = %v, want [1]", observer.reconnectGauge)
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
 	}
+	return true
 }
 
 func TestDeleteEventSubsForCreator(t *testing.T) {

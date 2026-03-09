@@ -25,7 +25,7 @@ func (c *Controller) RegisterTelegramHandlers() {
 	}
 
 	c.tgHandler.HandleMessage(c.onRegisterGroup, tghandler.CommandEqual("registergroup"))
-	c.tgHandler.HandleMessage(c.onUnregisterCommand, tghandler.And(tghandler.CommandEqual("unregister"), groupOnly))
+	c.tgHandler.HandleMessage(c.onUnregisterCommand, tghandler.And(tghandler.CommandEqual("unregistergroup"), groupOnly))
 	c.tgHandler.HandleMessage(c.onStartCommand, tghandler.And(tghandler.CommandEqual("start"), privateOnly))
 	c.tgHandler.HandleMessage(c.onCreatorCommand, tghandler.And(tghandler.CommandEqual("creator"), privateOnly))
 	c.tgHandler.HandleMessage(c.onResetCommand, tghandler.And(tghandler.CommandEqual("reset"), privateOnly))
@@ -72,19 +72,7 @@ func (c *Controller) dispatchCallbackAction(ctx context.Context, userID int64, e
 	case callbackDomainViewer:
 		return c.handleViewerStart(ctx, userID, editMsgID, lang)
 	case callbackDomainCreator:
-		switch action.verb {
-		case callbackVerbRefresh, callbackVerbRegister:
-			return c.handleCreatorRegistrationStart(ctx, userID, editMsgID, lang)
-		case callbackVerbReconnect:
-			return c.handleCreatorReconnectStart(ctx, userID, editMsgID, lang)
-		case callbackVerbOpen, callbackVerbPick, callbackVerbBack, callbackVerbMenu, callbackVerbCancel, callbackVerbExecute:
-			// parseCallbackAction rejects these verbs for creator callbacks.
-			c.log().Warn("unsupported creator callback verb", "telegram_user_id", userID, "verb", action.verb)
-			return ""
-		default:
-			c.log().Warn("unsupported creator callback verb", "telegram_user_id", userID, "verb", action.verb)
-			return ""
-		}
+		return c.handleCreatorCallback(ctx, userID, editMsgID, lang, action)
 	case callbackDomainReset:
 		return c.handleResetAction(ctx, userID, editMsgID, lang, action)
 	}

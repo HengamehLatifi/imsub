@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"imsub/internal/core"
+	"imsub/internal/events"
 	"imsub/internal/platform/config"
 )
 
@@ -48,33 +49,20 @@ func (f *callbacksFakeStore) AddCreatorSubscriber(ctx context.Context, creatorID
 }
 
 type callbacksFakeObserver struct {
-	oauthMode   string
-	oauthResult string
-	eventType   string
-	eventSub    string
-	eventResult string
+	events []events.Event
 }
 
-func (f *callbacksFakeObserver) TelegramWebhookResult(string) {}
-
-func (f *callbacksFakeObserver) OAuthCallback(mode, result string) {
-	f.oauthMode = mode
-	f.oauthResult = result
+func (f *callbacksFakeObserver) Emit(_ context.Context, evt events.Event) {
+	f.events = append(f.events, evt)
 }
 
-func (f *callbacksFakeObserver) EventSubMessage(messageType, subscriptionType, result string) {
-	f.eventType = messageType
-	f.eventSub = subscriptionType
-	f.eventResult = result
-}
-
-func newController(store controllerStore, obs metricsObserver, viewer viewerOAuthHandler, creator creatorOAuthHandler, subEnd subEndHandler) *Controller {
+func newController(store controllerStore, sink events.EventSink, viewer viewerOAuthHandler, creator creatorOAuthHandler, subEnd subEndHandler) *Controller {
 	return New(Dependencies{
 		Config: config.Config{
 			TwitchEventSubSecret: "secret",
 		},
 		Store:           store,
-		Observer:        obs,
+		Events:          sink,
 		ViewerOAuth:     viewer,
 		CreatorOAuth:    creator,
 		SubscriptionEnd: subEnd,
@@ -94,8 +82,8 @@ func TestTwitchCallbackMissingParams(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("TwitchCallback(missing state/code).StatusCode = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
-	if obs.oauthResult != "missing_params" {
-		t.Errorf("TwitchCallback(missing state/code) observer result = %q, want %q", obs.oauthResult, "missing_params")
+	if len(obs.events) != 1 || obs.events[0].Name != events.NameOAuthCallback || obs.events[0].Outcome != "missing_params" {
+		t.Errorf("oauth events = %+v, want one oauth_callback missing_params", obs.events)
 	}
 }
 
@@ -139,8 +127,8 @@ func TestTwitchCallbackRoutesViewer(t *testing.T) {
 	if !called {
 		t.Error("TwitchCallback(viewer mode) did not call viewer handler")
 	}
-	if obs.oauthMode != "viewer" || obs.oauthResult != "success" {
-		t.Errorf("TwitchCallback(viewer mode) observer labels = (mode=%q, result=%q), want (mode=%q, result=%q)", obs.oauthMode, obs.oauthResult, "viewer", "success")
+	if len(obs.events) != 1 || obs.events[0].Fields["mode"] != "viewer" || obs.events[0].Outcome != "success" {
+		t.Errorf("oauth events = %+v, want viewer success", obs.events)
 	}
 }
 
@@ -162,8 +150,8 @@ func TestEventSubWebhookChallenge(t *testing.T) {
 	if rec.Body.String() != "abc123" {
 		t.Errorf("EventSubWebhook(challenge).Body = %q, want %q", rec.Body.String(), "abc123")
 	}
-	if obs.eventResult != "challenge_ok" {
-		t.Errorf("EventSubWebhook(challenge) observer result = %q, want %q", obs.eventResult, "challenge_ok")
+	if len(obs.events) != 1 || obs.events[0].Name != events.NameEventSubMessage || obs.events[0].Outcome != "challenge_ok" {
+		t.Errorf("eventsub events = %+v, want challenge_ok", obs.events)
 	}
 }
 
@@ -198,8 +186,8 @@ func TestEventSubWebhookDuplicate(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "duplicate ignored") {
 		t.Errorf("EventSubWebhook(duplicate).Body = %q, want body containing %q", rec.Body.String(), "duplicate ignored")
 	}
-	if obs.eventResult != "duplicate" {
-		t.Errorf("EventSubWebhook(duplicate) observer result = %q, want %q", obs.eventResult, "duplicate")
+	if len(obs.events) != 1 || obs.events[0].Name != events.NameEventSubMessage || obs.events[0].Outcome != "duplicate" {
+		t.Errorf("eventsub events = %+v, want duplicate", obs.events)
 	}
 }
 
@@ -228,8 +216,8 @@ func TestEventSubWebhookStoreFailure(t *testing.T) {
 	if rec.Code != http.StatusBadGateway {
 		t.Errorf("EventSubWebhook(store failure).StatusCode = %d, want %d", rec.Code, http.StatusBadGateway)
 	}
-	if obs.eventResult != "redis_error" {
-		t.Errorf("EventSubWebhook(store failure) observer result = %q, want %q", obs.eventResult, "redis_error")
+	if len(obs.events) != 1 || obs.events[0].Name != events.NameEventSubMessage || obs.events[0].Outcome != "redis_error" {
+		t.Errorf("eventsub events = %+v, want redis_error", obs.events)
 	}
 }
 
@@ -248,8 +236,8 @@ func TestEventSubWebhookGiftNotification(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("EventSubWebhook(gift notification).StatusCode = %d, want %d", rec.Code, http.StatusNoContent)
 	}
-	if obs.eventResult != "notification_subscription_gift" {
-		t.Errorf("EventSubWebhook(gift notification) observer result = %q, want %q", obs.eventResult, "notification_subscription_gift")
+	if len(obs.events) != 1 || obs.events[0].Name != events.NameEventSubMessage || obs.events[0].Outcome != "notification_subscription_gift" {
+		t.Errorf("eventsub events = %+v, want notification_subscription_gift", obs.events)
 	}
 }
 

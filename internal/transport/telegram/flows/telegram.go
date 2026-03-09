@@ -6,11 +6,13 @@ import (
 	"time"
 
 	"imsub/internal/core"
+	"imsub/internal/platform/i18n"
 	"imsub/internal/transport/telegram/client"
 	telegramgroupops "imsub/internal/transport/telegram/groupops"
 	telegramui "imsub/internal/transport/telegram/ui"
 
 	"github.com/mymmrac/telego"
+	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 // --- Simplified message transport ---
@@ -68,20 +70,13 @@ func (c *Controller) KickFromGroup(ctx context.Context, groupChatID int64, teleg
 	return nil
 }
 
-func (c *Controller) replyLinkedStatus(
-	ctx context.Context,
-	telegramUserID int64,
-	editMsgID int,
-	lang, twitchLogin string,
-	joinRows [][]telego.InlineKeyboardButton,
-	activeNames []string,
-) {
-	text := telegramui.LinkedStatusWithJoinStateHTML(lang, twitchLogin, activeNames, len(joinRows) > 0)
-	c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{
-		ParseMode:      telego.ModeHTML,
-		Markup:         telegramui.WithMainMenu(lang, viewerMainMenuCallbacks(), joinRows...),
-		DisablePreview: true,
-	})
+func renderJoinButtons(targets core.JoinTargets, lang string) [][]telego.InlineKeyboardButton {
+	rows := make([][]telego.InlineKeyboardButton, 0, len(targets.JoinLinks))
+	for _, link := range targets.JoinLinks {
+		btnText := link.CreatorName + " - " + link.GroupName
+		rows = append(rows, tu.InlineKeyboardRow(telegramui.LinkButton(fmt.Sprintf(i18n.Translate(lang, btnJoin), btnText), link.InviteLink)))
+	}
+	return rows
 }
 
 func (c *Controller) answerCallback(ctx context.Context, callbackID, text string) {

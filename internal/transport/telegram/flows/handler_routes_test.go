@@ -313,6 +313,41 @@ func TestRegisterTelegramHandlersRegisterGroupBlocksWhenBotLacksRequiredPermissi
 	h.caller.assertExactMethods(t, "getChatMember", "getMe", "getChatMember", "sendMessage")
 }
 
+func TestRegisterTelegramHandlersUnregisterGroupCommand(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		Name:            "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.store.setManagedGroup(core.ManagedGroup{
+		ChatID:    -10077,
+		CreatorID: "creator-1",
+		GroupName: "VIP",
+	})
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 61,
+		Message: &telego.Message{
+			MessageID: 13,
+			Text:      "/unregistergroup",
+			Chat: telego.Chat{
+				ID:    -10077,
+				Type:  telego.ChatTypeSupergroup,
+				Title: "VIP",
+			},
+			From: &telego.User{
+				ID:           77,
+				LanguageCode: "en",
+			},
+		},
+	})
+
+	h.caller.assertExactMethods(t, "sendMessage")
+}
+
 func TestRegisterTelegramHandlersChatMemberJoinTracksUntrackedUser(t *testing.T) {
 	t.Parallel()
 

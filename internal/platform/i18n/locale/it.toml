@@ -167,13 +167,13 @@ other = "• A ImSub manca il permesso admin <b>Ban utenti</b>. Serve per rimuov
 other = "⏳ ImSub ha rilevato un cambio di stato del bot in questo gruppo. Controllo setup..."
 
 [group_already_linked]
-other = "❗️ Questo gruppo e' gia' collegato a <b>%s</b>.\n\nUsa <code>/unregister</code> per scollegarlo prima di apportare modifiche."
+other = "❗️ Questo gruppo e' gia' collegato a <b>%s</b>.\n\nUsa <code>/unregistergroup</code> per scollegarlo prima di apportare modifiche."
 
 [group_different_linked]
-other = "⚠️ Il tuo account creator <b>%s</b> e' gia' collegato al gruppo <b>%s</b>.\n\nUsa <code>/unregister</code> in quel gruppo prima di registrarne uno nuovo."
+other = "⚠️ Il tuo account creator <b>%s</b> e' gia' collegato al gruppo <b>%s</b>.\n\nUsa <code>/unregistergroup</code> in quel gruppo prima di registrarne uno nuovo."
 
 [group_taken_by_other]
-other = "⚠️ Questo gruppo e' gia' collegato a un altro account creator (<b>%s</b>). Ogni gruppo puo' essere gestito da un solo creator. L'altro creator deve prima usare <code>/unregister</code>."
+other = "⚠️ Questo gruppo e' gia' collegato a un altro account creator (<b>%s</b>). Ogni gruppo puo' essere gestito da un solo creator. L'altro creator deve prima usare <code>/unregistergroup</code>."
 
 [group_registered_dm]
 other = "🎉 <b>Gruppo registrato</b>\n\nIl tuo gruppo <b>%s</b> e' ora collegato al tuo account creator <b>%s</b>.\n\n⏳ ImSub iniziera' a sincronizzare i tuoi subscriber Twitch a breve. Una volta attiva la sincronizzazione, solo gli utenti con un abbonamento attivo potranno entrare nel gruppo.\n\n❔ <b>Cosa succede adesso</b>\n• La sincronizzazione subscriber si attiva automaticamente\n• I subscriber attuali possono usare /start per ottenere un link di accesso\n• Quando un abbonamento termina, l'utente viene rimosso dal gruppo\n\nUsa /creator per controllare lo stato del tuo setup in qualsiasi momento."

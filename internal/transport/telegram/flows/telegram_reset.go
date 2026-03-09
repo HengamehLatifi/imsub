@@ -4,11 +4,17 @@ import (
 	"context"
 
 	"imsub/internal/platform/i18n"
-	"imsub/internal/transport/telegram/client"
-	"imsub/internal/transport/telegram/ui"
 
 	"github.com/mymmrac/telego"
+	tghandler "github.com/mymmrac/telego/telegohandler"
 )
+
+// onResetCommand handles /reset by showing the reset confirmation prompt.
+func (c *Controller) onResetCommand(ctx *tghandler.Context, message telego.Message) error {
+	lang := i18n.NormalizeLanguage(message.From.LanguageCode)
+	c.renderResetPrompt(ctx, message.From.ID, 0, lang, resetOriginCommand)
+	return nil
+}
 
 func (c *Controller) handleResetAction(ctx context.Context, telegramUserID int64, editMsgID int, lang string, action callbackAction) string {
 	switch action.verb {
@@ -36,28 +42,15 @@ func (c *Controller) handleResetAction(ctx context.Context, telegramUserID int64
 
 // renderResetPrompt is the entry point for /reset and reset callbacks.
 func (c *Controller) renderResetPrompt(ctx context.Context, telegramUserID int64, editMsgID int, lang string, origin resetOrigin) string {
-	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
+	scopes, err := c.app.Reset.LoadScopes(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
-		return i18n.Translate(lang, msgErrReset)
+		view := buildResetErrorView(lang)
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
+		return view.text
 	}
 
-	if !scopes.HasIdentity && !scopes.HasCreator {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgResetNothingHTML), &client.MessageOptions{ParseMode: telego.ModeHTML})
-		return ""
-	}
-
-	if scopes.HasIdentity && scopes.HasCreator {
-		c.reply(ctx, telegramUserID, editMsgID, resetChooseScopeText(lang, scopes), &client.MessageOptions{
-			ParseMode: telego.ModeHTML,
-			Markup: ui.ResetScopePickerMarkup(
-				lang,
-				resetPickCallback(origin, resetScopeViewer),
-				resetPickCallback(origin, resetScopeCreator),
-				resetPickCallback(origin, resetScopeBoth),
-				c.resetPromptBackCallback(origin),
-			),
-		})
+	if view, ok := buildResetPromptView(lang, scopes, origin); ok {
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
 		return ""
 	}
 
@@ -68,29 +61,30 @@ func (c *Controller) renderResetPrompt(ctx context.Context, telegramUserID int64
 }
 
 func (c *Controller) renderResetConfirm(ctx context.Context, telegramUserID int64, editMsgID int, lang string, origin resetOrigin, scope resetScope) string {
-	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
+	scopes, err := c.app.Reset.LoadScopes(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
-		return i18n.Translate(lang, msgErrReset)
+		view := buildResetErrorView(lang)
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
+		return view.text
 	}
 
 	view := c.buildResetConfirmView(ctx, telegramUserID, lang, scopes, scope)
 	if view.text == "" {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgResetNothingHTML), &client.MessageOptions{ParseMode: telego.ModeHTML})
+		emptyView := buildResetEmptyView(lang)
+		c.reply(ctx, telegramUserID, editMsgID, emptyView.text, &emptyView.opts)
 		return ""
 	}
-	c.reply(ctx, telegramUserID, editMsgID, view.text, &client.MessageOptions{
-		ParseMode: telego.ModeHTML,
-		Markup:    ui.ResetConfirmMarkup(lang, resetExecuteCallback(origin, scope), resetBackCallback(origin)),
-	})
+	replyView := buildResetConfirmReply(lang, view, origin, scope)
+	c.reply(ctx, telegramUserID, editMsgID, replyView.text, &replyView.opts)
 	return ""
 }
 
 func (c *Controller) handleResetBack(ctx context.Context, telegramUserID int64, editMsgID int, lang string, origin resetOrigin) string {
-	scopes, err := c.resetSvc.LoadScopes(ctx, telegramUserID)
+	scopes, err := c.app.Reset.LoadScopes(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrReset), &client.MessageOptions{Markup: viewerMainMenuMarkup(lang)})
-		return i18n.Translate(lang, msgErrReset)
+		view := buildMainMenuTextView(lang, msgErrReset)
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
+		return view.text
 	}
 
 	if scopes.HasIdentity && scopes.HasCreator {
@@ -120,19 +114,10 @@ func (c *Controller) handleResetBackToMenu(ctx context.Context, telegramUserID i
 	return ""
 }
 
-func (c *Controller) resetPromptBackCallback(origin resetOrigin) string {
-	switch origin {
-	case resetOriginViewer, resetOriginCreator:
-		return resetMenuCallback(origin)
-	case resetOriginCommand:
-		return resetCancelCallback(origin)
-	}
-	return ""
-}
-
 // handleResetCancel cleanly aborts the reset flow, removing buttons and showing a safe message.
 func (c *Controller) handleResetCancel(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
-	c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgResetExitHTML), &client.MessageOptions{ParseMode: telego.ModeHTML})
+	view := buildHTMLTextView(lang, msgResetExitHTML)
+	c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
 	return ""
 }
 

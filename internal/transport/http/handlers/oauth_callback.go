@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"imsub/internal/core"
+	"imsub/internal/events"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/transport/http/pages"
 )
@@ -68,13 +69,18 @@ var (
 
 // TwitchCallback completes OAuth callback processing for viewer and creator flows.
 func (c *Controller) TwitchCallback(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	logger := c.logCtx(r.Context())
 	logger.Debug("twitch callback received", "method", r.Method, "path", r.URL.Path, "has_state", r.URL.Query().Get("state") != "", "has_code", r.URL.Query().Get("code") != "")
 	modeLabel := eventStatusUnknown
 	resultLabel := eventStatusError
 	defer func() {
-		if c.obs != nil {
-			c.obs.OAuthCallback(modeLabel, resultLabel)
+		if c.events != nil {
+			c.events.Emit(ctx, events.Event{
+				Name:    events.NameOAuthCallback,
+				Outcome: resultLabel,
+				Fields:  map[string]string{"mode": modeLabel},
+			})
 		}
 	}()
 	if errParam := r.URL.Query().Get("error"); errParam != "" {
@@ -91,7 +97,6 @@ func (c *Controller) TwitchCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
 	payload, err := c.store.DeleteOAuthState(ctx, state)
 	if err != nil {
 		resultLabel = "state_missing"

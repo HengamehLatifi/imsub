@@ -12,15 +12,19 @@ import (
 
 	"imsub/internal/adapter/redis"
 	"imsub/internal/adapter/twitch"
+	"imsub/internal/application"
 	"imsub/internal/core"
-	"imsub/internal/jobs"
+	"imsub/internal/events"
+	"imsub/internal/operator"
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/platform/observability"
 	"imsub/internal/platform/ratelimit"
+	"imsub/internal/reconcile"
 	"imsub/internal/transport/http/handlers"
 	"imsub/internal/transport/http/server"
 	"imsub/internal/transport/telegram/flows"
+	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
 	"github.com/mymmrac/telego/telegoapi"
@@ -73,6 +77,14 @@ func Run() error {
 	tgLimiter := ratelimit.NewRateLimiter(25, time.Second)
 	defer tgLimiter.Close()
 	metrics := observability.New()
+	operatorReadModel := operator.NewReadModel()
+	eventSink := events.MultiSink{
+		Sinks: []events.EventSink{
+			metrics,
+			operatorReadModel,
+			observability.NewEventLogger(logger),
+		},
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -88,12 +100,31 @@ func Run() error {
 
 	eventSubSvc := core.NewEventSub(s, twitchAPI, logger)
 	reconcileSvc := core.NewReconciler(s, eventSubSvc.DumpCurrentSubscribers, logger)
-	jobsSvc := jobs.New(s, reconcileSvc, logger, metrics)
 	subscriptionSvc := core.NewSubscription(s)
 	oauthSvc := core.NewOAuth(s, twitchAPI)
 	creatorSvc := core.NewCreator(s, eventSubSvc, logger)
-
-	jobsSvc.SetEventSubReconciler(eventSubSvc)
+	appRuntime := application.NewRuntime(application.Dependencies{
+		CreatorStatus:       usecase.NewCreatorStatusUseCase(creatorSvc, eventSink),
+		ViewerOAuth:         usecase.NewViewerOAuthUseCase(oauthSvc, eventSink),
+		CreatorOAuth:        usecase.NewCreatorOAuthUseCase(oauthSvc, eventSink),
+		GroupRegistration:   usecase.NewGroupRegistrationUseCase(s, eventSink),
+		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(s, eventSubSvc, eventSink),
+		CreatorActivation:   usecase.NewCreatorActivationUseCase(eventSubSvc, eventSink),
+		SubscriptionEnd:     usecase.NewSubscriptionEndUseCase(subscriptionSvc, eventSink),
+		NewViewerAccess: func(groupOps core.GroupOps) *usecase.ViewerAccessUseCase {
+			return usecase.NewViewerAccessUseCase(core.NewViewer(s, groupOps, logger, eventSink), eventSink)
+		},
+		NewReset: func(kick func(ctx context.Context, groupChatID, telegramUserID int64) error) *usecase.ResetUseCase {
+			r := core.NewResetter(s, kick, logger)
+			r.SetEventSubCleaner(eventSubSvc)
+			return usecase.NewResetUseCase(r, eventSink)
+		},
+		OperatorReadModel: operatorReadModel,
+	})
+	reconcileRunner := reconcile.NewRunner(logger, eventSink)
+	subscriberTask := reconcile.NewSubscriberTask(reconcileSvc)
+	eventSubTask := reconcile.NewEventSubTask(eventSubSvc)
+	integrityTask := reconcile.NewIntegrityAuditTask(s, logger, eventSink)
 
 	flowController := flows.New(flows.Dependencies{
 		Config:          cfg,
@@ -102,24 +133,9 @@ func Run() error {
 		Logger:          logger,
 		TelegramBot:     tgBot,
 		TelegramHandler: tgHandler,
-		Services: flows.Services{
-			EventSub:     eventSubSvc,
-			Subscription: subscriptionSvc,
-			OAuth:        oauthSvc,
-			Creator:      creatorSvc,
-		},
-		Factories: flows.ServiceFactories{
-			Viewer: func(groupOps core.GroupOps) *core.Viewer {
-				return core.NewViewer(s, groupOps, logger)
-			},
-			Reset: func(kick func(ctx context.Context, groupChatID, telegramUserID int64) error) *core.Resetter {
-				r := core.NewResetter(s, kick, logger)
-				r.SetEventSubCleaner(eventSubSvc)
-				return r
-			},
-		},
+		App:             appRuntime,
 	})
-	eventSubSvc.SetObserver(metrics)
+	eventSubSvc.SetObserver(eventSink)
 	eventSubSvc.SetNotifier(flowController)
 	eventSubSvc.SyncReconnectRequiredGauge(context.Background())
 	flowController.RegisterTelegramHandlers()
@@ -128,7 +144,7 @@ func Run() error {
 		Config:          cfg,
 		Store:           s,
 		Logger:          logger,
-		Observer:        metrics,
+		Events:          eventSink,
 		TelegramUpdates: tgUpdates,
 		ViewerOAuth:     flowController.HandleViewerOAuthCallback,
 		CreatorOAuth:    flowController.HandleCreatorOAuthCallback,
@@ -168,13 +184,23 @@ func Run() error {
 		})
 	})
 	g.Go(func() error {
-		return jobsSvc.RunEventSubReconciler(gctx, 3*time.Second, 1*time.Hour)
+		return reconcileRunner.RunScheduled(gctx, reconcile.Schedule{
+			Task:         eventSubTask,
+			InitialDelay: 3 * time.Second,
+			Interval:     1 * time.Hour,
+		})
 	})
 	g.Go(func() error {
-		return jobsSvc.RunSubscriberReconciler(gctx, 15*time.Minute)
+		return reconcileRunner.RunScheduled(gctx, reconcile.Schedule{
+			Task:     subscriberTask,
+			Interval: 15 * time.Minute,
+		})
 	})
 	g.Go(func() error {
-		return jobsSvc.RunIntegrityAudits(gctx, 20*time.Minute)
+		return reconcileRunner.RunScheduled(gctx, reconcile.Schedule{
+			Task:     integrityTask,
+			Interval: 20 * time.Minute,
+		})
 	})
 
 	if err := g.Wait(); err != nil {
@@ -260,7 +286,7 @@ func configureBotCommands(ctx context.Context, bot *telego.Bot, tgLimiter *ratel
 			{Command: "start", Description: "Open user dashboard"},
 			{Command: "creator", Description: "Register creator account"},
 			{Command: "registergroup", Description: "Bind this group to creator"},
-			{Command: "unregister", Description: "Unlink this group and stop EventSubs"},
+			{Command: "unregistergroup", Description: "Unlink this group from creator"},
 			{Command: "reset", Description: "Clear your linked data"},
 		},
 	}); err != nil {

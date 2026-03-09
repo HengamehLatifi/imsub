@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"imsub/internal/core"
+	"imsub/internal/events"
 )
 
 type store interface {
 	ListCreators(ctx context.Context) ([]core.Creator, error)
 	ActiveCreatorIDsWithoutGroup(ctx context.Context, creators []core.Creator) (int, error)
-	RepairUserCreatorReverseIndex(ctx context.Context, creators []core.Creator) (indexUsers, repairedUsers, missingLinks, staleLinks int, err error)
+	RepairTrackedGroupReverseIndex(ctx context.Context) (indexUsers, repairedUsers, missingLinks, staleLinks int, err error)
 }
 
 type reconciler interface {
@@ -24,10 +25,6 @@ type eventSubReconciler interface {
 	ReconcileEventSubsOnce(ctx context.Context) error
 }
 
-type observer interface {
-	BackgroundJob(job, result string, d time.Duration)
-}
-
 // ErrInvalidInterval indicates that a job loop interval is not strictly positive.
 var ErrInvalidInterval = errors.New("jobs: invalid interval")
 
@@ -36,12 +33,12 @@ type Service struct {
 	store         store
 	reconcile     reconciler
 	log           *slog.Logger
-	obs           observer
+	obs           events.EventSink
 	eventSubRecon eventSubReconciler
 }
 
 // New creates a background jobs Service.
-func New(store store, reconcile reconciler, logger *slog.Logger, obs observer) *Service {
+func New(store store, reconcile reconciler, logger *slog.Logger, obs events.EventSink) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -97,7 +94,12 @@ func (s *Service) ReconcileSubscribersOnce(ctx context.Context) error {
 	result := "ok"
 	defer func() {
 		if s.obs != nil {
-			s.obs.BackgroundJob("reconcile_subscribers", result, time.Since(start))
+			s.obs.Emit(ctx, events.Event{
+				Name:     events.NameBackgroundJob,
+				Outcome:  result,
+				Fields:   map[string]string{"job": "reconcile_subscribers"},
+				Duration: time.Since(start),
+			})
 		}
 	}()
 	if err := s.reconcile.ReconcileSubscribersOnce(ctx); err != nil {
@@ -152,7 +154,12 @@ func (s *Service) RunIntegrityAuditOnce(ctx context.Context) error {
 	result := "ok"
 	defer func() {
 		if s.obs != nil {
-			s.obs.BackgroundJob("integrity_audit", result, time.Since(start))
+			s.obs.Emit(ctx, events.Event{
+				Name:     events.NameBackgroundJob,
+				Outcome:  result,
+				Fields:   map[string]string{"job": "integrity_audit"},
+				Duration: time.Since(start),
+			})
 		}
 	}()
 
@@ -170,11 +177,11 @@ func (s *Service) RunIntegrityAuditOnce(ctx context.Context) error {
 		return fmt.Errorf("read active creator set: %w", err)
 	}
 
-	indexUsers, repairedUsers, missingLinks, staleLinks, err := s.store.RepairUserCreatorReverseIndex(ctx, creators)
+	indexUsers, repairedUsers, missingLinks, staleLinks, err := s.store.RepairTrackedGroupReverseIndex(ctx)
 	if err != nil {
-		result = "reverse_index_repair_failed"
-		s.logger().Warn("integrity audit reverse index repair failed", "error", err)
-		return fmt.Errorf("repair reverse index: %w", err)
+		result = "tracked_reverse_index_repair_failed"
+		s.logger().Warn("integrity audit tracked reverse index repair failed", "error", err)
+		return fmt.Errorf("repair tracked reverse index: %w", err)
 	}
 	reconnectRequired := 0
 	for _, creator := range creators {
@@ -237,7 +244,12 @@ func (s *Service) ReconcileEventSubsOnce(ctx context.Context) {
 	result := "ok"
 	defer func() {
 		if s.obs != nil {
-			s.obs.BackgroundJob("reconcile_eventsubs", result, time.Since(start))
+			s.obs.Emit(ctx, events.Event{
+				Name:     events.NameBackgroundJob,
+				Outcome:  result,
+				Fields:   map[string]string{"job": "reconcile_eventsubs"},
+				Duration: time.Since(start),
+			})
 		}
 	}()
 	if err := s.eventSubRecon.ReconcileEventSubsOnce(ctx); err != nil {

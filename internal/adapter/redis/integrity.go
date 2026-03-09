@@ -11,10 +11,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RepairUserCreatorReverseIndex audits and repairs tracked-group reverse-index sets.
-func (s *Store) RepairUserCreatorReverseIndex(ctx context.Context, creators []core.Creator) (indexUsers int, repairedUsers int, missingLinks int, staleLinks int, err error) {
-	_ = creators
-
+// RepairTrackedGroupReverseIndex audits and repairs tracked-group reverse-index sets.
+func (s *Store) RepairTrackedGroupReverseIndex(ctx context.Context) (indexUsers int, repairedUsers int, missingLinks int, staleLinks int, err error) {
 	groups, err := s.ListManagedGroups(ctx)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("list managed groups: %w", err)

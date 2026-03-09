@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"imsub/internal/core"
+	"imsub/internal/events"
 )
 
 type fakeStore struct {
 	listCreatorsFn     func(ctx context.Context) ([]core.Creator, error)
 	activeWithoutGroup func(ctx context.Context, creators []core.Creator) (int, error)
-	repairReverseIndex func(ctx context.Context, creators []core.Creator) (int, int, int, int, error)
+	repairReverseIndex func(ctx context.Context) (int, int, int, int, error)
 }
 
 func (f *fakeStore) ListCreators(ctx context.Context) ([]core.Creator, error) {
@@ -30,9 +31,9 @@ func (f *fakeStore) ActiveCreatorIDsWithoutGroup(ctx context.Context, creators [
 	return 0, nil
 }
 
-func (f *fakeStore) RepairUserCreatorReverseIndex(ctx context.Context, creators []core.Creator) (indexUsers, repairedUsers, missingLinks, staleLinks int, err error) {
+func (f *fakeStore) RepairTrackedGroupReverseIndex(ctx context.Context) (indexUsers, repairedUsers, missingLinks, staleLinks int, err error) {
 	if f.repairReverseIndex != nil {
-		return f.repairReverseIndex(ctx, creators)
+		return f.repairReverseIndex(ctx)
 	}
 	return 0, 0, 0, 0, nil
 }
@@ -63,24 +64,22 @@ func (f *fakeReconciler) callCount() int {
 }
 
 type fakeObserver struct {
-	mu         sync.Mutex
-	lastJob    string
-	lastResult string
-	calls      int
+	mu        sync.Mutex
+	lastEvent events.Event
+	calls     int
 }
 
-func (f *fakeObserver) BackgroundJob(job, result string, _ time.Duration) {
+func (f *fakeObserver) Emit(_ context.Context, evt events.Event) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
-	f.lastJob = job
-	f.lastResult = result
+	f.lastEvent = evt
 }
 
-func (f *fakeObserver) snapshot() (calls int, job, result string) {
+func (f *fakeObserver) snapshot() (calls int, evt events.Event) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.calls, f.lastJob, f.lastResult
+	return f.calls, f.lastEvent
 }
 
 func TestReconcileSubscribersOnceRecordsObserverResult(t *testing.T) {
@@ -92,15 +91,21 @@ func TestReconcileSubscribersOnceRecordsObserverResult(t *testing.T) {
 
 	_ = j.ReconcileSubscribersOnce(t.Context())
 
-	calls, job, result := obs.snapshot()
+	calls, evt := obs.snapshot()
 	if calls != 1 {
 		t.Fatalf("expected 1 observer call, got %d", calls)
 	}
-	if job != "reconcile_subscribers" {
-		t.Errorf("Observer() job = %q, want \"reconcile_subscribers\"", job)
+	if evt.Name != events.NameBackgroundJob {
+		t.Errorf("Emit() name = %q, want %q", evt.Name, events.NameBackgroundJob)
 	}
-	if result != "partial_failure" {
-		t.Errorf("Observer() result = %q, want \"partial_failure\"", result)
+	if evt.Fields["job"] != "reconcile_subscribers" {
+		t.Errorf("Emit() job = %q, want \"reconcile_subscribers\"", evt.Fields["job"])
+	}
+	if evt.Outcome != "partial_failure" {
+		t.Errorf("Emit() outcome = %q, want \"partial_failure\"", evt.Outcome)
+	}
+	if evt.Duration <= 0 {
+		t.Errorf("Emit() duration = %v, want > 0", evt.Duration)
 	}
 }
 
@@ -150,14 +155,17 @@ func TestRunIntegrityAuditOnceRecordsFailureResult(t *testing.T) {
 
 	_ = j.RunIntegrityAuditOnce(t.Context())
 
-	calls, job, result := obs.snapshot()
+	calls, evt := obs.snapshot()
 	if calls != 1 {
 		t.Fatalf("expected 1 observer call, got %d", calls)
 	}
-	if job != "integrity_audit" {
-		t.Errorf("Observer() job = %q, want \"integrity_audit\"", job)
+	if evt.Name != events.NameBackgroundJob {
+		t.Errorf("Emit() name = %q, want %q", evt.Name, events.NameBackgroundJob)
 	}
-	if result != "list_creators_failed" {
-		t.Errorf("Observer() result = %q, want \"list_creators_failed\"", result)
+	if evt.Fields["job"] != "integrity_audit" {
+		t.Errorf("Emit() job = %q, want \"integrity_audit\"", evt.Fields["job"])
+	}
+	if evt.Outcome != "list_creators_failed" {
+		t.Errorf("Emit() outcome = %q, want \"list_creators_failed\"", evt.Outcome)
 	}
 }

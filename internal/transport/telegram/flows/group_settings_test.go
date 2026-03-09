@@ -38,9 +38,9 @@ func TestCheckGroupSettingsIncludesBotCapabilityWarnings(t *testing.T) {
 		store:     &routeTestStore{},
 	}
 
-	issues := c.checkGroupSettings(t.Context(), -100, "en")
+	issues := c.evaluateGroupSettings(t.Context(), -100).issues("en")
 	if len(issues) < 4 {
-		t.Fatalf("checkGroupSettings() returned %d issues, want at least 4; got=%v", len(issues), issues)
+		t.Fatalf("evaluateGroupSettings().issues() returned %d issues, want at least 4; got=%v", len(issues), issues)
 	}
 	assertContainsIssue(t, issues, i18n.Translate("en", msgGroupWarnBotNoInvite))
 	assertContainsIssue(t, issues, i18n.Translate("en", msgGroupWarnBotNoRestrict))

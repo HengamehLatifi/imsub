@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"imsub/internal/application"
 	"imsub/internal/core"
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/platform/ratelimit"
+	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
 	"github.com/mymmrac/telego/telegoapi"
@@ -60,6 +62,17 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 	store := &routeTestStore{}
 	limiter := ratelimit.NewRateLimiter(1000, 0)
 	t.Cleanup(limiter.Close)
+	appRuntime := application.NewRuntime(application.Dependencies{
+		CreatorStatus:       usecase.NewCreatorStatusUseCase(core.NewCreator(store, routeTestEventSubChecker{}, nil), nil),
+		GroupRegistration:   usecase.NewGroupRegistrationUseCase(store, nil),
+		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(store, nil, nil),
+		NewViewerAccess: func(groupOps core.GroupOps) *usecase.ViewerAccessUseCase {
+			return usecase.NewViewerAccessUseCase(core.NewViewer(store, groupOps, nil, nil), nil)
+		},
+		NewReset: func(kick func(ctx context.Context, groupChatID, telegramUserID int64) error) *usecase.ResetUseCase {
+			return usecase.NewResetUseCase(core.NewResetter(store, kick, nil), nil)
+		},
+	})
 
 	controller := New(Dependencies{
 		Config: config.Config{
@@ -69,11 +82,7 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 		TelegramLimiter: limiter,
 		TelegramBot:     bot,
 		TelegramHandler: bh,
-		Services: Services{
-			Viewer:  core.NewViewer(store, routeTestGroupOps{}, nil),
-			Creator: core.NewCreator(store, routeTestEventSubChecker{}, nil),
-			Reset:   core.NewResetter(store, func(context.Context, int64, int64) error { return nil }, nil),
-		},
+		App:             appRuntime,
 	})
 	controller.RegisterTelegramHandlers()
 
@@ -570,7 +579,7 @@ func (routeTestStoreStub) CleanupSubscriberDump(context.Context, string) {}
 func (routeTestStoreStub) MarkEventProcessed(context.Context, string, time.Duration) (bool, error) {
 	return false, nil
 }
-func (routeTestStoreStub) RepairUserCreatorReverseIndex(context.Context, []core.Creator) (
+func (routeTestStoreStub) RepairTrackedGroupReverseIndex(context.Context) (
 	indexUsers int,
 	repairedUsers int,
 	missingLinks int,
@@ -581,13 +590,6 @@ func (routeTestStoreStub) RepairUserCreatorReverseIndex(context.Context, []core.
 }
 func (routeTestStoreStub) ActiveCreatorIDsWithoutGroup(context.Context, []core.Creator) (int, error) {
 	return 0, nil
-}
-
-type routeTestGroupOps struct{}
-
-func (routeTestGroupOps) IsGroupMember(context.Context, int64, int64) bool { return false }
-func (routeTestGroupOps) CreateInviteLink(context.Context, int64, int64, string) (string, error) {
-	return "", nil
 }
 
 type routeTestEventSubChecker struct{}

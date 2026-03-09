@@ -9,11 +9,6 @@ import (
 
 	"imsub/internal/core"
 	"imsub/internal/platform/i18n"
-	"imsub/internal/transport/telegram/client"
-	"imsub/internal/transport/telegram/ui"
-
-	"github.com/mymmrac/telego"
-	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 const (
@@ -45,13 +40,14 @@ const (
 // --- Creator flow ---
 
 func (c *Controller) handleCreatorRegistrationStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
-	owned, ok, err := c.creatorSvc.LoadOwnedCreator(ctx, telegramUserID)
+	_, ok, err := c.app.CreatorStatus.LoadOwnedCreator(ctx, telegramUserID)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrLoadStatus), nil)
-		return i18n.Translate(lang, msgErrLoadStatus)
+		view := buildCreatorStatusErrorView(lang)
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
+		return view.text
 	}
 	if ok {
-		c.replyCreatorStatus(ctx, telegramUserID, editMsgID, lang, owned)
+		c.replyCreatorStatus(ctx, telegramUserID, editMsgID, lang)
 		return ""
 	}
 
@@ -86,25 +82,17 @@ func (c *Controller) replyCreatorOAuthPrompt(ctx context.Context, telegramUserID
 	}
 	state, err := c.createOAuthState(ctx, payload, 10*time.Minute)
 	if err != nil {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, msgErrCreatorLink), &client.MessageOptions{Markup: creatorMainMenuMarkup(lang)})
-		return i18n.Translate(lang, msgErrCreatorLink)
+		view := buildCreatorLinkErrorView(lang)
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
+		return view.text
 	}
 	url := c.oauthStartURL(state)
-	openKey := btnRegisterCreatorOpen
-	textKey := msgCreatorRegisterInfo
-	if reconnect {
-		openKey = btnReconnectCreator
-		textKey = msgCreatorReconnectInfo
-	}
-	markup := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(ui.LinkButton(i18n.Translate(lang, openKey), url)),
-		tu.InlineKeyboardRow(ui.CopyLinkButton(i18n.Translate(lang, btnCopyLink), url)),
-	)
+	view := buildCreatorPromptView(lang, url, reconnect)
 	if editMsgID != 0 {
-		c.reply(ctx, telegramUserID, editMsgID, i18n.Translate(lang, textKey), &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
 		return ""
 	}
-	messageID := c.sendMsg(ctx, telegramUserID, i18n.Translate(lang, textKey), &client.MessageOptions{ParseMode: telego.ModeHTML, Markup: markup})
+	messageID := c.sendMsg(ctx, telegramUserID, view.text, &view.opts)
 	if messageID != 0 {
 		payload.PromptMessageID = messageID
 		if err := c.store.SaveOAuthState(ctx, state, payload, 10*time.Minute); err != nil {
@@ -114,69 +102,44 @@ func (c *Controller) replyCreatorOAuthPrompt(ctx context.Context, telegramUserID
 	return ""
 }
 
-func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int64, editMsgID int, lang string, creator core.Creator) {
-	profileDisplay := ui.TwitchProfileHTML(creator.Name)
-	groups, err := c.creatorSvc.LoadManagedGroups(ctx, creator.ID)
-	if err != nil {
-		c.log().Warn("LoadManagedGroups failed", "creator_id", creator.ID, "error", err)
-	}
-	groupLines := CreatorGroupLines(lang, creator.Name, groups)
+func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int64, editMsgID int, lang string) {
 	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	status, err := c.creatorSvc.LoadStatus(statusCtx, creator)
+	res, err := c.app.CreatorStatus.LoadStatus(statusCtx, telegramUserID)
 	if err != nil {
-		c.log().Warn("LoadStatus failed", "creator_id", creator.ID, "error", err)
+		if !res.HasCreator {
+			c.log().Warn("LoadStatus failed", "telegram_user_id", telegramUserID, "error", err)
+			view := buildCreatorStatusErrorView(lang)
+			c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
+			return
+		}
+		c.log().Warn("LoadStatus degraded", "telegram_user_id", telegramUserID, "error", err)
+	}
+	if !res.HasCreator {
+		c.replyCreatorOAuthPrompt(ctx, telegramUserID, editMsgID, lang, false)
+		return
+	}
+	if res.GroupsError != nil {
+		c.log().Warn("LoadManagedGroups failed", "creator_id", res.Creator.ID, "error", res.GroupsError)
+	}
+	if res.StatusError != nil {
+		c.log().Warn("LoadStatus degraded", "creator_id", res.Creator.ID, "error", res.StatusError)
 	}
 	reconnectURL := ""
-	if status.Auth == core.CreatorAuthReconnectRequired {
+	if res.Status.Auth == core.CreatorAuthReconnectRequired {
 		reconnectURL, err = c.creatorReconnectURL(ctx, telegramUserID, lang)
 		if err != nil {
-			c.log().Warn("creatorReconnectURL failed", "telegram_user_id", telegramUserID, "creator_id", creator.ID, "error", err)
+			c.log().Warn("creatorReconnectURL failed", "telegram_user_id", telegramUserID, "creator_id", res.Creator.ID, "error", err)
 		}
 	}
-	authStatus := creatorAuthStatusText(status, lang)
-	statusDetails := creatorStatusDetailsText(status, lang)
-	if len(groups) == 0 {
-		text := fmt.Sprintf(
-			i18n.Translate(lang, msgCreatorRegisteredNoGroup),
-			profileDisplay,
-			authStatus,
-			statusDetails,
-			groupLines,
-		)
-		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{
-			ParseMode:      telego.ModeHTML,
-			DisablePreview: true,
-			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorMenuCallbacks()),
-		})
-		return
-	}
-	eventSubStatus := creatorEventSubStatusText(status, lang)
-	subscriberStatus := creatorSubscriberStatusText(status, lang)
-	text := fmt.Sprintf(
-		i18n.Translate(lang, msgCreatorRegistered),
-		profileDisplay,
-		eventSubStatus,
-		authStatus,
-		statusDetails,
-		subscriberStatus,
-		groupLines,
-	)
+	view := buildCreatorStatusView(lang, reconnectURL, res.Creator, res.Status, res.Groups)
 
 	if editMsgID != 0 {
-		c.reply(ctx, telegramUserID, editMsgID, text, &client.MessageOptions{
-			ParseMode:      telego.ModeHTML,
-			DisablePreview: true,
-			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorMenuCallbacks()),
-		})
+		c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
 		return
 	}
 
-	c.sendMsg(ctx, telegramUserID, text, &client.MessageOptions{
-		ParseMode:      telego.ModeHTML,
-		DisablePreview: true,
-		Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorMenuCallbacks()),
-	})
+	c.sendMsg(ctx, telegramUserID, view.text, &view.opts)
 }
 
 func creatorEventSubStatusText(status core.Status, lang string) string {
@@ -211,14 +174,15 @@ func creatorSubscriberStatusText(status core.Status, lang string) string {
 }
 
 func creatorStatusDetailsText(status core.Status, lang string) string {
-	lines := make([]string, 0, 2)
+	lastSyncLine := ""
 	if !status.LastSyncAt.IsZero() {
-		lines = append(lines, fmt.Sprintf(i18n.Translate(lang, "creator_last_sync_at"), formatStatusTime(status.LastSyncAt)))
+		lastSyncLine = fmt.Sprintf(i18n.Translate(lang, "creator_last_sync_at"), formatStatusTime(status.LastSyncAt))
 	}
+	reconnectLine := ""
 	if status.Auth == core.CreatorAuthReconnectRequired && !status.AuthStatusAt.IsZero() {
-		lines = append(lines, fmt.Sprintf(i18n.Translate(lang, "creator_reconnect_since"), formatStatusTime(status.AuthStatusAt)))
+		reconnectLine = fmt.Sprintf(i18n.Translate(lang, "creator_reconnect_since"), formatStatusTime(status.AuthStatusAt))
 	}
-	return strings.Join(lines, "\n")
+	return joinNonEmptyLines(lastSyncLine, reconnectLine)
 }
 
 func formatStatusTime(ts time.Time) string {

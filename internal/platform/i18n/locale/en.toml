@@ -167,13 +167,13 @@ other = "• ImSub is missing the <b>Ban Users</b> administrator permission. Thi
 other = "⏳ ImSub detected a bot status change in this group. Checking setup..."
 
 [group_already_linked]
-other = "❗️ This group is already linked to <b>%s</b>.\n\nUse <code>/unregister</code> to unlink it first if you want to make changes."
+other = "❗️ This group is already linked to <b>%s</b>.\n\nUse <code>/unregistergroup</code> to unlink it first if you want to make changes."
 
 [group_different_linked]
-other = "⚠️ Your creator account <b>%s</b> is already linked to group <b>%s</b>.\n\nUse <code>/unregister</code> in that group first before registering a new one."
+other = "⚠️ Your creator account <b>%s</b> is already linked to group <b>%s</b>.\n\nUse <code>/unregistergroup</code> in that group first before registering a new one."
 
 [group_taken_by_other]
-other = "⚠️ This group is already linked to another creator account (<b>%s</b>). Each group can only be managed by one creator. The other creator must use <code>/unregister</code> first."
+other = "⚠️ This group is already linked to another creator account (<b>%s</b>). Each group can only be managed by one creator. The other creator must use <code>/unregistergroup</code> first."
 
 [group_registered_dm]
 other = "🎉 <b>Group registered</b>\n\nYour group <b>%s</b> is now linked to your creator account <b>%s</b>.\n\n⏳ ImSub will start syncing your Twitch subscribers shortly. Once syncing is active, only users with an active subscription will be able to join the group.\n\n❔ <b>What happens next</b>\n• Subscriber sync activates automatically\n• Current subscribers can use /start to get a join link\n• When a subscription ends, the user is removed from the group\n\nUse /creator to check your setup status at any time."

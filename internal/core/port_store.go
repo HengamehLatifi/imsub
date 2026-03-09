@@ -5,18 +5,23 @@ import (
 	"time"
 )
 
-// Store defines the full data access contract for the application.
-type Store interface {
+// LifecycleStore covers process-level health and schema operations.
+type LifecycleStore interface {
 	Ping(ctx context.Context) error
 	Close() error
 	EnsureSchema(ctx context.Context) error
+}
 
-	// --- User identity and creator-membership operations ---
-
+// IdentityStore covers Telegram/Twitch identity and per-user cleanup.
+type IdentityStore interface {
 	UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	SaveUserIdentityOnly(ctx context.Context, telegramUserID int64, twitchUserID, twitchLogin, language string) (displacedUserID int64, err error)
 	RemoveUserCreatorByTwitch(ctx context.Context, twitchUserID, creatorID string) (telegramUserID int64, found bool, err error)
 	DeleteAllUserData(ctx context.Context, telegramUserID int64) error
+}
+
+// GroupStore covers managed-group configuration and membership observation/cache state.
+type GroupStore interface {
 	ManagedGroupByChatID(ctx context.Context, chatID int64) (ManagedGroup, bool, error)
 	ListManagedGroups(ctx context.Context) ([]ManagedGroup, error)
 	ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error)
@@ -29,9 +34,10 @@ type Store interface {
 	UpsertUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64, source, status string, at time.Time) error
 	RemoveUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
 	CountUntrackedGroupMembers(ctx context.Context, chatID int64) (int, error)
+}
 
-	// --- Creator CRUD and group binding ---
-
+// CreatorStore covers creator records, auth state, and owner lookup.
+type CreatorStore interface {
 	Creator(ctx context.Context, creatorID string) (Creator, bool, error)
 	ListCreators(ctx context.Context) ([]Creator, error)
 	ListActiveCreators(ctx context.Context) ([]Creator, error)
@@ -45,15 +51,17 @@ type Store interface {
 	UpdateCreatorLastSync(ctx context.Context, creatorID string, at time.Time) error
 	UpdateCreatorLastReconnectNotice(ctx context.Context, creatorID string, at time.Time) error
 	CreatorAuthReconnectRequiredCount(ctx context.Context) (int, error)
+}
 
-	// --- OAuth state ---
-
+// OAuthStateStore covers persisted OAuth callback state.
+type OAuthStateStore interface {
 	SaveOAuthState(ctx context.Context, state string, payload OAuthStatePayload, ttl time.Duration) error
 	OAuthState(ctx context.Context, state string) (OAuthStatePayload, error)
 	DeleteOAuthState(ctx context.Context, state string) (OAuthStatePayload, error)
+}
 
-	// --- Subscriber cache and bulk dump ---
-
+// SubscriberStore covers subscriber cache reads/writes and dump lifecycle.
+type SubscriberStore interface {
 	IsCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) (bool, error)
 	AddCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) error
 	RemoveCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) error
@@ -62,13 +70,27 @@ type Store interface {
 	AddToSubscriberDump(ctx context.Context, tmpKey string, userIDs []string) error
 	FinalizeSubscriberDump(ctx context.Context, creatorID, tmpKey string, hasData bool) error
 	CleanupSubscriberDump(ctx context.Context, tmpKey string)
+}
 
-	// --- Event deduplication ---
-
+// EventDeduperStore covers webhook/event deduplication.
+type EventDeduperStore interface {
 	MarkEventProcessed(ctx context.Context, messageID string, ttl time.Duration) (alreadyProcessed bool, err error)
+}
 
-	// --- Data consistency audits and repairs ---
-
-	RepairUserCreatorReverseIndex(ctx context.Context, creators []Creator) (indexUsers, repairedUsers, missingLinks, staleLinks int, err error)
+// IntegrityStore covers audit and repair operations over derived/indexed state.
+type IntegrityStore interface {
+	RepairTrackedGroupReverseIndex(ctx context.Context) (indexUsers, repairedUsers, missingLinks, staleLinks int, err error)
 	ActiveCreatorIDsWithoutGroup(ctx context.Context, creators []Creator) (int, error)
+}
+
+// Store defines the full data access contract for the application.
+type Store interface {
+	LifecycleStore
+	IdentityStore
+	GroupStore
+	CreatorStore
+	OAuthStateStore
+	SubscriberStore
+	EventDeduperStore
+	IntegrityStore
 }
