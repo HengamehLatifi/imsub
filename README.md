@@ -467,6 +467,7 @@ Planned improvements and open design questions, roughly ordered by impact.
 
 ### Subscription lifecycle
 
+- **Immediate invite on new subscription**: when a `channel.subscribe` EventSub notification reaches the bot and the viewer mapping is already cached (Telegram user ID + Twitch user ID), proactively DM the viewer a fresh group invite instead of waiting for them to run `/start` again.
 - **Grace period after subscription end**: instead of kicking immediately on `channel.subscription.end`, keep the user in the group for a configurable window (e.g. 24–72h) and kick only if they haven't resubscribed by then. Requires a delayed job or a scheduled sweep.
 - **EventSub secret rotation key-ring**: replace single static `IMSUB_TWITCH_EVENTSUB_SECRET` usage with a shared persisted key-ring (`current` + `previous`) so all app instances verify with dual-secret during a bounded grace period. Rotate on schedule (not every restart), explicitly migrate EventSub subscriptions to the new secret (create/verify/delete old), and retire the previous key after migration completes.
 - **Subscription tier awareness**: different tiers could map to different groups or roles within the same group (e.g. Tier 3 gets a VIP group).
@@ -480,7 +481,7 @@ Planned improvements and open design questions, roughly ordered by impact.
 ### Access control
 
 - **Creator allowlist**: let creators manually grant group access to specific users (e.g. mods, friends) who aren't subscribers, bypassing the subscription check.
-- **Creator blocklist**: let creators permanently deny access to specific users regardless of subscription status.
+- **Creator blocklist**: let creators permanently deny access to specific users regardless of subscription status. Sync with banned twitch users.
 
 ### Group lifecycle
 

@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -433,6 +434,29 @@ func TestRegisterTelegramHandlersApprovesJoinRequest(t *testing.T) {
 	h.caller.assertExactMethods(t, "approveChatJoinRequest")
 }
 
+func TestRegisterTelegramHandlersApprovesJoinRequestInForumSupergroup(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 40,
+		ChatJoinRequest: &telego.ChatJoinRequest{
+			Chat: telego.Chat{
+				ID:      -1003,
+				Type:    telego.ChatTypeSupergroup,
+				IsForum: true,
+			},
+			From: telego.User{ID: 101},
+			InviteLink: &telego.ChatInviteLink{
+				Name: "imsub-101-creator",
+			},
+		},
+	})
+
+	h.caller.assertExactMethods(t, "approveChatJoinRequest")
+}
+
 func TestRegisterTelegramHandlersDeclinesMismatchedJoinRequest(t *testing.T) {
 	t.Parallel()
 
@@ -483,6 +507,46 @@ func TestRegisterTelegramHandlersRegisterGroupBlocksWhenBotLacksRequiredPermissi
 	})
 
 	h.caller.assertExactMethods(t, "getChatMember", "getMe", "getChatMember", "sendMessage")
+}
+
+func TestRegisterTelegramHandlersRegisterGroupRepliesInSameForumTopic(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		TwitchLogin:     "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.caller.setChatMember(77, routeTestAdminMemberJSON(77, false, true, true))
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 41,
+		Message: &telego.Message{
+			MessageID:       12,
+			MessageThreadID: 321,
+			IsTopicMessage:  true,
+			Text:            "/registergroup",
+			Chat: telego.Chat{
+				ID:      -1004,
+				Type:    telego.ChatTypeSupergroup,
+				Title:   "VIP Forum",
+				IsForum: true,
+			},
+			From: &telego.User{
+				ID:           77,
+				LanguageCode: "en",
+			},
+		},
+	})
+
+	var body map[string]any
+	if err := json.Unmarshal(h.caller.lastSendMessageBody(), &body); err != nil {
+		t.Fatalf("json.Unmarshal(sendMessage body) error = %v", err)
+	}
+	if got := body["message_thread_id"]; got != float64(321) {
+		t.Fatalf("sendMessage message_thread_id = %v, want 321", got)
+	}
 }
 
 func TestRegisterTelegramHandlersUnregisterGroupCommand(t *testing.T) {

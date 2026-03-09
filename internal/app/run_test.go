@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -73,5 +74,15 @@ func TestTelegramRetryConstantsStayConservative(t *testing.T) {
 	}
 	if telegramRetryMaxDelay > 10*time.Second {
 		t.Fatalf("telegramRetryMaxDelay = %s, want <= 10s", telegramRetryMaxDelay)
+	}
+}
+
+func TestTelegramAllowedUpdatesIncludesMembershipUpdates(t *testing.T) {
+	t.Parallel()
+
+	got := telegramAllowedUpdates()
+	want := []string{"message", "callback_query", "chat_join_request", "chat_member", "my_chat_member"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("telegramAllowedUpdates() = %v, want %v", got, want)
 	}
 }

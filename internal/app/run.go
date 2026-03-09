@@ -42,7 +42,7 @@ const (
 )
 
 func telegramAllowedUpdates() []string {
-	return []string{"message", "callback_query", "chat_join_request"}
+	return []string{"message", "callback_query", "chat_join_request", "chat_member", "my_chat_member"}
 }
 
 // Run executes the service composition root.

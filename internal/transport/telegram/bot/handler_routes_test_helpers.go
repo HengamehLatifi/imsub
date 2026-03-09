@@ -328,6 +328,16 @@ func (c *routeTestCaller) lastEditMessageBody() json.RawMessage {
 	return append(json.RawMessage(nil), bodies[len(bodies)-1]...)
 }
 
+func (c *routeTestCaller) lastSendMessageBody() json.RawMessage {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	bodies := c.requestBodies["sendMessage"]
+	if len(bodies) == 0 {
+		return nil
+	}
+	return append(json.RawMessage(nil), bodies[len(bodies)-1]...)
+}
+
 type routeTestStore struct {
 	routeTestStoreStub
 
