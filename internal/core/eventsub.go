@@ -31,6 +31,7 @@ type creatorReconnectNotifier interface {
 }
 
 const creatorAuthErrorTokenRefreshFailed = "token_refresh_failed"
+const eventSubDeletePause = 50 * time.Millisecond
 
 // EventSub manages EventSub lifecycle checks, creation, and subscriber dumps.
 type EventSub struct {
@@ -98,14 +99,21 @@ func (e *EventSub) ReconcileEventSubsOnce(ctx context.Context) error {
 	}
 
 	// Delete orphaned subscriptions.
+	deletedOrphan := false
 	for _, sub := range subs {
 		if _, ok := activeSet[sub.BroadcasterID]; ok {
 			continue
+		}
+		if deletedOrphan {
+			if err := sleepContext(ctx, eventSubDeletePause); err != nil {
+				return fmt.Errorf("pause orphaned eventsub deletion: %w", err)
+			}
 		}
 		e.log.Info("deleting orphaned eventsub", "sub_id", sub.ID, "broadcaster_id", sub.BroadcasterID, "type", sub.Type)
 		if err := e.twitch.DeleteEventSub(ctx, sub.ID); err != nil {
 			e.log.Warn("delete orphaned eventsub failed", "sub_id", sub.ID, "error", err)
 		}
+		deletedOrphan = true
 	}
 
 	// Find active creators missing required subscriptions.
@@ -168,16 +176,37 @@ func (e *EventSub) DeleteEventSubsForCreator(ctx context.Context, creatorID stri
 	if err != nil {
 		return fmt.Errorf("list eventsubs for delete: %w", err)
 	}
+	deletedAny := false
 	for _, sub := range subs {
 		if sub.BroadcasterID != creatorID {
 			continue
+		}
+		if deletedAny {
+			if err := sleepContext(ctx, eventSubDeletePause); err != nil {
+				return fmt.Errorf("pause creator eventsub deletion: %w", err)
+			}
 		}
 		e.log.Info("deleting eventsub for creator", "sub_id", sub.ID, "broadcaster_id", creatorID, "type", sub.Type)
 		if err := e.twitch.DeleteEventSub(ctx, sub.ID); err != nil {
 			e.log.Warn("delete eventsub for creator failed", "sub_id", sub.ID, "creator_id", creatorID, "error", err)
 		}
+		deletedAny = true
 	}
 	return nil
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context done: %w", ctx.Err())
+	case <-timer.C:
+		return nil
+	}
 }
 
 // FindInactiveEventSubCreators returns creators missing required EventSub subscriptions.

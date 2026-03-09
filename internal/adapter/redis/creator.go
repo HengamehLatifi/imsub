@@ -222,7 +222,7 @@ func (s *Store) UpsertCreator(ctx context.Context, c core.Creator) error {
 		pipe.SRem(ctx, keyCreatorByOwner(existing.OwnerTelegramID), c.ID)
 	}
 
-	pipe.HSet(ctx, keyCreator(c.ID), map[string]any{
+	pipe.HSet(ctx, keyCreator(c.ID), map[string]string{
 		"id":                c.ID,
 		"name":              c.Name,
 		"owner_telegram_id": strconv.FormatInt(c.OwnerTelegramID, 10),

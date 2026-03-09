@@ -77,7 +77,7 @@ func (l *FixedWindowRateLimiter) Allow(ip string) bool {
 	if now.Sub(l.windowStart) >= l.window {
 		l.windowStart = now
 		l.globalCount = 0
-		l.perIP = make(map[string]int, len(l.perIP))
+		clear(l.perIP)
 	}
 
 	if l.globalCount >= l.globalLimit {

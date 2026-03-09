@@ -168,6 +168,14 @@ type routeTestCaller struct {
 	getChatAdminsResult json.RawMessage
 }
 
+func mustMarshalJSON(v any) json.RawMessage {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
 func (c *routeTestCaller) setBotUserID(id int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -238,12 +246,12 @@ func (c *routeTestCaller) Call(_ context.Context, url string, data *telegoapi.Re
 		}
 		return &telegoapi.Response{
 			Ok: true,
-			Result: json.RawMessage(fmt.Sprintf(`{
-				"id": %d,
-				"is_bot": true,
-				"first_name": "ImSub",
-				"username": "imsub_bot"
-			}`, botUserID)),
+			Result: mustMarshalJSON(telego.User{
+				ID:        botUserID,
+				IsBot:     true,
+				FirstName: "ImSub",
+				Username:  "imsub_bot",
+			}),
 		}, nil
 	case "getChatMember":
 		var params struct {
@@ -461,22 +469,26 @@ func (s *routeTestStore) UpsertUntrackedGroupMember(_ context.Context, chatID, t
 }
 
 func routeTestAdminMemberJSON(userID int64, isBot bool, canInviteUsers bool, canRestrictMembers bool) json.RawMessage {
-	return json.RawMessage(fmt.Sprintf(`{
+	return mustMarshalJSON(map[string]any{
 		"status": "administrator",
-		"user": {"id": %d, "is_bot": %t, "first_name": "Member"},
-		"can_be_edited": false,
-		"is_anonymous": false,
-		"can_manage_chat": true,
-		"can_delete_messages": true,
+		"user": map[string]any{
+			"id":         userID,
+			"is_bot":     isBot,
+			"first_name": "Member",
+		},
+		"can_be_edited":          false,
+		"is_anonymous":           false,
+		"can_manage_chat":        true,
+		"can_delete_messages":    true,
 		"can_manage_video_chats": false,
-		"can_restrict_members": %t,
-		"can_promote_members": false,
-		"can_change_info": false,
-		"can_invite_users": %t,
-		"can_post_stories": false,
-		"can_edit_stories": false,
-		"can_delete_stories": false
-	}`, userID, isBot, canRestrictMembers, canInviteUsers))
+		"can_restrict_members":   canRestrictMembers,
+		"can_promote_members":    false,
+		"can_change_info":        false,
+		"can_invite_users":       canInviteUsers,
+		"can_post_stories":       false,
+		"can_edit_stories":       false,
+		"can_delete_stories":     false,
+	})
 }
 
 type routeTestStoreStub struct{}

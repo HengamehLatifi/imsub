@@ -31,6 +31,12 @@ type viewerIdentityStore interface {
 	UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 }
 
+type viewerStore interface {
+	viewerIdentityStore
+	viewerResolverStore
+	viewerTrackedMembershipStore
+}
+
 // Viewer orchestrates viewer subscription-to-group eligibility, cache sync,
 // and invite creation through focused internal components.
 type Viewer struct {
@@ -41,7 +47,7 @@ type Viewer struct {
 }
 
 // NewViewer creates a Viewer service with optional logger fallback.
-func NewViewer(store Store, group GroupOps, logger *slog.Logger, obs events.EventSink) *Viewer {
+func NewViewer(store viewerStore, group GroupOps, logger *slog.Logger, obs events.EventSink) *Viewer {
 	if logger == nil {
 		logger = slog.Default()
 	}

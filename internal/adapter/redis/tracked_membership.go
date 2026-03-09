@@ -20,7 +20,7 @@ func (s *Store) AddTrackedGroupMember(ctx context.Context, chatID, telegramUserI
 	pipe.SAdd(ctx, keyTrackedGroupMembers(chatID), tgStr)
 	pipe.SRem(ctx, keyUntrackedGroupMembers(chatID), tgStr)
 	pipe.SAdd(ctx, keyUserTrackedGroups(telegramUserID), chatStr)
-	pipe.HSet(ctx, metaKey, map[string]any{
+	pipe.HSet(ctx, metaKey, map[string]string{
 		"state":         "tracked",
 		"source":        source,
 		"first_seen_at": at.UTC().Format(time.RFC3339),

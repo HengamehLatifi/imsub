@@ -141,7 +141,7 @@ func (s *Store) UpsertManagedGroup(ctx context.Context, group core.ManagedGroup)
 	}
 
 	pipe := s.rdb.TxPipeline()
-	pipe.HSet(ctx, keyManagedGroup(group.ChatID), map[string]any{
+	pipe.HSet(ctx, keyManagedGroup(group.ChatID), map[string]string{
 		"chat_id":       strconv.FormatInt(group.ChatID, 10),
 		"creator_id":    group.CreatorID,
 		"group_name":    group.GroupName,

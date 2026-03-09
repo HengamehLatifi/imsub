@@ -22,7 +22,7 @@ func (s *Store) UpsertUntrackedGroupMember(ctx context.Context, chatID, telegram
 
 	pipe := s.rdb.TxPipeline()
 	pipe.SAdd(ctx, keyUntrackedGroupMembers(chatID), tgStr)
-	pipe.HSet(ctx, metaKey, map[string]any{
+	pipe.HSet(ctx, metaKey, map[string]string{
 		"state":         "untracked",
 		"source":        source,
 		"first_seen_at": firstSeen,
