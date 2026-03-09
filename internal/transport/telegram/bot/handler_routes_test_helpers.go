@@ -1,4 +1,4 @@
-package flows
+package bot
 
 import (
 	"context"
@@ -192,24 +192,6 @@ func (c *routeTestCaller) setChatMember(userID int64, raw json.RawMessage) {
 		c.chatMembersByUserID = make(map[int64]json.RawMessage)
 	}
 	c.chatMembersByUserID[userID] = raw
-}
-
-func (c *routeTestCaller) setChatResult(raw json.RawMessage) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.getChatResult = raw
-}
-
-func (c *routeTestCaller) setChatMemberCount(count int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.getChatMemberCount = count
-}
-
-func (c *routeTestCaller) setChatAdminsResult(raw json.RawMessage) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.getChatAdminsResult = raw
 }
 
 func (c *routeTestCaller) setMethodError(method string, err error) {

@@ -1,4 +1,4 @@
-package flows
+package bot
 
 import (
 	"strconv"
@@ -87,12 +87,7 @@ func parseCallbackAction(data string) (callbackAction, bool) {
 		return action, true
 	case callbackDomainCreator:
 		switch action.verb {
-		case callbackVerbRefresh, callbackVerbRegister, callbackVerbReconnect:
-			if len(parts) != 2 {
-				return callbackAction{}, false
-			}
-			return action, true
-		case callbackVerbMenu:
+		case callbackVerbRefresh, callbackVerbRegister, callbackVerbReconnect, callbackVerbMenu:
 			if len(parts) != 2 {
 				return callbackAction{}, false
 			}

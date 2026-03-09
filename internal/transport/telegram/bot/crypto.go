@@ -1,4 +1,4 @@
-package flows
+package bot
 
 import (
 	"crypto/rand"

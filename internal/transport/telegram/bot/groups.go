@@ -1,9 +1,10 @@
-package flows
+package bot
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -68,7 +69,6 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 		return nil
 	}
 
-	// Silently ignore users who are neither admin nor have a creator account.
 	if !isAdmin && !ok {
 		return nil
 	}
@@ -106,8 +106,7 @@ func (c *Controller) onRegisterGroup(ctx *tghandler.Context, msg telego.Message)
 	return nil
 }
 
-// onUnregisterCommand handles /unregistergroup by unbinding the current Telegram group
-// from the caller's creator account. The caller must be the creator managing it.
+// onUnregisterCommand handles /unregistergroup by unbinding the current Telegram group.
 func (c *Controller) onUnregisterCommand(ctx *tghandler.Context, msg telego.Message) error {
 	if msg.From == nil {
 		return nil
@@ -202,10 +201,7 @@ func (c *Controller) onChatMemberUpdated(ctx *tghandler.Context, update telego.C
 	}
 
 	memberUser := update.NewChatMember.MemberUser()
-	if memberUser.IsBot {
-		return nil
-	}
-	if IsAdmin(update.NewChatMember) {
+	if memberUser.IsBot || IsAdmin(update.NewChatMember) {
 		return nil
 	}
 
@@ -220,10 +216,7 @@ func (c *Controller) onChatMemberUpdated(ctx *tghandler.Context, update telego.C
 }
 
 func (c *Controller) onGroupMessage(ctx *tghandler.Context, msg telego.Message) error {
-	if msg.From == nil || msg.From.IsBot {
-		return nil
-	}
-	if strings.HasPrefix(msg.Text, "/") {
+	if msg.From == nil || msg.From.IsBot || strings.HasPrefix(msg.Text, "/") {
 		return nil
 	}
 	group, ok, err := c.store.ManagedGroupByChatID(ctx, msg.Chat.ID)
@@ -238,8 +231,6 @@ func (c *Controller) onGroupMessage(ctx *tghandler.Context, msg telego.Message) 
 	return nil
 }
 
-// sendPostRegistrationSettingsCheck runs group settings checks and edits the
-// group message to append warnings or an "all good" status. No DM is sent.
 func (c *Controller) sendPostRegistrationSettingsCheck(ctx context.Context, groupChatID int64, groupMsgID int, lang, groupBaseText string) {
 	warnings := c.evaluateGroupSettings(ctx, groupChatID).issues(lang)
 	if groupMsgID != 0 {
@@ -248,8 +239,6 @@ func (c *Controller) sendPostRegistrationSettingsCheck(ctx context.Context, grou
 	}
 }
 
-// sendPostRegistrationMessages streams a draft DM to the creator while
-// checking group settings, then finalises the DM and edits the group message.
 func (c *Controller) sendPostRegistrationMessages(ctx context.Context, opts postRegistrationMessageOptions) {
 	const draftID = 1
 
@@ -260,9 +249,7 @@ func (c *Controller) sendPostRegistrationMessages(ctx context.Context, opts post
 		groupBaseText: opts.groupBaseText,
 	}, nil)
 
-	c.sendDraft(ctx, opts.ownerUserID, draftID, rendered.draftDM, &client.MessageOptions{
-		ParseMode: telego.ModeHTML,
-	})
+	c.sendDraft(ctx, opts.ownerUserID, draftID, rendered.draftDM, &client.MessageOptions{ParseMode: telego.ModeHTML})
 
 	warnings := c.evaluateGroupSettings(ctx, opts.groupChatID).issues(opts.lang)
 	rendered = renderPostRegistrationCopy(postRegistrationCopyInput{
@@ -271,18 +258,11 @@ func (c *Controller) sendPostRegistrationMessages(ctx context.Context, opts post
 		creatorName:   opts.creatorName,
 		groupBaseText: opts.groupBaseText,
 	}, warnings)
-	c.sendDraft(ctx, opts.ownerUserID, draftID, rendered.finalDM, &client.MessageOptions{
-		ParseMode: telego.ModeHTML,
-	})
-
-	c.sendMsg(ctx, opts.ownerUserID, rendered.finalDM, &client.MessageOptions{
-		ParseMode: telego.ModeHTML,
-	})
+	c.sendDraft(ctx, opts.ownerUserID, draftID, rendered.finalDM, &client.MessageOptions{ParseMode: telego.ModeHTML})
+	c.sendMsg(ctx, opts.ownerUserID, rendered.finalDM, &client.MessageOptions{ParseMode: telego.ModeHTML})
 
 	if opts.groupMsgID != 0 {
-		c.reply(ctx, opts.groupChatID, opts.groupMsgID, rendered.groupMessage, &client.MessageOptions{
-			ParseMode: telego.ModeHTML,
-		})
+		c.reply(ctx, opts.groupChatID, opts.groupMsgID, rendered.groupMessage, &client.MessageOptions{ParseMode: telego.ModeHTML})
 	}
 }
 
@@ -296,14 +276,172 @@ type postRegistrationMessageOptions struct {
 	groupBaseText string
 }
 
+type groupRegistrationView struct {
+	text             string
+	opts             client.MessageOptions
+	groupBaseText    string
+	dispatchFollowUp bool
+}
+
+func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecase.RegisterGroupResult) (groupRegistrationView, bool) {
+	view := groupRegistrationView{opts: client.MessageOptions{ReplyToMessageID: replyToMessageID}}
+
+	switch regRes.Outcome {
+	case usecase.RegisterGroupOutcomeNotCreator:
+		view.text = i18n.Translate(lang, msgGroupNotCreator)
+	case usecase.RegisterGroupOutcomeTakenByOther:
+		view.text = fmt.Sprintf(i18n.Translate(lang, msgGroupTakenByOther), html.EscapeString(regRes.OtherCreatorName))
+		view.opts.ParseMode = telego.ModeHTML
+	case usecase.RegisterGroupOutcomeAlreadyLinked:
+		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupAlreadyLinked), html.EscapeString(regRes.Creator.Name))
+		view.text = joinNonEmptySections(
+			textSection{text: view.groupBaseText},
+			textSection{text: i18n.Translate(lang, msgGroupCheckingSettings)},
+		)
+		view.opts.ParseMode = telego.ModeHTML
+		view.dispatchFollowUp = true
+	case usecase.RegisterGroupOutcomeRegistered:
+		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupRegistered), html.EscapeString(regRes.Creator.Name))
+		view.text = joinNonEmptySections(
+			textSection{text: view.groupBaseText},
+			textSection{text: i18n.Translate(lang, msgGroupCheckingSettings)},
+		)
+		view.opts.ParseMode = telego.ModeHTML
+		view.dispatchFollowUp = true
+	default:
+		return groupRegistrationView{}, false
+	}
+
+	return view, true
+}
+
+func (c *Controller) dispatchGroupRegistrationFollowUp(ctx context.Context, msg telego.Message, lang string, regRes usecase.RegisterGroupResult, view groupRegistrationView, groupMsgID int) {
+	if !regRes.FollowUp.NeedsActivation && !regRes.FollowUp.NeedsSettingsCheck {
+		return
+	}
+	if regRes.FollowUp.NeedsActivation {
+		c.runBackground(context.WithoutCancel(ctx), func(bg context.Context) {
+			c.activateCreatorOnFirstGroupRegistration(bg, regRes.Creator, msg.Chat.ID, lang)
+		})
+	}
+	if !regRes.FollowUp.NeedsSettingsCheck {
+		return
+	}
+	if regRes.FollowUp.NotifyOwner {
+		c.runBackground(context.WithoutCancel(ctx), func(bg context.Context) {
+			c.sendPostRegistrationMessages(bg, postRegistrationMessageOptions{
+				groupChatID:   msg.Chat.ID,
+				groupMsgID:    groupMsgID,
+				ownerUserID:   msg.From.ID,
+				groupName:     msg.Chat.Title,
+				creatorName:   regRes.Creator.Name,
+				lang:          lang,
+				groupBaseText: view.groupBaseText,
+			})
+		})
+		return
+	}
+	c.runBackground(context.WithoutCancel(ctx), func(bg context.Context) {
+		c.sendPostRegistrationSettingsCheck(bg, msg.Chat.ID, groupMsgID, lang, view.groupBaseText)
+	})
+}
+
+type postRegistrationCopyInput struct {
+	lang          string
+	groupName     string
+	creatorName   string
+	groupBaseText string
+}
+
+type postRegistrationRendered struct {
+	draftDM      string
+	finalDM      string
+	groupMessage string
+}
+
+func formatGroupSettingWarnings(lang string, issues []string) string {
+	return renderWarningBlock(i18n.Translate(lang, msgGroupWarnSettingsIntro), issues)
+}
+
+func formatGroupSettingsResult(lang string, issues []string) string {
+	if len(issues) > 0 {
+		return formatGroupSettingWarnings(lang, issues)
+	}
+	return i18n.Translate(lang, msgGroupSettingsOK)
+}
+
+func renderPostRegistrationCopy(in postRegistrationCopyInput, issues []string) postRegistrationRendered {
+	settingsResult := formatGroupSettingsResult(in.lang, issues)
+	dmBase := fmt.Sprintf(
+		i18n.Translate(in.lang, msgGroupRegisteredDM),
+		html.EscapeString(in.groupName),
+		html.EscapeString(in.creatorName),
+	)
+
+	return postRegistrationRendered{
+		draftDM: joinNonEmptySections(
+			textSection{text: dmBase},
+			textSection{text: i18n.Translate(in.lang, msgGroupCheckingSettings)},
+		),
+		finalDM: joinNonEmptySections(
+			textSection{text: dmBase},
+			textSection{text: settingsResult},
+		),
+		groupMessage: joinNonEmptySections(
+			textSection{text: in.groupBaseText},
+			textSection{text: settingsResult},
+		),
+	}
+}
+
+type groupSettingsEvaluation struct {
+	botCapabilities groupCapabilityEvaluation
+	isPublic        bool
+	joinByRequest   bool
+	untrackedCount  int
+}
+
+type groupCapabilityEvaluation struct {
+	botMissing       bool
+	canInviteUsers   bool
+	canRestrictUsers bool
+}
+
+func (e groupCapabilityEvaluation) issues(lang string) []string {
+	if e.botMissing {
+		return []string{i18n.Translate(lang, msgGroupWarnBotNotAdmin)}
+	}
+
+	var issues []string
+	if !e.canInviteUsers {
+		issues = append(issues, i18n.Translate(lang, msgGroupWarnBotNoInvite))
+	}
+	if !e.canRestrictUsers {
+		issues = append(issues, i18n.Translate(lang, msgGroupWarnBotNoRestrict))
+	}
+	return issues
+}
+
+func (e groupSettingsEvaluation) issues(lang string) []string {
+	issues := e.botCapabilities.issues(lang)
+	if e.isPublic {
+		issues = append(issues, i18n.Translate(lang, msgGroupWarnPublic))
+	}
+	if !e.joinByRequest {
+		issues = append(issues, i18n.Translate(lang, msgGroupWarnJoinByReq))
+	}
+	if e.untrackedCount > 0 {
+		issues = append(issues, fmt.Sprintf(i18n.Translate(lang, msgGroupWarnUntrackedUsers), e.untrackedCount))
+	}
+	return issues
+}
+
 func (c *Controller) evaluateGroupSettings(ctx context.Context, chatID int64) groupSettingsEvaluation {
 	if waitErr := c.tgLimiter.Wait(ctx, chatID); waitErr != nil {
 		c.log().Warn("GetChat rate limit wait failed", "error", waitErr)
 		return groupSettingsEvaluation{}
 	}
-	chat, err := c.tg.GetChat(ctx, &telego.GetChatParams{
-		ChatID: telegoutil.ID(chatID),
-	})
+	chat, err := c.tg.GetChat(ctx, &telego.GetChatParams{ChatID: telegoutil.ID(chatID)})
 	if err != nil {
 		c.log().Warn("GetChat for group settings check failed", "chat_id", chatID, "error", err)
 		return groupSettingsEvaluation{}
@@ -330,12 +468,10 @@ func (c *Controller) loadBotGroupCapabilities(ctx context.Context, chatID int64)
 	if c.tg == nil {
 		return botGroupCapabilities{}, errTelegramBotNotConfigured
 	}
-
 	me, err := c.tg.GetMe(ctx)
 	if err != nil {
 		return botGroupCapabilities{}, fmt.Errorf("get bot profile: %w", err)
 	}
-
 	if c.tgLimiter != nil {
 		if waitErr := c.tgLimiter.Wait(ctx, chatID); waitErr != nil {
 			return botGroupCapabilities{}, fmt.Errorf("wait get chat member: %w", waitErr)
@@ -383,9 +519,7 @@ func (c *Controller) countUntrackedMembers(ctx context.Context, chatID int64) in
 		c.log().Warn("GetChatMemberCount rate limit wait failed", "error", waitErr)
 		return 0
 	}
-	total, err := c.tg.GetChatMemberCount(ctx, &telego.GetChatMemberCountParams{
-		ChatID: telegoutil.ID(chatID),
-	})
+	total, err := c.tg.GetChatMemberCount(ctx, &telego.GetChatMemberCountParams{ChatID: telegoutil.ID(chatID)})
 	if err != nil || total == nil {
 		c.log().Warn("GetChatMemberCount failed", "chat_id", chatID, "error", err)
 		return 0
@@ -394,15 +528,12 @@ func (c *Controller) countUntrackedMembers(ctx context.Context, chatID int64) in
 		c.log().Warn("GetChatAdministrators rate limit wait failed", "error", waitErr)
 		return 0
 	}
-	admins, err := c.tg.GetChatAdministrators(ctx, &telego.GetChatAdministratorsParams{
-		ChatID: telegoutil.ID(chatID),
-	})
+	admins, err := c.tg.GetChatAdministrators(ctx, &telego.GetChatAdministratorsParams{ChatID: telegoutil.ID(chatID)})
 	if err != nil {
 		c.log().Warn("GetChatAdministrators failed", "chat_id", chatID, "error", err)
 		return 0
 	}
-	privileged := len(admins)
-	untracked := *total - privileged
+	untracked := *total - len(admins)
 	if untracked < 0 {
 		return 0
 	}
@@ -449,4 +580,31 @@ func IsAdmin(member telego.ChatMember) bool {
 		return true
 	}
 	return false
+}
+
+func buildGroupReplyView(lang, key string, replyToMessageID int) sharedView {
+	view := buildTextView(lang, key)
+	view.opts = client.MessageOptions{ReplyToMessageID: replyToMessageID}
+	return view
+}
+
+func buildGroupSettingWarningsView(lang string, replyToMessageID int, issues []string) sharedView {
+	return sharedView{
+		text: formatGroupSettingWarnings(lang, issues),
+		opts: client.MessageOptions{
+			ReplyToMessageID: replyToMessageID,
+			ParseMode:        telego.ModeHTML,
+		},
+	}
+}
+
+func buildGroupSettingsCheckResultView(lang, groupBaseText string, issues []string) sharedView {
+	return sharedView{
+		text: groupBaseText + "\n\n" + formatGroupSettingsResult(lang, issues),
+		opts: client.MessageOptions{ParseMode: telego.ModeHTML},
+	}
+}
+
+func buildGroupBotStatusChangedView(lang string) sharedView {
+	return buildHTMLTextView(lang, msgGroupBotStatusChanged)
 }

@@ -22,7 +22,7 @@ import (
 	"imsub/internal/platform/ratelimit"
 	"imsub/internal/transport/http/handlers"
 	"imsub/internal/transport/http/server"
-	"imsub/internal/transport/telegram/flows"
+	telegrambot "imsub/internal/transport/telegram/bot"
 	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
@@ -114,7 +114,7 @@ func Run() error {
 	eventSubTask := jobs.NewEventSubTask(eventSubSvc)
 	integrityTask := jobs.NewIntegrityAuditTask(s, logger, eventSink)
 
-	flowController := flows.New(flows.Dependencies{
+	flowController := telegrambot.New(telegrambot.Dependencies{
 		Config:              cfg,
 		Store:               s,
 		TelegramLimiter:     tgLimiter,

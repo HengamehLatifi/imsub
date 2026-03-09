@@ -1,7 +1,8 @@
-package flows
+package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"strconv"
@@ -10,7 +11,13 @@ import (
 
 	"imsub/internal/core"
 	"imsub/internal/platform/i18n"
+	"imsub/internal/transport/telegram/client"
+	"imsub/internal/transport/telegram/ui"
 	"imsub/internal/usecase"
+
+	"github.com/mymmrac/telego"
+	tghandler "github.com/mymmrac/telego/telegohandler"
+	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 const (
@@ -46,7 +53,47 @@ const (
 	btnUnregisterGroup     = "btn_unregister_group"
 )
 
-// --- Creator flow ---
+// onCreatorCommand handles /creator by showing the creator home/status flow.
+func (c *Controller) onCreatorCommand(ctx *tghandler.Context, msg telego.Message) error {
+	lang := i18n.NormalizeLanguage(msg.From.LanguageCode)
+	c.handleCreatorStart(ctx, msg.From.ID, 0, lang)
+	return nil
+}
+
+func (c *Controller) handleCreatorCallback(ctx context.Context, userID int64, editMsgID int, lang string, action callbackAction) string {
+	switch action.verb {
+	case callbackVerbRefresh, callbackVerbRegister:
+		return c.handleCreatorStart(ctx, userID, editMsgID, lang)
+	case callbackVerbReconnect:
+		return c.handleCreatorReconnectStart(ctx, userID, editMsgID, lang)
+	case callbackVerbOpen:
+		if action.target == creatorCallbackTargetGroups {
+			return c.replyCreatorManagedGroups(ctx, userID, editMsgID, lang, "")
+		}
+	case callbackVerbPick:
+		if action.target == creatorCallbackTargetGroup {
+			return c.replyCreatorGroupUnregisterConfirm(ctx, userID, editMsgID, lang, action.chatID)
+		}
+	case callbackVerbBack:
+		if action.target == creatorCallbackTargetGroups {
+			return c.replyCreatorManagedGroups(ctx, userID, editMsgID, lang, "")
+		}
+	case callbackVerbMenu:
+		return c.handleCreatorStart(ctx, userID, editMsgID, lang)
+	case callbackVerbExecute:
+		if action.target == creatorCallbackTargetGroup {
+			return c.executeCreatorGroupUnregister(ctx, userID, editMsgID, lang, action.chatID)
+		}
+	case callbackVerbCancel:
+		c.log().Warn("unsupported creator callback verb", "telegram_user_id", userID, "verb", action.verb)
+		return ""
+	default:
+		c.log().Warn("unsupported creator callback verb", "telegram_user_id", userID, "verb", action.verb)
+		return ""
+	}
+	c.log().Warn("unsupported creator callback action", "telegram_user_id", userID, "verb", action.verb, "target", action.target, "chat_id", action.chatID)
+	return ""
+}
 
 func (c *Controller) handleCreatorStart(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
 	_, ok, err := c.creatorStatus.LoadOwnedCreator(ctx, telegramUserID)
@@ -151,6 +198,69 @@ func (c *Controller) replyCreatorStatus(ctx context.Context, telegramUserID int6
 	}
 
 	c.sendMsg(ctx, telegramUserID, view.text, &view.opts)
+}
+
+// HandleCreatorOAuthCallback executes creator OAuth callback side effects and notifications.
+func (c *Controller) HandleCreatorOAuthCallback(ctx context.Context, code string, payload core.OAuthStatePayload, lang string) (label string, creatorName string, err error) {
+	res, flowErr := c.creatorOAuth.Complete(ctx, code, payload)
+	if flowErr != nil {
+		var fe *core.FlowError
+		if errors.As(flowErr, &fe) {
+			switch fe.Kind {
+			case core.KindTokenExchange:
+				view := buildCreatorOAuthFailureView(lang, msgCreatorExchangeFail)
+				c.sendMsg(ctx, payload.TelegramUserID, view.text, &view.opts)
+				return res.ResultLabel, "", fmt.Errorf("creator token exchange: %w", flowErr)
+			case core.KindScopeMissing:
+				view := buildCreatorOAuthFailureView(lang, msgCreatorScopeMissing)
+				c.sendMsg(ctx, payload.TelegramUserID, view.text, &view.opts)
+				return res.ResultLabel, "", fmt.Errorf("creator scope missing: %w", flowErr)
+			case core.KindUserInfo:
+				view := buildCreatorOAuthFailureView(lang, msgCreatorUserInfoFail)
+				c.sendMsg(ctx, payload.TelegramUserID, view.text, &view.opts)
+				return res.ResultLabel, "", fmt.Errorf("creator user info: %w", flowErr)
+			case core.KindStore:
+				view := buildCreatorOAuthFailureView(lang, msgCreatorStoreFail)
+				c.sendMsg(ctx, payload.TelegramUserID, view.text, &view.opts)
+				return res.ResultLabel, "", fmt.Errorf("creator store fail: %w", flowErr)
+			case core.KindSave:
+				view := buildCreatorOAuthFailureView(lang, msgCreatorStoreFail)
+				c.sendMsg(ctx, payload.TelegramUserID, view.text, &view.opts)
+				return res.ResultLabel, "", fmt.Errorf("creator save fail: %w", flowErr)
+			case core.KindCreatorMismatch:
+				view := buildCreatorOAuthFailureView(lang, msgCreatorReconnectMismatch)
+				c.sendMsg(ctx, payload.TelegramUserID, view.text, &view.opts)
+				return res.ResultLabel, "", fmt.Errorf("creator reconnect mismatch: %w", flowErr)
+			}
+		}
+		view := buildCreatorOAuthFailureView(lang, msgCreatorStoreFail)
+		c.sendMsg(ctx, payload.TelegramUserID, view.text, &view.opts)
+		return res.ResultLabel, "", fmt.Errorf("creator unexpected fail: %w", flowErr)
+	}
+	creator := res.Creator
+	c.log().Debug("creator oauth exchange success", "creator_id", creator.ID, "creator_login", creator.Name, "owner_telegram_id", creator.OwnerTelegramID)
+	if payload.PromptMessageID != 0 {
+		c.deleteMessage(ctx, payload.TelegramUserID, payload.PromptMessageID)
+	}
+	c.replyCreatorStatus(ctx, payload.TelegramUserID, 0, lang)
+	return res.ResultLabel, res.BroadcasterDisplayName, nil
+}
+
+// NotifyCreatorReconnectRequired sends a one-shot stale-auth notification to a creator owner.
+func (c *Controller) NotifyCreatorReconnectRequired(ctx context.Context, creator core.Creator) error {
+	lang := "en"
+	if identity, ok, err := c.store.UserIdentity(ctx, creator.OwnerTelegramID); err == nil && ok && identity.Language != "" {
+		lang = identity.Language
+	}
+	reconnectURL, err := c.creatorReconnectURL(ctx, creator.OwnerTelegramID, lang)
+	if err != nil {
+		return fmt.Errorf("creator reconnect url: %w", err)
+	}
+	view := buildCreatorReconnectRequiredView(lang, reconnectURL)
+	if messageID := c.sendMsg(ctx, creator.OwnerTelegramID, view.text, &view.opts); messageID == 0 {
+		return errReconnectNotificationSend
+	}
+	return nil
 }
 
 func creatorEventSubStatusText(status core.Status, lang string) string {
@@ -349,4 +459,137 @@ func creatorManagedGroupButtonLabel(group core.ManagedGroup, counts map[string]i
 		return fmt.Sprintf("%s (%d)", name, group.ChatID)
 	}
 	return name
+}
+
+func buildCreatorPromptView(lang, authURL string, reconnect bool) sharedView {
+	openKey := btnRegisterCreatorOpen
+	textKey := msgCreatorRegisterInfo
+	if reconnect {
+		openKey = btnReconnectCreator
+		textKey = msgCreatorReconnectInfo
+	}
+
+	return sharedView{
+		text: i18n.Translate(lang, textKey),
+		opts: client.MessageOptions{
+			ParseMode: telego.ModeHTML,
+			Markup: tu.InlineKeyboard(
+				tu.InlineKeyboardRow(ui.LinkButton(i18n.Translate(lang, openKey), authURL)),
+				tu.InlineKeyboardRow(ui.CopyLinkButton(i18n.Translate(lang, btnCopyLink), authURL)),
+			),
+		},
+	}
+}
+
+func buildCreatorStatusView(lang, reconnectURL string, creator core.Creator, status core.Status, groups []core.ManagedGroup) sharedView {
+	profileDisplay := ui.TwitchProfileHTML(creator.Name)
+	groupLines := CreatorGroupLines(lang, creator.Name, groups)
+	authStatus := creatorAuthStatusText(status, lang)
+	statusDetails := creatorStatusDetailsText(status, lang)
+	statusMenuRows := creatorStatusMenuRows(lang, groups)
+
+	if len(groups) == 0 {
+		return sharedView{
+			text: fmt.Sprintf(
+				i18n.Translate(lang, msgCreatorRegisteredNoGroup),
+				profileDisplay,
+				authStatus,
+				statusDetails,
+				groupLines,
+			),
+			opts: client.MessageOptions{
+				ParseMode:      telego.ModeHTML,
+				DisablePreview: true,
+				Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(false), statusMenuRows...),
+			},
+		}
+	}
+
+	eventSubStatus := creatorEventSubStatusText(status, lang)
+	subscriberStatus := creatorSubscriberStatusText(status, lang)
+	return sharedView{
+		text: fmt.Sprintf(
+			i18n.Translate(lang, msgCreatorRegistered),
+			profileDisplay,
+			eventSubStatus,
+			authStatus,
+			statusDetails,
+			subscriberStatus,
+			groupLines,
+		),
+		opts: client.MessageOptions{
+			ParseMode:      telego.ModeHTML,
+			DisablePreview: true,
+			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(len(groups) > 1), statusMenuRows...),
+		},
+	}
+}
+
+func buildCreatorManagedGroupsView(lang string, creator core.Creator, groups []core.ManagedGroup, notice string) sharedView {
+	text := i18n.Translate(lang, msgCreatorManageGroupsHTML)
+	if len(groups) == 0 {
+		text = i18n.Translate(lang, msgCreatorManageGroupsEmpty)
+	} else {
+		text = fmt.Sprintf(text, html.EscapeString(creator.Name))
+	}
+	if strings.TrimSpace(notice) != "" {
+		text = notice + "\n\n" + text
+	}
+
+	rows := make([][]telego.InlineKeyboardButton, 0, len(groups)+1)
+	nameCounts := creatorManagedGroupNameCounts(groups)
+	for _, group := range groups {
+		rows = append(rows, tu.InlineKeyboardRow(
+			ui.GroupButton(creatorManagedGroupButtonLabel(group, nameCounts), creatorGroupPickCallback(group.ChatID)),
+		))
+	}
+	rows = append(rows, tu.InlineKeyboardRow(ui.BackButton(i18n.Translate(lang, btnBack), creatorMenuCallback())))
+
+	return sharedView{
+		text: text,
+		opts: client.MessageOptions{
+			ParseMode: telego.ModeHTML,
+			Markup:    tu.InlineKeyboard(rows...),
+		},
+	}
+}
+
+func buildCreatorGroupUnregisterConfirmView(lang string, creator core.Creator, group core.ManagedGroup, backCallback string) sharedView {
+	groupLabel := creatorManagedGroupButtonLabel(group, map[string]int{group.GroupName: 1})
+	return sharedView{
+		text: fmt.Sprintf(
+			i18n.Translate(lang, msgCreatorUnregisterConfirm),
+			html.EscapeString(groupLabel),
+			html.EscapeString(creator.Name),
+		),
+		opts: client.MessageOptions{
+			ParseMode: telego.ModeHTML,
+			Markup: tu.InlineKeyboard(
+				tu.InlineKeyboardRow(ui.UnregisterButton(i18n.Translate(lang, btnUnregisterGroup), creatorGroupExecuteCallback(group.ChatID))),
+				tu.InlineKeyboardRow(ui.BackButton(i18n.Translate(lang, btnBack), backCallback)),
+			),
+		},
+	}
+}
+
+func creatorManagedGroupNameCounts(groups []core.ManagedGroup) map[string]int {
+	counts := make(map[string]int, len(groups))
+	for _, group := range groups {
+		name := strings.TrimSpace(group.GroupName)
+		if name == "" {
+			continue
+		}
+		counts[name]++
+	}
+	return counts
+}
+
+func creatorStatusMenuRows(lang string, groups []core.ManagedGroup) [][]telego.InlineKeyboardButton {
+	if len(groups) != 1 {
+		return nil
+	}
+	label := fmt.Sprintf(i18n.Translate(lang, btnManageGroup), creatorManagedGroupButtonLabel(groups[0], map[string]int{groups[0].GroupName: 1}))
+	return [][]telego.InlineKeyboardButton{
+		tu.InlineKeyboardRow(ui.GroupButton(label, creatorManageGroupsCallback())),
+	}
 }
