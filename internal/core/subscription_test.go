@@ -7,7 +7,6 @@ import (
 )
 
 type subscriptionFakeStore struct {
-	Store
 	removeCreatorSubscriberFn func(ctx context.Context, creatorID, twitchUserID string) error
 	getCreatorFn              func(ctx context.Context, creatorID string) (Creator, bool, error)
 	listManagedGroupsFn       func(ctx context.Context, creatorID string) ([]ManagedGroup, error)

@@ -8,7 +8,6 @@ import (
 )
 
 type reconcileFakeStore struct {
-	Store
 	listActiveCreatorsFn func(ctx context.Context) ([]Creator, error)
 }
 

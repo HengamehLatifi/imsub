@@ -8,12 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"imsub/internal/core"
-
 	"github.com/redis/go-redis/v9"
 )
-
-var _ core.Store = (*Store)(nil)
 
 const schemaVersionCurrent = 3
 

@@ -11,7 +11,6 @@ import (
 )
 
 type viewerFakeStore struct {
-	Store
 	getIdentityFn           func(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
 	listActiveCreatorsFn    func(ctx context.Context) ([]Creator, error)
 	listActiveCreatorGroups func(ctx context.Context) ([]ActiveCreatorGroups, error)

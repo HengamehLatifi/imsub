@@ -9,7 +9,6 @@ import (
 )
 
 type resetFakeStore struct {
-	Store
 	trackedGroupIDs      map[int64][]int64
 	activeCreators       []Creator
 	creatorGroups        map[string][]ManagedGroup

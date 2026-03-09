@@ -8,7 +8,6 @@ import (
 )
 
 type oauthFakeStore struct {
-	Store
 	saveViewerFn func(ctx context.Context, telegramUserID int64, twitchUserID, twitchLogin, language string) (int64, error)
 	getOwnedFn   func(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
 	upsertFn     func(ctx context.Context, c Creator) error

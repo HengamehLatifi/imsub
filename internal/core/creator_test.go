@@ -8,7 +8,6 @@ import (
 )
 
 type creatorFakeStore struct {
-	Store
 	getOwnedFn   func(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
 	listGroupsFn func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
 	countFn      func(ctx context.Context, creatorID string) (int64, error)

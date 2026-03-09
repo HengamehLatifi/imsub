@@ -13,7 +13,6 @@ import (
 )
 
 type eventsubFakeStore struct {
-	Store
 	listActiveCreatorsFn  func(ctx context.Context) ([]Creator, error)
 	reconnectCountFn      func(ctx context.Context) (int, error)
 	updateTokensFn        func(ctx context.Context, creatorID, accessToken, refreshToken string) error

@@ -1,2 +1,2 @@
-// Package redis implements the core.Store persistence layer using Redis.
+// Package redis implements Redis-backed persistence adapters.
 package redis
