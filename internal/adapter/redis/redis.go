@@ -115,6 +115,9 @@ func keyManagedGroupsByCreator(creatorID string) string {
 func keyTrackedGroupMembers(chatID int64) string {
 	return "imsub:group:tracked:" + strconv.FormatInt(chatID, 10)
 }
+func keyIntegrityTrackedReverseIndexProcessed(runID string) string {
+	return "imsub:integrity:tracked_reverse_index:processed:" + runID
+}
 func keyUntrackedGroupMembers(chatID int64) string {
 	return "imsub:group:untracked:" + strconv.FormatInt(chatID, 10)
 }

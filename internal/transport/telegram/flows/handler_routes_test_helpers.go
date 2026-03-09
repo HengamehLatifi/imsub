@@ -531,6 +531,9 @@ func (routeTestStoreStub) ListCreators(context.Context) ([]core.Creator, error) 
 func (routeTestStoreStub) ListActiveCreators(context.Context) ([]core.Creator, error) {
 	return nil, nil
 }
+func (routeTestStoreStub) ListActiveCreatorGroups(context.Context) ([]core.ActiveCreatorGroups, error) {
+	return nil, nil
+}
 func (routeTestStoreStub) LoadCreatorsByIDs(context.Context, []string, func(core.Creator) bool) ([]core.Creator, error) {
 	return nil, nil
 }

@@ -12,12 +12,13 @@ import (
 
 type viewerFakeStore struct {
 	Store
-	getIdentityFn        func(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
-	listActiveCreatorsFn func(ctx context.Context) ([]Creator, error)
-	listGroupsFn         func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
-	isSubscriberFn       func(ctx context.Context, creatorID, twitchUserID string) (bool, error)
-	removeMembershipFn   func(ctx context.Context, chatID, telegramUserID int64) error
-	addMembershipFn      func(ctx context.Context, chatID, telegramUserID int64) error
+	getIdentityFn           func(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error)
+	listActiveCreatorsFn    func(ctx context.Context) ([]Creator, error)
+	listActiveCreatorGroups func(ctx context.Context) ([]ActiveCreatorGroups, error)
+	listGroupsFn            func(ctx context.Context, creatorID string) ([]ManagedGroup, error)
+	isSubscriberFn          func(ctx context.Context, creatorID, twitchUserID string) (bool, error)
+	removeMembershipFn      func(ctx context.Context, chatID, telegramUserID int64) error
+	addMembershipFn         func(ctx context.Context, chatID, telegramUserID int64) error
 }
 
 func (f *viewerFakeStore) UserIdentity(ctx context.Context, telegramUserID int64) (UserIdentity, bool, error) {
@@ -32,6 +33,29 @@ func (f *viewerFakeStore) ListActiveCreators(ctx context.Context) ([]Creator, er
 		return f.listActiveCreatorsFn(ctx)
 	}
 	return nil, nil
+}
+
+func (f *viewerFakeStore) ListActiveCreatorGroups(ctx context.Context) ([]ActiveCreatorGroups, error) {
+	if f.listActiveCreatorGroups != nil {
+		return f.listActiveCreatorGroups(ctx)
+	}
+	creators, err := f.ListActiveCreators(ctx)
+	if err != nil || len(creators) == 0 {
+		return nil, err
+	}
+
+	out := make([]ActiveCreatorGroups, 0, len(creators))
+	for _, creator := range creators {
+		groups, groupErr := f.ListManagedGroupsByCreator(ctx, creator.ID)
+		if groupErr != nil {
+			return nil, groupErr
+		}
+		out = append(out, ActiveCreatorGroups{
+			Creator: creator,
+			Groups:  groups,
+		})
+	}
+	return out, nil
 }
 
 func (f *viewerFakeStore) IsCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) (bool, error) {
@@ -300,6 +324,51 @@ func TestBuildJoinTargetsRecordsMetrics(t *testing.T) {
 		return a.Name == b.Name && a.Outcome == b.Outcome && a.Count == b.Count && viewerMapsEqual(a.Fields, b.Fields)
 	}) {
 		t.Fatalf("events = %+v, want %+v", obs.events, wantEvents)
+	}
+}
+
+func TestResolveJoinPlanUsesActiveCreatorGroupsStoreRead(t *testing.T) {
+	t.Parallel()
+
+	legacyCreatorReads := 0
+	legacyGroupReads := 0
+	svc := NewViewer(
+		&viewerFakeStore{
+			listActiveCreatorGroups: func(_ context.Context) ([]ActiveCreatorGroups, error) {
+				return []ActiveCreatorGroups{{
+					Creator: Creator{ID: "c1", Name: "alpha"},
+					Groups:  []ManagedGroup{{ChatID: 101, CreatorID: "c1", GroupName: "A"}},
+				}}, nil
+			},
+			listActiveCreatorsFn: func(_ context.Context) ([]Creator, error) {
+				legacyCreatorReads++
+				return nil, nil
+			},
+			listGroupsFn: func(_ context.Context, _ string) ([]ManagedGroup, error) {
+				legacyGroupReads++
+				return nil, nil
+			},
+			isSubscriberFn: func(_ context.Context, _, _ string) (bool, error) {
+				return true, nil
+			},
+		},
+		&fakeGroupOps{},
+		nil,
+		nil,
+	)
+
+	got, err := svc.resolveJoinPlan(t.Context(), 7, "tw-1")
+	if err != nil {
+		t.Fatalf("resolveJoinPlan() error = %v", err)
+	}
+	if legacyCreatorReads != 0 || legacyGroupReads != 0 {
+		t.Fatalf("legacy resolver reads used: creators=%d groups=%d, want 0/0", legacyCreatorReads, legacyGroupReads)
+	}
+	if !slices.Equal(got.activeCreatorNames, []string{"alpha"}) {
+		t.Fatalf("activeCreatorNames = %v, want [alpha]", got.activeCreatorNames)
+	}
+	if len(got.inviteGroups) != 1 || got.inviteGroups[0].group.ChatID != 101 {
+		t.Fatalf("inviteGroups = %+v, want one invite group for 101", got.inviteGroups)
 	}
 }
 

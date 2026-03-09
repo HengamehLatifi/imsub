@@ -72,6 +72,12 @@ type ManagedGroup struct {
 	UpdatedAt    time.Time
 }
 
+// ActiveCreatorGroups packages the active creator record with its managed groups.
+type ActiveCreatorGroups struct {
+	Creator Creator
+	Groups  []ManagedGroup
+}
+
 // OAuthStatePayload represents the data encoded in the OAuth state parameter.
 type OAuthStatePayload struct {
 	Mode            OAuthMode `json:"mode"`

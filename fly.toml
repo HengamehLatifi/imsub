@@ -10,6 +10,7 @@ primary_region = "fra"
 [env]
   IMSUB_LISTEN_ADDR = ":8080"
   IMSUB_TWITCH_WEBHOOK_PATH = "/webhooks/twitch"
+  GOMEMLIMIT = "200MiB"
 
 [http_service]
   internal_port = 8080

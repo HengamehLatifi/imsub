@@ -179,6 +179,43 @@ func TestRepairTrackedGroupReverseIndex(t *testing.T) {
 	}
 }
 
+func TestListActiveCreatorGroups(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := t.Context()
+
+	if err := s.UpsertCreator(ctx, core.Creator{ID: "c2", Name: "beta", OwnerTelegramID: 902}); err != nil {
+		t.Fatalf("UpsertCreator c2 failed: %v", err)
+	}
+	if err := s.UpsertCreator(ctx, core.Creator{ID: "c1", Name: "alpha", OwnerTelegramID: 901}); err != nil {
+		t.Fatalf("UpsertCreator c1 failed: %v", err)
+	}
+	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 501, CreatorID: "c1", GroupName: "A"}); err != nil {
+		t.Fatalf("UpsertManagedGroup 501 failed: %v", err)
+	}
+	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 502, CreatorID: "c1", GroupName: "B"}); err != nil {
+		t.Fatalf("UpsertManagedGroup 502 failed: %v", err)
+	}
+	if err := s.UpsertManagedGroup(ctx, core.ManagedGroup{ChatID: 601, CreatorID: "c2", GroupName: "C"}); err != nil {
+		t.Fatalf("UpsertManagedGroup 601 failed: %v", err)
+	}
+
+	got, err := s.ListActiveCreatorGroups(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveCreatorGroups failed: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(ListActiveCreatorGroups()) = %d, want 2", len(got))
+	}
+	if got[0].Creator.ID != "c1" || got[1].Creator.ID != "c2" {
+		t.Fatalf("creator order = [%s %s], want [c1 c2]", got[0].Creator.ID, got[1].Creator.ID)
+	}
+	if len(got[0].Groups) != 2 || len(got[1].Groups) != 1 {
+		t.Fatalf("group counts = [%d %d], want [2 1]", len(got[0].Groups), len(got[1].Groups))
+	}
+}
+
 func TestDeleteCreatorData(t *testing.T) {
 	t.Parallel()
 

@@ -458,6 +458,14 @@ Planned improvements and open design questions, roughly ordered by impact.
 - **Untracked member policy**: the bot now records untracked users seen via `chat_member` updates and group messages. They are observational only: resets and automatic removal paths act only on tracked memberships. The next step is a creator-configurable response policy: ignore, DM to verify, start a grace period, or kick.
 - **Forum / multi-topic group support**: Telegram supergroups can have topics enabled. Verify that invite links, kicks, and join request approvals work correctly in topic-enabled groups.
 
+### GDPR compliance
+
+- **Data export**: provide a `/export` command (or API endpoint) that lets a user download all personal data the bot holds about them (Telegram ID, Twitch links, group memberships, subscription history, timestamps) in a machine-readable format (JSON).
+- **Right to erasure**: the existing reset flow deletes user data, but it should also confirm deletion of all associated records (event logs, untracked membership observations, cached invite links) and return a confirmation receipt.
+- **Consent flow**: before storing any personal data, present a clear consent prompt explaining what data is collected, why, and how long it is retained. Store the consent timestamp.
+- **Data retention policy**: define and enforce retention limits for event logs, untracked membership records, and OAuth tokens. Automatically purge data beyond the retention window.
+- **Privacy policy link**: surface a link to the privacy policy in the `/start` flow and `/help` output.
+
 ### Data model hygiene
 
 - **Tracked-group reverse-index hygiene**: keep `imsub:user:groups:tracked:*` consistent with canonical `imsub:group:tracked:*` sets; run periodic repair to fix stale or missing links.

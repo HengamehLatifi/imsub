@@ -41,6 +41,7 @@ type CreatorStore interface {
 	Creator(ctx context.Context, creatorID string) (Creator, bool, error)
 	ListCreators(ctx context.Context) ([]Creator, error)
 	ListActiveCreators(ctx context.Context) ([]Creator, error)
+	ListActiveCreatorGroups(ctx context.Context) ([]ActiveCreatorGroups, error)
 	OwnedCreatorForUser(ctx context.Context, ownerTelegramID int64) (Creator, bool, error)
 	LoadCreatorsByIDs(ctx context.Context, ids []string, filter func(Creator) bool) ([]Creator, error)
 	UpsertCreator(ctx context.Context, c Creator) error

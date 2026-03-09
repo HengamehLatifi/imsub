@@ -129,6 +129,23 @@ func (s *Store) ListCreators(ctx context.Context) ([]core.Creator, error) {
 
 // ListActiveCreators returns creators that have at least one managed group.
 func (s *Store) ListActiveCreators(ctx context.Context) ([]core.Creator, error) {
+	active, err := s.ListActiveCreatorGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(active) == 0 {
+		return nil, nil
+	}
+
+	out := make([]core.Creator, 0, len(active))
+	for _, item := range active {
+		out = append(out, item.Creator)
+	}
+	return out, nil
+}
+
+// ListActiveCreatorGroups returns active creators paired with their managed groups.
+func (s *Store) ListActiveCreatorGroups(ctx context.Context) ([]core.ActiveCreatorGroups, error) {
 	groups, err := s.ListManagedGroups(ctx)
 	if err != nil {
 		return nil, err
@@ -136,17 +153,30 @@ func (s *Store) ListActiveCreators(ctx context.Context) ([]core.Creator, error) 
 	if len(groups) == 0 {
 		return nil, nil
 	}
-	seen := make(map[string]struct{}, len(groups))
+
+	grouped := make(map[string][]core.ManagedGroup, len(groups))
 	ids := make([]string, 0, len(groups))
 	for _, group := range groups {
-		if _, ok := seen[group.CreatorID]; ok {
-			continue
+		if _, ok := grouped[group.CreatorID]; !ok {
+			ids = append(ids, group.CreatorID)
 		}
-		seen[group.CreatorID] = struct{}{}
-		ids = append(ids, group.CreatorID)
+		grouped[group.CreatorID] = append(grouped[group.CreatorID], group)
 	}
 	slices.Sort(ids)
-	return s.LoadCreatorsByIDs(ctx, ids, nil)
+
+	creators, err := s.LoadCreatorsByIDs(ctx, ids, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]core.ActiveCreatorGroups, 0, len(creators))
+	for _, creator := range creators {
+		out = append(out, core.ActiveCreatorGroups{
+			Creator: creator,
+			Groups:  grouped[creator.ID],
+		})
+	}
+	return out, nil
 }
 
 // OwnedCreatorForUser returns the creator owned by the given Telegram user.

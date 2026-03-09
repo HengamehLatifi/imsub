@@ -21,8 +21,7 @@ type resolvedJoinPlan struct {
 }
 
 type viewerResolverStore interface {
-	ListActiveCreators(ctx context.Context) ([]Creator, error)
-	ListManagedGroupsByCreator(ctx context.Context, creatorID string) ([]ManagedGroup, error)
+	ListActiveCreatorGroups(ctx context.Context) ([]ActiveCreatorGroups, error)
 	IsCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) (bool, error)
 }
 
@@ -47,42 +46,37 @@ func newViewerEligibilityResolver(store viewerResolverStore, membership viewerMe
 }
 
 func (r *viewerEligibilityResolver) resolve(ctx context.Context, telegramUserID int64, twitchUserID string) (resolvedJoinPlan, error) {
-	creators, err := r.store.ListActiveCreators(ctx)
+	active, err := r.store.ListActiveCreatorGroups(ctx)
 	if err != nil {
-		r.log.Warn("build join targets list active creators failed", "error", err)
-		return resolvedJoinPlan{}, fmt.Errorf("list active creators: %w", err)
+		r.log.Warn("build join targets list active creator groups failed", "error", err)
+		return resolvedJoinPlan{}, fmt.Errorf("list active creator groups: %w", err)
 	}
 
 	out := resolvedJoinPlan{
-		activeCreatorNames: make([]string, 0, len(creators)),
-		inviteGroups:       make([]resolvedJoinGroup, 0, len(creators)),
-		untrackedGroups:    make([]int64, 0, len(creators)),
+		activeCreatorNames: make([]string, 0, len(active)),
+		inviteGroups:       make([]resolvedJoinGroup, 0, len(active)),
+		untrackedGroups:    make([]int64, 0, len(active)),
 	}
-	for _, creator := range creators {
-		groups, err := r.store.ListManagedGroupsByCreator(ctx, creator.ID)
+	for _, item := range active {
+		isSubscriber, err := r.store.IsCreatorSubscriber(ctx, item.Creator.ID, twitchUserID)
 		if err != nil {
-			r.log.Warn("build join targets list managed groups failed", "creator_id", creator.ID, "error", err)
-			continue
-		}
-		isSubscriber, err := r.store.IsCreatorSubscriber(ctx, creator.ID, twitchUserID)
-		if err != nil {
-			r.log.Warn("build join targets is creator subscriber failed", "creator_id", creator.ID, "error", err)
+			r.log.Warn("build join targets is creator subscriber failed", "creator_id", item.Creator.ID, "error", err)
 			continue
 		}
 		if !isSubscriber {
-			for _, group := range groups {
+			for _, group := range item.Groups {
 				out.untrackedGroups = append(out.untrackedGroups, group.ChatID)
 			}
 			continue
 		}
 
-		out.activeCreatorNames = append(out.activeCreatorNames, creator.Name)
-		for _, group := range groups {
+		out.activeCreatorNames = append(out.activeCreatorNames, item.Creator.Name)
+		for _, group := range item.Groups {
 			if r.membership.IsGroupMember(ctx, group.ChatID, telegramUserID) {
 				continue
 			}
 			out.inviteGroups = append(out.inviteGroups, resolvedJoinGroup{
-				creatorName: creator.Name,
+				creatorName: item.Creator.Name,
 				group:       group,
 			})
 		}
