@@ -32,6 +32,10 @@ func (f *oauthFakeStore) DeleteOAuthState(context.Context, string) (core.OAuthSt
 	return core.OAuthStatePayload{}, nil
 }
 
+func (f *oauthFakeStore) EventProcessed(context.Context, string) (bool, error) {
+	return false, nil
+}
+
 func (f *oauthFakeStore) MarkEventProcessed(context.Context, string, time.Duration) (bool, error) {
 	return false, nil
 }

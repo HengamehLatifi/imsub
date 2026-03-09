@@ -405,12 +405,28 @@ func TestMarkEventProcessed(t *testing.T) {
 	s := newTestStore(t)
 	ctx := t.Context()
 
-	dup, err := s.MarkEventProcessed(ctx, "msg-1", time.Hour)
+	dup, err := s.EventProcessed(ctx, "msg-1")
+	if err != nil {
+		t.Fatalf("EventProcessed before mark failed: %v", err)
+	}
+	if dup {
+		t.Fatal("expected unmarked event to not be duplicate")
+	}
+
+	dup, err = s.MarkEventProcessed(ctx, "msg-1", time.Hour)
 	if err != nil {
 		t.Fatalf("first MarkEventProcessed failed: %v", err)
 	}
 	if dup {
 		t.Fatal("expected first call to not be duplicate")
+	}
+
+	dup, err = s.EventProcessed(ctx, "msg-1")
+	if err != nil {
+		t.Fatalf("EventProcessed after mark failed: %v", err)
+	}
+	if !dup {
+		t.Fatal("expected marked event to be duplicate")
 	}
 
 	dup, err = s.MarkEventProcessed(ctx, "msg-1", time.Hour)

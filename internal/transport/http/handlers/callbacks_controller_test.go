@@ -19,6 +19,7 @@ import (
 
 type callbacksFakeStore struct {
 	getDeleteOAuthStateFn func(ctx context.Context, state string) (core.OAuthStatePayload, error)
+	eventProcessedFn      func(ctx context.Context, messageID string) (bool, error)
 	markEventFn           func(ctx context.Context, messageID string, ttl time.Duration) (bool, error)
 	addSubscriberFn       func(ctx context.Context, creatorID, twitchUserID string) error
 }
@@ -32,6 +33,13 @@ func (f *callbacksFakeStore) DeleteOAuthState(ctx context.Context, state string)
 		return f.getDeleteOAuthStateFn(ctx, state)
 	}
 	return core.OAuthStatePayload{}, nil
+}
+
+func (f *callbacksFakeStore) EventProcessed(ctx context.Context, messageID string) (bool, error) {
+	if f.eventProcessedFn != nil {
+		return f.eventProcessedFn(ctx, messageID)
+	}
+	return false, nil
 }
 
 func (f *callbacksFakeStore) MarkEventProcessed(ctx context.Context, messageID string, ttl time.Duration) (bool, error) {
@@ -161,9 +169,9 @@ func TestEventSubWebhookDuplicate(t *testing.T) {
 	obs := &callbacksFakeObserver{}
 	c := newController(
 		&callbacksFakeStore{
-			markEventFn: func(_ context.Context, messageID string, _ time.Duration) (bool, error) {
+			eventProcessedFn: func(_ context.Context, messageID string) (bool, error) {
 				if messageID != "msg-dup" {
-					t.Fatalf("MarkEventProcessed(messageID=%q) got unexpected id, want %q", messageID, "msg-dup")
+					t.Fatalf("EventProcessed(messageID=%q) got unexpected id, want %q", messageID, "msg-dup")
 				}
 				return true, nil
 			},
@@ -197,7 +205,7 @@ func TestEventSubWebhookStoreFailure(t *testing.T) {
 	obs := &callbacksFakeObserver{}
 	c := newController(
 		&callbacksFakeStore{
-			markEventFn: func(_ context.Context, _ string, _ time.Duration) (bool, error) {
+			eventProcessedFn: func(_ context.Context, _ string) (bool, error) {
 				return false, errors.New("redis down")
 			},
 		},
@@ -218,6 +226,53 @@ func TestEventSubWebhookStoreFailure(t *testing.T) {
 	}
 	if len(obs.events) != 1 || obs.events[0].Name != events.NameEventSubMessage || obs.events[0].Outcome != "redis_error" {
 		t.Errorf("eventsub events = %+v, want redis_error", obs.events)
+	}
+}
+
+func TestEventSubWebhookSubscribeFailureDoesNotMarkProcessed(t *testing.T) {
+	t.Parallel()
+
+	obs := &callbacksFakeObserver{}
+	markCalls := 0
+	c := newController(
+		&callbacksFakeStore{
+			eventProcessedFn: func(_ context.Context, messageID string) (bool, error) {
+				if messageID != "msg-sub-fail" {
+					t.Fatalf("EventProcessed(messageID=%q) got unexpected id, want %q", messageID, "msg-sub-fail")
+				}
+				return false, nil
+			},
+			addSubscriberFn: func(_ context.Context, creatorID, twitchUserID string) error {
+				if creatorID != "c1" || twitchUserID != "u1" {
+					t.Fatalf("AddCreatorSubscriber(%q, %q) got unexpected args", creatorID, twitchUserID)
+				}
+				return errors.New("redis hiccup")
+			},
+			markEventFn: func(context.Context, string, time.Duration) (bool, error) {
+				markCalls++
+				return false, nil
+			},
+		},
+		obs,
+		nil,
+		nil,
+		nil,
+	)
+
+	body := []byte(`{"subscription":{"type":"channel.subscribe","condition":{"broadcaster_user_id":"c1"}},"event":{"user_id":"u1","user_login":"viewer1"}}`)
+	req := signedEventSubRequest(t, "secret", "msg-sub-fail", time.Now().UTC().Format(time.RFC3339), "notification", body)
+	rec := httptest.NewRecorder()
+
+	c.EventSubWebhook(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("EventSubWebhook(subscribe failure).StatusCode = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
+	if markCalls != 0 {
+		t.Fatalf("MarkEventProcessed call count = %d, want 0", markCalls)
+	}
+	if len(obs.events) != 1 || obs.events[0].Outcome != "notification_subscribe_store_failed" {
+		t.Errorf("eventsub events = %+v, want notification_subscribe_store_failed", obs.events)
 	}
 }
 

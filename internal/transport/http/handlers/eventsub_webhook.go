@@ -105,7 +105,7 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	alreadyProcessed, err := c.store.MarkEventProcessed(ctx, messageID, 24*time.Hour)
+	alreadyProcessed, err := c.store.EventProcessed(ctx, messageID)
 	if err != nil {
 		result = eventStatusRedisError
 		WriteHTTPError(w, BadGatewayError("redis error", err))
@@ -120,8 +120,24 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	markProcessed := func() bool {
+		alreadyProcessed, err := c.store.MarkEventProcessed(ctx, messageID, 24*time.Hour)
+		if err != nil {
+			result = eventStatusRedisError
+			WriteHTTPError(w, BadGatewayError("redis error", err))
+			return false
+		}
+		if alreadyProcessed {
+			logger.Debug("eventsub duplicate observed after processing", "message_id", messageID)
+		}
+		return true
+	}
+
 	switch messageType {
 	case "revocation":
+		if !markProcessed() {
+			return
+		}
 		logger.Warn("eventsub revocation received", "type", env.Subscription.Type, "creator_id", env.Subscription.Condition.BroadcasterUserID)
 		w.WriteHeader(http.StatusNoContent)
 		result = eventStatusRevocation
@@ -134,6 +150,9 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 				WriteHTTPError(w, BadGatewayError("store error", err))
 				return
 			}
+			if !markProcessed() {
+				return
+			}
 			result = eventStatusNotificationSubscribe
 		case core.EventTypeChannelSubGift:
 			// Gift events fire per gifter, not per recipient. Each individual
@@ -144,6 +163,9 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 				"gifter_id", env.Event.UserID,
 				"gifter_login", env.Event.UserLogin,
 			)
+			if !markProcessed() {
+				return
+			}
 			result = eventStatusNotificationSubscriptionGift
 		case core.EventTypeChannelSubEnd:
 			if err := c.subEnd(
@@ -157,12 +179,21 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 				WriteHTTPError(w, BadGatewayError("processing failed", err))
 				return
 			}
+			if !markProcessed() {
+				return
+			}
 			result = eventStatusNotificationSubEnd
 		default:
+			if !markProcessed() {
+				return
+			}
 			result = eventStatusNotificationOther
 		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
+		if !markProcessed() {
+			return
+		}
 		result = eventStatusIgnoredMessageType
 		w.WriteHeader(http.StatusNoContent)
 	}

@@ -91,15 +91,6 @@ func (l *RateLimiter) reserveChatDelay(chatID int64) time.Duration {
 		l.perChatNext = make(map[int64]time.Time)
 	}
 
-	// Prune stale entries periodically to prevent unbounded map growth.
-	if len(l.perChatNext) > 1000 {
-		for id, t := range l.perChatNext {
-			if t.Before(now) {
-				delete(l.perChatNext, id)
-			}
-		}
-	}
-
 	next := l.perChatNext[chatID]
 	base := now
 	if next.After(base) {

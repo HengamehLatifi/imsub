@@ -16,6 +16,7 @@ import (
 type controllerStore interface {
 	OAuthState(ctx context.Context, state string) (core.OAuthStatePayload, error)
 	DeleteOAuthState(ctx context.Context, state string) (core.OAuthStatePayload, error)
+	EventProcessed(ctx context.Context, messageID string) (bool, error)
 	MarkEventProcessed(ctx context.Context, messageID string, ttl time.Duration) (alreadyProcessed bool, err error)
 	AddCreatorSubscriber(ctx context.Context, creatorID, twitchUserID string) error
 }
