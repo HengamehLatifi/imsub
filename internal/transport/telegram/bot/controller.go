@@ -64,6 +64,8 @@ type Dependencies struct {
 	Logger              *slog.Logger
 	TelegramBot         *telego.Bot
 	TelegramHandler     *tghandler.BotHandler
+	TelegramClient      *client.Client
+	TelegramGroupOps    *groupops.Client
 	CreatorStatus       *usecase.CreatorStatusUseCase
 	ViewerOAuth         *usecase.ViewerOAuthUseCase
 	CreatorOAuth        *usecase.CreatorOAuthUseCase
@@ -130,6 +132,8 @@ func New(deps Dependencies) *Controller {
 		logger:              logger,
 		tg:                  deps.TelegramBot,
 		tgHandler:           deps.TelegramHandler,
+		telegramClient:      deps.TelegramClient,
+		telegramGroupOps:    deps.TelegramGroupOps,
 		creatorStatus:       deps.CreatorStatus,
 		viewerOAuth:         deps.ViewerOAuth,
 		creatorOAuth:        deps.CreatorOAuth,

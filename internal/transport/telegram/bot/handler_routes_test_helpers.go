@@ -15,6 +15,8 @@ import (
 	"imsub/internal/platform/config"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/platform/ratelimit"
+	telegramclient "imsub/internal/transport/telegram/client"
+	telegramgroupops "imsub/internal/transport/telegram/groupops"
 	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
@@ -62,6 +64,8 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 	store := &routeTestStore{}
 	limiter := ratelimit.NewRateLimiter(1000, 0)
 	t.Cleanup(limiter.Close)
+	tgClient := telegramclient.New(bot, limiter, nil)
+	tgGroupOps := telegramgroupops.New(bot, limiter, nil, store)
 
 	controller := New(Dependencies{
 		Config: config.Config{
@@ -71,6 +75,8 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 		TelegramLimiter:     limiter,
 		TelegramBot:         bot,
 		TelegramHandler:     bh,
+		TelegramClient:      tgClient,
+		TelegramGroupOps:    tgGroupOps,
 		CreatorStatus:       usecase.NewCreatorStatusUseCase(core.NewCreator(store, routeTestEventSubChecker{}, nil), nil),
 		GroupRegistration:   usecase.NewGroupRegistrationUseCase(store, nil),
 		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(store, nil, nil),

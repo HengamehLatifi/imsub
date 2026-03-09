@@ -23,6 +23,8 @@ import (
 	"imsub/internal/transport/http/handlers"
 	"imsub/internal/transport/http/server"
 	telegrambot "imsub/internal/transport/telegram/bot"
+	telegramclient "imsub/internal/transport/telegram/client"
+	telegramgroupops "imsub/internal/transport/telegram/groupops"
 	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
@@ -113,6 +115,8 @@ func Run() error {
 	subscriberTask := jobs.NewSubscriberTask(reconcileSvc)
 	eventSubTask := jobs.NewEventSubTask(eventSubSvc)
 	integrityTask := jobs.NewIntegrityAuditTask(s, logger, eventSink)
+	tgClient := telegramclient.New(tgBot, tgLimiter, logger)
+	tgGroupOps := telegramgroupops.New(tgBot, tgLimiter, logger, s)
 
 	flowController := telegrambot.New(telegrambot.Dependencies{
 		Config:              cfg,
@@ -121,6 +125,8 @@ func Run() error {
 		Logger:              logger,
 		TelegramBot:         tgBot,
 		TelegramHandler:     tgHandler,
+		TelegramClient:      tgClient,
+		TelegramGroupOps:    tgGroupOps,
 		CreatorStatus:       creatorStatusUC,
 		ViewerOAuth:         viewerOAuthUC,
 		CreatorOAuth:        creatorOAuthUC,

@@ -12,7 +12,6 @@ import (
 	"imsub/internal/core"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/transport/telegram/client"
-	telegramgroupops "imsub/internal/transport/telegram/groupops"
 	telegramui "imsub/internal/transport/telegram/ui"
 
 	"github.com/mymmrac/telego"
@@ -28,23 +27,38 @@ func (c *Controller) oauthStartURL(state string) string {
 
 // sendMsg sends a Telegram message and returns its message ID, or 0 on failure.
 func (c *Controller) sendMsg(ctx context.Context, chatID int64, text string, opts *client.MessageOptions) int {
-	return c.tgClient().Send(ctx, chatID, text, opts)
+	if c == nil || c.telegramClient == nil {
+		return 0
+	}
+	return c.telegramClient.Send(ctx, chatID, text, opts)
 }
 
 func (c *Controller) reply(ctx context.Context, chatID int64, messageID int, text string, opts *client.MessageOptions) {
-	c.tgClient().Reply(ctx, chatID, messageID, text, opts)
+	if c == nil || c.telegramClient == nil {
+		return
+	}
+	c.telegramClient.Reply(ctx, chatID, messageID, text, opts)
 }
 
 func (c *Controller) sendDraft(ctx context.Context, chatID int64, draftID int, text string, opts *client.MessageOptions) {
-	c.tgClient().SendDraft(ctx, chatID, draftID, text, opts)
+	if c == nil || c.telegramClient == nil {
+		return
+	}
+	c.telegramClient.SendDraft(ctx, chatID, draftID, text, opts)
 }
 
 func (c *Controller) deleteMessage(ctx context.Context, chatID int64, messageID int) {
-	c.tgClient().Delete(ctx, chatID, messageID)
+	if c == nil || c.telegramClient == nil {
+		return
+	}
+	c.telegramClient.Delete(ctx, chatID, messageID)
 }
 
 func (c *Controller) createInviteLink(ctx context.Context, groupChatID int64, telegramUserID int64, name string) (string, error) {
-	link, err := c.tgGroupOps().CreateInviteLink(ctx, groupChatID, telegramUserID, name)
+	if c == nil || c.telegramGroupOps == nil {
+		return "", errTelegramBotNotConfigured
+	}
+	link, err := c.telegramGroupOps.CreateInviteLink(ctx, groupChatID, telegramUserID, name)
 	if err != nil {
 		return "", fmt.Errorf("create invite link from group ops: %w", err)
 	}
@@ -52,16 +66,25 @@ func (c *Controller) createInviteLink(ctx context.Context, groupChatID int64, te
 }
 
 func (c *Controller) kickDisplacedUser(ctx context.Context, telegramUserID int64) {
-	c.tgGroupOps().KickDisplacedUser(ctx, telegramUserID)
+	if c == nil || c.telegramGroupOps == nil {
+		return
+	}
+	c.telegramGroupOps.KickDisplacedUser(ctx, telegramUserID)
 }
 
 func (c *Controller) isGroupMember(ctx context.Context, groupChatID, telegramUserID int64) bool {
-	return c.tgGroupOps().IsGroupMember(ctx, groupChatID, telegramUserID)
+	if c == nil || c.telegramGroupOps == nil {
+		return false
+	}
+	return c.telegramGroupOps.IsGroupMember(ctx, groupChatID, telegramUserID)
 }
 
 // KickFromGroup removes a Telegram user from a managed group.
 func (c *Controller) KickFromGroup(ctx context.Context, groupChatID int64, telegramUserID int64) error {
-	if err := c.tgGroupOps().KickFromGroup(ctx, groupChatID, telegramUserID); err != nil {
+	if c == nil || c.telegramGroupOps == nil {
+		return nil
+	}
+	if err := c.telegramGroupOps.KickFromGroup(ctx, groupChatID, telegramUserID); err != nil {
 		return fmt.Errorf("kick from group via group ops: %w", err)
 	}
 	return nil
@@ -85,7 +108,10 @@ func (c *Controller) answerCallbackAlert(ctx context.Context, callbackID, text s
 }
 
 func (c *Controller) answerCallbackOpts(ctx context.Context, callbackID, text string, showAlert bool) {
-	c.tgClient().AnswerCallback(ctx, callbackID, text, showAlert)
+	if c == nil || c.telegramClient == nil {
+		return
+	}
+	c.telegramClient.AnswerCallback(ctx, callbackID, text, showAlert)
 }
 
 func viewerMainMenuCallbacks() telegramui.MainMenuCallbacks {
@@ -140,26 +166,6 @@ func (c *Controller) invalidateOAuthState(ctx context.Context, state string) {
 	if _, err := c.store.DeleteOAuthState(cleanupCtx, state); err != nil {
 		c.log().Warn("deleteOAuthState cleanup failed", "state", state, "error", err)
 	}
-}
-
-func (c *Controller) tgClient() *client.Client {
-	if c == nil {
-		return client.New(nil, nil, nil)
-	}
-	if c.telegramClient == nil {
-		c.telegramClient = client.New(c.tg, c.tgLimiter, c.log())
-	}
-	return c.telegramClient
-}
-
-func (c *Controller) tgGroupOps() *telegramgroupops.Client {
-	if c == nil {
-		return telegramgroupops.New(nil, nil, nil, nil)
-	}
-	if c.telegramGroupOps == nil {
-		c.telegramGroupOps = telegramgroupops.New(c.tg, c.tgLimiter, c.log(), c.store)
-	}
-	return c.telegramGroupOps
 }
 
 // RegisterTelegramHandlers binds Telegram commands, callbacks, and join-request handlers.
