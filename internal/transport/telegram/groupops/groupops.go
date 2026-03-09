@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"imsub/internal/core"
-	"imsub/internal/transport/telegram/tgerr"
+	telegram "imsub/internal/transport/telegram"
 
 	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"
@@ -117,7 +117,7 @@ func (c *Client) KickFromGroup(ctx context.Context, groupChatID int64, telegramU
 		UntilDate: until,
 	})
 	if err != nil {
-		if tgerr.IsForbidden(err) || tgerr.IsBadRequest(err) {
+		if telegram.IsForbidden(err) || telegram.IsBadRequest(err) {
 			return nil
 		}
 		return fmt.Errorf("ban chat member: %w", err)

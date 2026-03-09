@@ -1,5 +1,4 @@
-// Package tgerr provides shared Telegram API error classification helpers.
-package tgerr
+package telegram
 
 import (
 	"errors"

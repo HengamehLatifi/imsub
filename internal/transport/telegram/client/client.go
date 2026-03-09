@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"imsub/internal/transport/telegram/tgerr"
+	telegram "imsub/internal/transport/telegram"
 
 	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"
@@ -77,7 +77,7 @@ func (c *Client) Send(ctx context.Context, chatID int64, text string, opts *Mess
 		}
 	}
 	msg, err := c.bot.SendMessage(ctx, params)
-	if err != nil && !tgerr.IsForbidden(err) {
+	if err != nil && !telegram.IsForbidden(err) {
 		c.logger.Warn("Send message failed", "chat_id", chatID, "error", err)
 		return 0
 	}
@@ -112,7 +112,7 @@ func (c *Client) Edit(ctx context.Context, chatID int64, messageID int, text str
 		}
 	}
 	_, err := c.bot.EditMessageText(ctx, params)
-	if err != nil && !tgerr.IsForbidden(err) {
+	if err != nil && !telegram.IsForbidden(err) {
 		c.logger.Warn("Edit message failed", "message_id", messageID, "chat_id", chatID, "error", err)
 	}
 }
@@ -140,7 +140,7 @@ func (c *Client) Delete(ctx context.Context, chatID int64, messageID int) {
 		ChatID:    tu.ID(chatID),
 		MessageID: messageID,
 	})
-	if err != nil && !tgerr.IsBadRequest(err) && !tgerr.IsForbidden(err) {
+	if err != nil && !telegram.IsBadRequest(err) && !telegram.IsForbidden(err) {
 		c.logger.Warn("Delete message failed", "chat_id", chatID, "message_id", messageID, "error", err)
 	}
 }
@@ -171,7 +171,7 @@ func (c *Client) SendDraft(ctx context.Context, chatID int64, draftID int, text 
 			params.MessageThreadID = opts.MessageThreadID
 		}
 	}
-	if err := c.bot.SendMessageDraft(ctx, params); err != nil && !tgerr.IsForbidden(err) {
+	if err := c.bot.SendMessageDraft(ctx, params); err != nil && !telegram.IsForbidden(err) {
 		c.logger.Warn("Send draft failed", "chat_id", chatID, "draft_id", draftID, "error", err)
 	}
 }
@@ -195,7 +195,7 @@ func (c *Client) AnswerCallback(ctx context.Context, callbackID, text string, sh
 		params.WithShowAlert()
 	}
 	err := c.bot.AnswerCallbackQuery(ctx, params)
-	if err != nil && !tgerr.IsForbidden(err) {
+	if err != nil && !telegram.IsForbidden(err) {
 		c.logger.Warn("Answer callback failed", "error", err)
 	}
 }
