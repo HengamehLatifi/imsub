@@ -142,7 +142,7 @@ func TestEnabledEventSubTypesPagination(t *testing.T) {
 				}`), nil
 			case 2:
 				return response(http.StatusOK, `{
-					"data":[{"type":"channel.subscription.end","condition":{"broadcaster_user_id":"111"}},{"type":"channel.subscription.gift","condition":{"broadcaster_user_id":"111"}}],
+					"data":[{"type":"channel.subscription.end","condition":{"broadcaster_user_id":"111"}}],
 					"pagination":{"cursor":""}
 				}`), nil
 			default:
@@ -158,8 +158,8 @@ func TestEnabledEventSubTypesPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnabledEventSubTypes returned error: %v", err)
 	}
-	if !got[core.EventTypeChannelSubscribe] || !got[core.EventTypeChannelSubEnd] || !got[core.EventTypeChannelSubGift] {
-		t.Errorf("EnabledEventSubTypes(%q) = %#v, want all required types enabled", "111", got)
+	if !got[core.EventTypeChannelSubscribe] || !got[core.EventTypeChannelSubEnd] {
+		t.Errorf("EnabledEventSubTypes(%q) = %#v, want subscribe and sub_end enabled", "111", got)
 	}
 }
 

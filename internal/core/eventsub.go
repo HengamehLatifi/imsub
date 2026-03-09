@@ -141,7 +141,6 @@ func (e *EventSub) ReconcileEventSubsOnce(ctx context.Context) error {
 	requiredTypes := []string{
 		EventTypeChannelSubscribe,
 		EventTypeChannelSubEnd,
-		EventTypeChannelSubGift,
 	}
 	inactive := make([]Creator, 0, len(creators))
 	for _, creator := range creators {
@@ -234,7 +233,7 @@ func (e *EventSub) EnsureEventSubForCreators(ctx context.Context, creators []Cre
 		return nil
 	}
 	for _, c := range creators {
-		for _, eventType := range []string{EventTypeChannelSubscribe, EventTypeChannelSubEnd, EventTypeChannelSubGift} {
+		for _, eventType := range []string{EventTypeChannelSubscribe, EventTypeChannelSubEnd} {
 			e.log.Debug("ensuring eventsub", "creator_id", c.ID, "type", eventType)
 			if err := e.twitch.CreateEventSub(ctx, c.ID, eventType, "1"); err != nil {
 				return fmt.Errorf("creating %s for creator %s: %w", eventType, c.ID, err)
@@ -250,7 +249,7 @@ func (e *EventSub) IsEventSubActiveForCreator(ctx context.Context, creatorID str
 	if err != nil {
 		return false, fmt.Errorf("fetch enabled eventsub types: %w", err)
 	}
-	for _, t := range []string{EventTypeChannelSubscribe, EventTypeChannelSubEnd, EventTypeChannelSubGift} {
+	for _, t := range []string{EventTypeChannelSubscribe, EventTypeChannelSubEnd} {
 		if !foundTypes[t] {
 			e.log.Debug("eventsub active check missing type", "type", t, "creator_id", creatorID)
 			return false, nil

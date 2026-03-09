@@ -276,26 +276,6 @@ func TestEventSubWebhookSubscribeFailureDoesNotMarkProcessed(t *testing.T) {
 	}
 }
 
-func TestEventSubWebhookGiftNotification(t *testing.T) {
-	t.Parallel()
-
-	obs := &callbacksFakeObserver{}
-	c := newController(&callbacksFakeStore{}, obs, nil, nil, nil)
-
-	body := []byte(`{"subscription":{"type":"channel.subscription.gift","condition":{"broadcaster_user_id":"c1"}},"event":{"user_id":"gifter1","user_login":"generous_viewer","broadcaster_user_login":"streamer1"}}`)
-	req := signedEventSubRequest(t, "secret", "msg-gift", time.Now().UTC().Format(time.RFC3339), "notification", body)
-	rec := httptest.NewRecorder()
-
-	c.EventSubWebhook(rec, req)
-
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("EventSubWebhook(gift notification).StatusCode = %d, want %d", rec.Code, http.StatusNoContent)
-	}
-	if len(obs.events) != 1 || obs.events[0].Name != events.NameEventSubMessage || obs.events[0].Outcome != "notification_subscription_gift" {
-		t.Errorf("eventsub events = %+v, want notification_subscription_gift", obs.events)
-	}
-}
-
 func signedEventSubRequest(t *testing.T, secret, messageID, ts, messageType string, body []byte) *http.Request {
 	t.Helper()
 	mac := hmac.New(sha256.New, []byte(secret))

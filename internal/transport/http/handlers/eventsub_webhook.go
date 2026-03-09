@@ -26,7 +26,6 @@ const (
 	eventStatusRevocation                       = "revocation"
 	eventStatusNotificationSubscribeStoreFailed = "notification_subscribe_store_failed"
 	eventStatusNotificationSubscribe            = "notification_subscribe"
-	eventStatusNotificationSubscriptionGift     = "notification_subscription_gift"
 	eventStatusNotificationSubEndFailed         = "notification_subscription_end_failed"
 	eventStatusNotificationSubEnd               = "notification_subscription_end"
 	eventStatusNotificationOther                = "notification_other"
@@ -154,19 +153,6 @@ func (c *Controller) EventSubWebhook(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			result = eventStatusNotificationSubscribe
-		case core.EventTypeChannelSubGift:
-			// Gift events fire per gifter, not per recipient. Each individual
-			// recipient triggers a separate channel.subscribe event which is
-			// handled above, so no subscriber-cache mutation is needed here.
-			logger.Info("eventsub gift sub received",
-				"broadcaster_id", env.Subscription.Condition.BroadcasterUserID,
-				"gifter_id", env.Event.UserID,
-				"gifter_login", env.Event.UserLogin,
-			)
-			if !markProcessed() {
-				return
-			}
-			result = eventStatusNotificationSubscriptionGift
 		case core.EventTypeChannelSubEnd:
 			if err := c.subEnd(
 				ctx,

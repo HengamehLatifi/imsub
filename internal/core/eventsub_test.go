@@ -163,7 +163,7 @@ func (m *eventSubFakeTwitch) EnabledEventSubTypes(ctx context.Context, creatorID
 	if m.enabledEventSubFn != nil {
 		return m.enabledEventSubFn(ctx, creatorID)
 	}
-	return map[string]bool{EventTypeChannelSubscribe: true, EventTypeChannelSubEnd: true, EventTypeChannelSubGift: true}, nil
+	return map[string]bool{EventTypeChannelSubscribe: true, EventTypeChannelSubEnd: true}, nil
 }
 
 func (m *eventSubFakeTwitch) ListSubscriberPage(ctx context.Context, accessToken, broadcasterID, cursor string) ([]string, string, error) {
@@ -215,10 +215,8 @@ func TestEnsureEventSubForCreators(t *testing.T) {
 	want := []string{
 		"c1:" + EventTypeChannelSubscribe,
 		"c1:" + EventTypeChannelSubEnd,
-		"c1:" + EventTypeChannelSubGift,
 		"c2:" + EventTypeChannelSubscribe,
 		"c2:" + EventTypeChannelSubEnd,
-		"c2:" + EventTypeChannelSubGift,
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("EnsureEventSubForCreators(creators) create calls = %v, want %v", got, want)
@@ -306,7 +304,6 @@ func TestIsEventSubActiveForCreator(t *testing.T) {
 				return map[string]bool{
 					EventTypeChannelSubscribe: true,
 					EventTypeChannelSubEnd:    false,
-					EventTypeChannelSubGift:   true,
 				}, nil
 			},
 		},
@@ -447,7 +444,6 @@ func TestDeleteEventSubsForCreator(t *testing.T) {
 				return []EventSubSubscription{
 					{ID: "sub1", Type: EventTypeChannelSubscribe, BroadcasterID: "c1"},
 					{ID: "sub2", Type: EventTypeChannelSubEnd, BroadcasterID: "c2"},
-					{ID: "sub3", Type: EventTypeChannelSubGift, BroadcasterID: "c1"},
 				}, nil
 			},
 			deleteEventSubFn: func(_ context.Context, subID string) error {
@@ -462,7 +458,7 @@ func TestDeleteEventSubsForCreator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteEventSubsForCreator(c1) returned error %v, want nil", err)
 	}
-	want := []string{"sub1", "sub3"}
+	want := []string{"sub1"}
 	if !slices.Equal(deleted, want) {
 		t.Errorf("DeleteEventSubsForCreator(c1) deleted = %v, want %v", deleted, want)
 	}
@@ -489,7 +485,6 @@ func TestReconcileEventSubsOnce(t *testing.T) {
 				return []EventSubSubscription{
 					{ID: "sub1", Status: "enabled", Type: EventTypeChannelSubscribe, BroadcasterID: "c1"},
 					{ID: "sub2", Status: "enabled", Type: EventTypeChannelSubEnd, BroadcasterID: "c1"},
-					{ID: "sub3", Status: "enabled", Type: EventTypeChannelSubGift, BroadcasterID: "c1"},
 					{ID: "sub4", Status: "enabled", Type: EventTypeChannelSubscribe, BroadcasterID: "c2"},
 					{ID: "sub-pending", Status: "webhook_callback_verification_pending", Type: EventTypeChannelSubEnd, BroadcasterID: "c2"},
 					{ID: "sub-orphan", Status: "enabled", Type: EventTypeChannelSubscribe, BroadcasterID: "c-gone"},
@@ -521,7 +516,6 @@ func TestReconcileEventSubsOnce(t *testing.T) {
 	wantCreated := []string{
 		"c2:" + EventTypeChannelSubscribe,
 		"c2:" + EventTypeChannelSubEnd,
-		"c2:" + EventTypeChannelSubGift,
 	}
 	if !slices.Equal(created, wantCreated) {
 		t.Errorf("ReconcileEventSubsOnce() created = %v, want %v", created, wantCreated)
