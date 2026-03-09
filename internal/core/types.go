@@ -43,8 +43,8 @@ type Creator struct {
 	ID              string
 	Name            string
 	OwnerTelegramID int64
-	AccessToken     string `json:"access_token"`  //nolint:gosec
-	RefreshToken    string `json:"refresh_token"` //nolint:gosec
+	AccessToken     string `json:"access_token"`  // #nosec G117 -- stored OAuth field name must match serialized schema
+	RefreshToken    string `json:"refresh_token"` // #nosec G117 -- stored OAuth field name must match serialized schema
 	UpdatedAt       time.Time
 	AuthStatus      CreatorAuthStatus
 	AuthErrorCode   string
