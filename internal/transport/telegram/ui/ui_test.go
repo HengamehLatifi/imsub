@@ -271,7 +271,7 @@ func TestLinkedStatusWithNoGroupsMessage(t *testing.T) {
 	}
 
 	got := LinkedStatusWithJoinStateHTML("en", "alice", []string{"Creator One"}, false)
-	if !strings.Contains(got, "No Telegram groups are available yet") {
-		t.Errorf("LinkedStatusWithJoinStateHTML(%q, %q, %v, %t) = %q, want message containing %q", "en", "alice", []string{"Creator One"}, false, got, "No Telegram groups are available yet")
+	if !strings.Contains(got, "No groups available yet") {
+		t.Errorf("LinkedStatusWithJoinStateHTML(%q, %q, %v, %t) = %q, want message containing %q", "en", "alice", []string{"Creator One"}, false, got, "No groups available yet")
 	}
 }
