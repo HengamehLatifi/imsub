@@ -36,6 +36,11 @@ type editMessageRequest struct {
 	} `json:"reply_markup"`
 }
 
+type sendMessageRequest struct {
+	ChatID int64  `json:"chat_id"`
+	Text   string `json:"text"`
+}
+
 type routeTestHarness struct {
 	bot       *telego.Bot
 	baseGroup *telegohandler.HandlerGroup
@@ -44,6 +49,22 @@ type routeTestHarness struct {
 }
 
 func newRouteTestHarness(t *testing.T) routeTestHarness {
+	t.Helper()
+	return newRouteTestHarnessWithCleaner(t, nil)
+}
+
+type routeTestCleaner struct {
+	deleteEventSubsFn func(ctx context.Context, creatorID string) error
+}
+
+func (c routeTestCleaner) DeleteEventSubsForCreator(ctx context.Context, creatorID string) error {
+	if c.deleteEventSubsFn != nil {
+		return c.deleteEventSubsFn(ctx, creatorID)
+	}
+	return nil
+}
+
+func newRouteTestHarnessWithCleaner(t *testing.T, cleaner usecaseGroupUnregistrationCleaner) routeTestHarness {
 	t.Helper()
 
 	if err := i18n.Ensure(); err != nil {
@@ -79,7 +100,7 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 		TelegramGroups:      tgGroups,
 		CreatorStatus:       usecase.NewCreatorStatusUseCase(core.NewCreatorService(store, routeTestEventSubChecker{}, nil), nil),
 		GroupRegistration:   usecase.NewGroupRegistrationUseCase(store, nil),
-		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(store, nil, nil),
+		GroupUnregistration: usecase.NewGroupUnregistrationUseCase(store, cleaner, nil),
 	})
 	controller.SetViewerAccessUseCase(usecase.NewViewerAccessUseCase(core.NewViewerService(store, controller.ViewerGroupOps(), nil, nil), nil))
 	controller.SetResetUseCase(usecase.NewResetUseCase(core.NewResetService(store, controller.KickFromGroup, nil), nil))
@@ -91,6 +112,10 @@ func newRouteTestHarness(t *testing.T) routeTestHarness {
 		store:     store,
 		caller:    caller,
 	}
+}
+
+type usecaseGroupUnregistrationCleaner interface {
+	DeleteEventSubsForCreator(ctx context.Context, creatorID string) error
 }
 
 func (h routeTestHarness) handleUpdate(t *testing.T, update telego.Update) {
@@ -161,6 +186,16 @@ func parseEditMessageRequest(t *testing.T, body json.RawMessage) editMessageRequ
 	var got editMessageRequest
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("json.Unmarshal(editMessageText body) error = %v, body = %s", err, body)
+	}
+	return got
+}
+
+func parseSendMessageRequest(t *testing.T, body json.RawMessage) sendMessageRequest {
+	t.Helper()
+
+	var got sendMessageRequest
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("json.Unmarshal(sendMessage body) error = %v, body = %s", err, body)
 	}
 	return got
 }
@@ -347,6 +382,7 @@ type routeTestStore struct {
 	deleteOAuthStateCalls int
 	viewerIdentity        core.UserIdentity
 	viewerIdentityOK      bool
+	creatorByID           map[string]core.Creator
 	ownedCreator          core.Creator
 	ownedCreatorOK        bool
 	managedGroupsByChatID map[int64]core.ManagedGroup
@@ -367,6 +403,10 @@ func (s *routeTestStore) setOwnedCreator(creator core.Creator) {
 	defer s.mu.Unlock()
 	s.ownedCreator = creator
 	s.ownedCreatorOK = true
+	if s.creatorByID == nil {
+		s.creatorByID = make(map[string]core.Creator)
+	}
+	s.creatorByID[creator.ID] = creator
 }
 
 func (s *routeTestStore) setViewerIdentity(identity core.UserIdentity) {
@@ -470,10 +510,14 @@ func (s *routeTestStore) OwnedCreatorForUser(_ context.Context, ownerTelegramID 
 func (s *routeTestStore) Creator(_ context.Context, creatorID string) (core.Creator, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.ownedCreatorOK || s.ownedCreator.ID != creatorID {
-		return core.Creator{}, false, nil
+	if s.creatorByID != nil {
+		creator, ok := s.creatorByID[creatorID]
+		return creator, ok, nil
 	}
-	return s.ownedCreator, true, nil
+	if s.ownedCreatorOK && s.ownedCreator.ID == creatorID {
+		return s.ownedCreator, true, nil
+	}
+	return core.Creator{}, false, nil
 }
 
 func (s *routeTestStore) ResolveTelegramUserIDByTwitch(_ context.Context, twitchUserID string) (int64, bool, error) {

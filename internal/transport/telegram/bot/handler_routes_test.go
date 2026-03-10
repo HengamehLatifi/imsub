@@ -1,8 +1,10 @@
 package bot
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"imsub/internal/core"
@@ -670,5 +672,129 @@ func TestRegisterTelegramHandlersGroupMessageTracksUntrackedUser(t *testing.T) {
 
 	if got := h.store.lastUntrackedMemberUpsert(); got.telegramUserID != 701 || got.source != "message" {
 		t.Fatalf("last untracked upsert = %+v, want telegram_user_id=701 source=message", got)
+	}
+}
+
+func TestRegisterTelegramHandlersMyChatMemberRemovalAutoUnregistersManagedGroup(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		TwitchLogin:     "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.store.setViewerIdentity(core.UserIdentity{
+		TelegramUserID: 77,
+		Language:       "en",
+	})
+	h.store.setManagedGroup(core.ManagedGroup{
+		ChatID:    -10088,
+		CreatorID: "creator-1",
+		GroupName: "VIP",
+	})
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 90,
+		MyChatMember: &telego.ChatMemberUpdated{
+			Chat: telego.Chat{ID: -10088, Type: telego.ChatTypeSupergroup, Title: "VIP"},
+			From: telego.User{ID: 700, LanguageCode: "en"},
+			OldChatMember: &telego.ChatMemberAdministrator{
+				Status: telego.MemberStatusAdministrator,
+				User:   telego.User{ID: 999, IsBot: true},
+			},
+			NewChatMember: &telego.ChatMemberLeft{
+				Status: telego.MemberStatusLeft,
+				User:   telego.User{ID: 999, IsBot: true},
+			},
+		},
+	})
+
+	if h.store.hasManagedGroup(-10088) {
+		t.Fatal("managed group still present after bot removal, want auto-unregister")
+	}
+	h.caller.assertExactMethods(t, "sendMessage")
+	body := parseSendMessageRequest(t, h.caller.lastSendMessageBody())
+	if got := body.ChatID; got != 77 {
+		t.Fatalf("sendMessage chat_id = %d, want owner DM chat_id 77", got)
+	}
+	if !strings.Contains(body.Text, "Group unregistered automatically") {
+		t.Fatalf("sendMessage text = %q, want auto-unregister owner notice", body.Text)
+	}
+}
+
+func TestRegisterTelegramHandlersMyChatMemberRemovalIgnoresUnmanagedGroup(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 91,
+		MyChatMember: &telego.ChatMemberUpdated{
+			Chat: telego.Chat{ID: -10089, Type: telego.ChatTypeSupergroup, Title: "VIP"},
+			From: telego.User{ID: 700, LanguageCode: "en"},
+			OldChatMember: &telego.ChatMemberAdministrator{
+				Status: telego.MemberStatusAdministrator,
+				User:   telego.User{ID: 999, IsBot: true},
+			},
+			NewChatMember: &telego.ChatMemberLeft{
+				Status: telego.MemberStatusLeft,
+				User:   telego.User{ID: 999, IsBot: true},
+			},
+		},
+	})
+
+	h.caller.assertExactMethods(t)
+}
+
+func TestRegisterTelegramHandlersMyChatMemberRemovalCleanupLagStillNotifiesOwner(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarnessWithCleaner(t, routeTestCleaner{
+		deleteEventSubsFn: func(_ context.Context, creatorID string) error {
+			if creatorID != "creator-1" {
+				t.Fatalf("DeleteEventSubsForCreator(%q), want creator-1", creatorID)
+			}
+			return errors.New("cleanup lag")
+		},
+	})
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		TwitchLogin:     "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.store.setViewerIdentity(core.UserIdentity{
+		TelegramUserID: 77,
+		Language:       "en",
+	})
+	h.store.setManagedGroup(core.ManagedGroup{
+		ChatID:    -10090,
+		CreatorID: "creator-1",
+		GroupName: "VIP",
+	})
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 92,
+		MyChatMember: &telego.ChatMemberUpdated{
+			Chat: telego.Chat{ID: -10090, Type: telego.ChatTypeSupergroup, Title: "VIP"},
+			From: telego.User{ID: 700, LanguageCode: "en"},
+			OldChatMember: &telego.ChatMemberAdministrator{
+				Status: telego.MemberStatusAdministrator,
+				User:   telego.User{ID: 999, IsBot: true},
+			},
+			NewChatMember: &telego.ChatMemberBanned{
+				Status: telego.MemberStatusBanned,
+				User:   telego.User{ID: 999, IsBot: true},
+			},
+		},
+	})
+
+	if h.store.hasManagedGroup(-10090) {
+		t.Fatal("managed group still present after bot removal with cleanup lag, want auto-unregister")
+	}
+	h.caller.assertExactMethods(t, "sendMessage")
+	body := parseSendMessageRequest(t, h.caller.lastSendMessageBody())
+	if !strings.Contains(body.Text, "Subscriber cleanup could not finish immediately") {
+		t.Fatalf("sendMessage text = %q, want cleanup-lag owner notice", body.Text)
 	}
 }

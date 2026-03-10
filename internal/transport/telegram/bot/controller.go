@@ -48,6 +48,8 @@ const (
 	msgGroupCheckingSettings   = "group_checking_settings"
 	msgGroupSettingsOK         = "group_settings_ok"
 	msgGroupBotStatusChanged   = "group_bot_status_changed"
+	msgGroupBotRemovedOwnerDM  = "group_bot_removed_owner_dm"
+	msgGroupBotRemovedLagDM    = "group_bot_removed_cleanup_lag_dm"
 	msgGroupUnregistered       = "group_unregistered"
 	msgGroupUnregisterNotOwner = "group_unregister_not_owner"
 

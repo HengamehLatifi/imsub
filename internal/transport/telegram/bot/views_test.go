@@ -110,3 +110,15 @@ func TestBuildSubscriptionStartViewIncludesJoinButtons(t *testing.T) {
 		t.Fatalf("buildSubscriptionStartView() = %+v, want text and markup", view)
 	}
 }
+
+func TestBuildGroupBotRemovedOwnerViewEscapesGroupName(t *testing.T) {
+	t.Parallel()
+
+	view := buildGroupBotRemovedOwnerView("en", "<VIP>", false)
+	if !strings.Contains(view.text, "&lt;VIP&gt;") {
+		t.Fatalf("buildGroupBotRemovedOwnerView() text = %q, want escaped group name", view.text)
+	}
+	if strings.Contains(view.text, "<VIP>") {
+		t.Fatalf("buildGroupBotRemovedOwnerView() text = %q, did not expect raw group name", view.text)
+	}
+}

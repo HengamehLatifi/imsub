@@ -208,6 +208,12 @@ other = "• A ImSub manca il permesso admin <b>Ban utenti</b>. Serve per rimuov
 [group_bot_status_changed]
 other = "⏳ ImSub ha rilevato un cambio di stato del bot in questo gruppo. Controllo setup..."
 
+[group_bot_removed_owner_dm]
+other = "⚠️ <b>Gruppo scollegato automaticamente</b>\n\nImSub e' stato rimosso da <b>%s</b>, quindi il gruppo e' stato scollegato dalla tua configurazione creator.\n\nApri <code>/creator</code> in DM se vuoi controllare lo stato o registrare di nuovo il gruppo."
+
+[group_bot_removed_cleanup_lag_dm]
+other = "⚠️ <b>Gruppo scollegato automaticamente</b>\n\nImSub e' stato rimosso da <b>%s</b>, quindi il gruppo e' stato scollegato dalla tua configurazione creator.\n\nLa pulizia subscriber non e' riuscita subito e verra' ritentata piu' tardi.\n\nApri <code>/creator</code> in DM se vuoi controllare lo stato o registrare di nuovo il gruppo."
+
 [group_already_linked]
 other = "❗️ Questo gruppo e' gia' collegato a <b>%s</b>.\n\nUsa <code>/unregistergroup</code> per scollegarlo prima di apportare modifiche."
 

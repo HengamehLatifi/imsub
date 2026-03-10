@@ -194,12 +194,65 @@ func (c *Bot) onMyChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMe
 			})
 		}
 	case telego.MemberStatusLeft, telego.MemberStatusBanned:
-		if c.groupMatchesActiveCreator(ctx, update.Chat.ID) {
-			c.log().Info("bot removed from registered group; auto-unregister should be the next step", "chat_id", update.Chat.ID, "new_status", update.NewChatMember.MemberStatus())
-		}
+		c.handleBotRemovedFromManagedGroup(ctx, update.Chat.ID, update.NewChatMember.MemberStatus())
 	}
 
 	return nil
+}
+
+func (c *Bot) handleBotRemovedFromManagedGroup(ctx context.Context, chatID int64, newStatus string) {
+	group, ok, err := c.store.ManagedGroupByChatID(ctx, chatID)
+	if err != nil {
+		c.log().Warn("ManagedGroupByChatID for bot removal failed", "chat_id", chatID, "error", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	creator, ok, err := c.store.Creator(ctx, group.CreatorID)
+	if err != nil {
+		c.log().Warn("Creator lookup for bot removal failed", "chat_id", chatID, "creator_id", group.CreatorID, "error", err)
+		return
+	}
+	if !ok {
+		c.log().Warn("Creator missing for managed group on bot removal", "chat_id", chatID, "creator_id", group.CreatorID)
+		return
+	}
+	if c.groupUnregistration == nil {
+		c.log().Warn("group unregistration use case unavailable for bot removal", "chat_id", chatID, "creator_id", creator.ID)
+		return
+	}
+
+	res, err := c.groupUnregistration.UnregisterGroup(ctx, creator.OwnerTelegramID, chatID)
+	if err != nil {
+		c.log().Warn("auto-unregister after bot removal failed", "chat_id", chatID, "creator_id", creator.ID, "owner_telegram_id", creator.OwnerTelegramID, "new_status", newStatus, "error", err)
+		return
+	}
+	switch res.Outcome {
+	case usecase.UnregisterGroupOutcomeNotManaged:
+		return
+	case usecase.UnregisterGroupOutcomeNotOwner:
+		c.log().Warn("auto-unregister after bot removal rejected owner", "chat_id", chatID, "creator_id", creator.ID, "owner_telegram_id", creator.OwnerTelegramID)
+		return
+	case usecase.UnregisterGroupOutcomeUnregistered, usecase.UnregisterGroupOutcomeUnregisteredCleanupLag:
+	default:
+		c.log().Warn("auto-unregister after bot removal returned unexpected outcome", "chat_id", chatID, "creator_id", creator.ID, "owner_telegram_id", creator.OwnerTelegramID, "outcome", res.Outcome)
+		return
+	}
+
+	c.log().Info("auto-unregistered managed group after bot removal", "chat_id", chatID, "creator_id", creator.ID, "owner_telegram_id", creator.OwnerTelegramID, "new_status", newStatus, "cleanup_failed", res.CleanupFailed)
+	c.notifyOwnerGroupAutoUnregistered(ctx, creator, res.Group, res.CleanupFailed)
+}
+
+func (c *Bot) notifyOwnerGroupAutoUnregistered(ctx context.Context, creator core.Creator, group core.ManagedGroup, cleanupLag bool) {
+	lang := "en"
+	if identity, ok, err := c.store.UserIdentity(ctx, creator.OwnerTelegramID); err == nil && ok && identity.Language != "" {
+		lang = identity.Language
+	}
+	view := buildGroupBotRemovedOwnerView(lang, group.GroupName, cleanupLag)
+	if messageID := c.sendMsg(ctx, creator.OwnerTelegramID, view.text, &view.opts); messageID == 0 {
+		c.log().Warn("send auto-unregister owner notification failed", "creator_id", creator.ID, "owner_telegram_id", creator.OwnerTelegramID, "chat_id", group.ChatID)
+	}
 }
 
 func (c *Bot) onChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMemberUpdated) error {
@@ -515,15 +568,6 @@ func (c *Bot) loadBotGroupCapabilities(ctx context.Context, chatID int64) (botGr
 	default:
 		return botGroupCapabilities{}, nil
 	}
-}
-
-func (c *Bot) groupMatchesActiveCreator(ctx context.Context, chatID int64) bool {
-	_, ok, err := c.store.ManagedGroupByChatID(ctx, chatID)
-	if err != nil {
-		c.log().Warn("ManagedGroupByChatID for my_chat_member check failed", "chat_id", chatID, "error", err)
-		return false
-	}
-	return ok
 }
 
 func (c *Bot) countUntrackedMembers(ctx context.Context, chatID int64) int {

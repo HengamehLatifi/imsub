@@ -86,6 +86,19 @@ func buildSubscriptionStartView(lang, broadcasterLogin string, targets core.Join
 	}
 }
 
+func buildGroupBotRemovedOwnerView(lang, groupName string, cleanupLag bool) sharedView {
+	key := msgGroupBotRemovedOwnerDM
+	if cleanupLag {
+		key = msgGroupBotRemovedLagDM
+	}
+	return sharedView{
+		text: fmt.Sprintf(i18n.Translate(lang, key), html.EscapeString(groupName)),
+		opts: client.MessageOptions{
+			ParseMode: telego.ModeHTML,
+		},
+	}
+}
+
 func buildViewerOAuthFailureView(lang, key string) sharedView { return buildTextView(lang, key) }
 
 func buildCreatorOAuthFailureView(lang, key string) sharedView {

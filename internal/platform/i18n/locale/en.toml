@@ -208,6 +208,12 @@ other = "• ImSub is missing the <b>Ban Users</b> administrator permission. Thi
 [group_bot_status_changed]
 other = "⏳ ImSub detected a bot status change in this group. Checking setup..."
 
+[group_bot_removed_owner_dm]
+other = "⚠️ <b>Group unregistered automatically</b>\n\nImSub was removed from <b>%s</b>, so the group has been unregistered from your creator setup.\n\nOpen <code>/creator</code> in DM if you want to review your status or register the group again."
+
+[group_bot_removed_cleanup_lag_dm]
+other = "⚠️ <b>Group unregistered automatically</b>\n\nImSub was removed from <b>%s</b>, so the group has been unregistered from your creator setup.\n\nSubscriber cleanup could not finish immediately and will be retried later.\n\nOpen <code>/creator</code> in DM if you want to review your status or register the group again."
+
 [group_already_linked]
 other = "❗️ This group is already linked to <b>%s</b>.\n\nUse <code>/unregistergroup</code> to unlink it first if you want to make changes."
 

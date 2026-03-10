@@ -33,7 +33,9 @@ Access is enforced continuously: Twitch EventSub webhooks trigger grants and kic
 ## Features
 
 - **Real-time access control** — EventSub webhooks grant and revoke group access within seconds of subscription changes.
+- **Immediate invite delivery** — when a `channel.subscribe` EventSub arrives for a linked viewer, ImSub can proactively DM fresh Telegram join links without waiting for `/start`.
 - **Background reconciliation** — a periodic job re-syncs every active creator's subscriber list every 15 minutes as a safety net.
+- **Creator blocklist sync** — creators can sync permanent Twitch bans into ImSub so blocked users stop receiving invites, have join requests declined, and are removed from managed groups.
 - **OAuth-based linking** — both viewers and creators securely link their Twitch accounts through standard OAuth flows.
 - **Self-contained** — single Go binary with Redis; no message queues, external workers, or additional databases.
 - **Prometheus metrics** — built-in `/metrics` endpoint for monitoring with Grafana or any Prometheus-compatible stack.
@@ -442,7 +444,7 @@ If valid, bot stores a managed-group record keyed by `chat_id` and initializes:
 - Verifies Twitch HMAC signature
 - Enforces message freshness (±10 minutes)
 - Deduplicates by message ID in Redis (24h TTL)
-- `channel.subscribe` → adds to subscription cache
+- `channel.subscribe` → adds to subscription cache and can proactively DM fresh invites to linked viewers
 - `channel.subscription.end` → removes from cache, kicks from group, notifies user
 
 </details>
@@ -467,7 +469,6 @@ Planned improvements and open design questions, roughly ordered by impact.
 
 ### Subscription lifecycle
 
-- **Immediate invite on new subscription**: when a `channel.subscribe` EventSub notification reaches the bot and the viewer mapping is already cached (Telegram user ID + Twitch user ID), proactively DM the viewer a fresh group invite instead of waiting for them to run `/start` again.
 - **Grace period after subscription end**: instead of kicking immediately on `channel.subscription.end`, keep the user in the group for a configurable window (e.g. 24–72h) and kick only if they haven't resubscribed by then. Requires a delayed job or a scheduled sweep.
 - **EventSub secret rotation key-ring**: replace single static `IMSUB_TWITCH_EVENTSUB_SECRET` usage with a shared persisted key-ring (`current` + `previous`) so all app instances verify with dual-secret during a bounded grace period. Rotate on schedule (not every restart), explicitly migrate EventSub subscriptions to the new secret (create/verify/delete old), and retire the previous key after migration completes.
 - **Subscription tier awareness**: different tiers could map to different groups or roles within the same group (e.g. Tier 3 gets a VIP group).
@@ -481,7 +482,6 @@ Planned improvements and open design questions, roughly ordered by impact.
 ### Access control
 
 - **Creator allowlist**: let creators manually grant group access to specific users (e.g. mods, friends) who aren't subscribers, bypassing the subscription check.
-- **Creator blocklist**: let creators permanently deny access to specific users regardless of subscription status. Sync with banned twitch users.
 
 ### Group lifecycle
 
@@ -490,7 +490,6 @@ Planned improvements and open design questions, roughly ordered by impact.
 - **Bot removal auto-unregister**: when Telegram sends a `my_chat_member` update showing the bot was removed or kicked from a managed group, automatically unregister that group and notify the owner. For now the code only logs this as the next step.
 - **Pre-populated group handling**: when a creator runs `/registergroup` on a group that already has members, decide what to do: kick everyone who isn't a verified subscriber, invite existing members to verify via `/start`, or ignore them. Currently the bot ignores pre-existing members entirely.
 - **Untracked member policy**: the bot now records untracked users seen via `chat_member` updates and group messages. They are observational only: resets and automatic removal paths act only on tracked memberships. The next step is a creator-configurable response policy: ignore, DM to verify, start a grace period, or kick.
-- **Forum / multi-topic group support**: Telegram supergroups can have topics enabled. Verify that invite links, kicks, and join request approvals work correctly in topic-enabled groups.
 
 ### GDPR compliance
 
@@ -500,9 +499,6 @@ Planned improvements and open design questions, roughly ordered by impact.
 - **Data retention policy**: define and enforce retention limits for event logs, untracked membership records, and OAuth tokens. Automatically purge data beyond the retention window.
 - **Privacy policy link**: surface a link to the privacy policy in the `/start` flow and `/help` output.
 
-### Data model hygiene
-
-- **Tracked-group reverse-index hygiene**: keep `imsub:user:groups:tracked:*` consistent with canonical `imsub:group:tracked:*` sets; run periodic repair to fix stale or missing links.
 
 ### UX polish
 
