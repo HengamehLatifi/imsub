@@ -63,16 +63,34 @@ type GroupPolicy string
 const (
 	// GroupPolicyObserve records untracked members without enforcement.
 	GroupPolicyObserve GroupPolicy = "observe"
+	// GroupPolicyObserveWarn records untracked members and warns when one joins.
+	GroupPolicyObserveWarn GroupPolicy = "observe_warn"
+	// GroupPolicyKick removes observed unverified members immediately.
+	GroupPolicyKick GroupPolicy = "kick"
+	// GroupPolicyGraceWeek removes observed unverified members after 7 days.
+	GroupPolicyGraceWeek GroupPolicy = "grace_7d"
 )
 
 // ManagedGroup represents a Telegram group linked to a creator.
 type ManagedGroup struct {
-	ChatID       int64
-	CreatorID    string
-	GroupName    string
-	Policy       GroupPolicy
-	RegisteredAt time.Time
-	UpdatedAt    time.Time
+	ChatID               int64
+	CreatorID            string
+	GroupName            string
+	Policy               GroupPolicy
+	RegistrationThreadID int
+	RegisteredAt         time.Time
+	UpdatedAt            time.Time
+}
+
+// UntrackedGroupMember represents a user observed in a managed group but not
+// currently tracked as verified.
+type UntrackedGroupMember struct {
+	ChatID         int64
+	TelegramUserID int64
+	Source         string
+	FirstSeenAt    time.Time
+	LastSeenAt     time.Time
+	LastStatus     string
 }
 
 // ActiveCreatorGroups packages the active creator record with its managed groups.

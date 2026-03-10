@@ -47,10 +47,11 @@ type MainMenuCallbacks struct {
 
 // CreatorMenuCallbacks defines callback data for the creator status menu.
 type CreatorMenuCallbacks struct {
-	Refresh      string
-	ManageGroups string
-	Blocklist    string
-	Reset        string
+	Refresh         string
+	ManageGroups    string
+	Blocklist       string
+	BlocklistActive bool
+	Reset           string
 }
 
 func buildMainMenuMarkup(lang string, callbacks MainMenuCallbacks) *telego.InlineKeyboardMarkup {
@@ -77,7 +78,7 @@ func CreatorStatusMenuMarkup(lang, reconnectURL string, callbacks CreatorMenuCal
 		rows = append(rows, tu.InlineKeyboardRow(ManageButton(i18n.Translate(lang, btnManageGroups), callbacks.ManageGroups)))
 	}
 	if strings.TrimSpace(callbacks.Blocklist) != "" {
-		rows = append(rows, tu.InlineKeyboardRow(BlocklistButton(i18n.Translate(lang, btnBlocklistSync), callbacks.Blocklist)))
+		rows = append(rows, tu.InlineKeyboardRow(BlocklistButton(i18n.Translate(lang, btnBlocklistSync), callbacks.Blocklist, callbacks.BlocklistActive)))
 	}
 	rows = append(rows, tu.InlineKeyboardRow(DeleteButton(i18n.Translate(lang, btnReset), callbacks.Reset)))
 	return tu.InlineKeyboard(rows...)
@@ -221,8 +222,12 @@ func ManageButton(text, data string) telego.InlineKeyboardButton {
 }
 
 // BlocklistButton creates a creator ban-sync toggle button.
-func BlocklistButton(text, data string) telego.InlineKeyboardButton {
-	return IconCallbackButton(text, data, blocklistButtonEmojiID)
+func BlocklistButton(text, data string, active bool) telego.InlineKeyboardButton {
+	button := IconCallbackButton(text, data, blocklistButtonEmojiID)
+	if active {
+		return button.WithStyle("success")
+	}
+	return button
 }
 
 // GroupButton creates a managed-group selection button.

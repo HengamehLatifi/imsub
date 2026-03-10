@@ -42,10 +42,11 @@ type sendMessageRequest struct {
 }
 
 type routeTestHarness struct {
-	bot       *telego.Bot
-	baseGroup *telegohandler.HandlerGroup
-	store     *routeTestStore
-	caller    *routeTestCaller
+	controller *Bot
+	bot        *telego.Bot
+	baseGroup  *telegohandler.HandlerGroup
+	store      *routeTestStore
+	caller     *routeTestCaller
 }
 
 func newRouteTestHarness(t *testing.T) routeTestHarness {
@@ -107,10 +108,11 @@ func newRouteTestHarnessWithCleaner(t *testing.T, cleaner usecaseGroupUnregistra
 	controller.RegisterTelegramHandlers()
 
 	return routeTestHarness{
-		bot:       bot,
-		baseGroup: bh.BaseGroup(),
-		store:     store,
-		caller:    caller,
+		controller: controller,
+		bot:        bot,
+		baseGroup:  bh.BaseGroup(),
+		store:      store,
+		caller:     caller,
 	}
 }
 
@@ -220,10 +222,10 @@ func mustMarshalJSON(v any) json.RawMessage {
 	return b
 }
 
-func (c *routeTestCaller) setBotUserID(id int64) {
+func (c *routeTestCaller) setBotUserID() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.botUserID = id
+	c.botUserID = 999
 }
 
 func (c *routeTestCaller) setChatMember(userID int64, raw json.RawMessage) {
@@ -242,6 +244,18 @@ func (c *routeTestCaller) setMethodError(method string, err error) {
 		c.errByMethod = make(map[string]error)
 	}
 	c.errByMethod[method] = err
+}
+
+func (c *routeTestCaller) setChatMemberCount(count int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.getChatMemberCount = count
+}
+
+func (c *routeTestCaller) setChatAdministrators(raw json.RawMessage) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.getChatAdminsResult = raw
 }
 
 func (c *routeTestCaller) Call(_ context.Context, url string, data *telegoapi.RequestData) (*telegoapi.Response, error) {
@@ -275,7 +289,7 @@ func (c *routeTestCaller) Call(_ context.Context, url string, data *telegoapi.Re
 				"chat": {"id": 1, "type": "private"}
 			}`),
 		}, nil
-	case "answerCallbackQuery", "approveChatJoinRequest", "declineChatJoinRequest":
+	case "answerCallbackQuery", "approveChatJoinRequest", "declineChatJoinRequest", "banChatMember", "unbanChatMember":
 		return &telegoapi.Response{
 			Ok:     true,
 			Result: json.RawMessage(`true`),
@@ -376,19 +390,21 @@ func (c *routeTestCaller) lastSendMessageBody() json.RawMessage {
 type routeTestStore struct {
 	routeTestStoreStub
 
-	mu                    sync.Mutex
-	saveOAuthStateCalls   int
-	savedOAuthStateCalls  []core.OAuthStatePayload
-	deleteOAuthStateCalls int
-	viewerIdentity        core.UserIdentity
-	viewerIdentityOK      bool
-	creatorByID           map[string]core.Creator
-	ownedCreator          core.Creator
-	ownedCreatorOK        bool
-	managedGroupsByChatID map[int64]core.ManagedGroup
-	trackedMembersByGroup map[int64]map[int64]bool
-	untrackedUpserts      []routeTestUntrackedUpsert
-	blockedByCreatorUser  map[string]map[string]bool
+	mu                      sync.Mutex
+	saveOAuthStateCalls     int
+	savedOAuthStateCalls    []core.OAuthStatePayload
+	deleteOAuthStateCalls   int
+	viewerIdentity          core.UserIdentity
+	viewerIdentityOK        bool
+	creatorByID             map[string]core.Creator
+	ownedCreator            core.Creator
+	ownedCreatorOK          bool
+	managedGroupsByChatID   map[int64]core.ManagedGroup
+	trackedMembersByGroup   map[int64]map[int64]bool
+	untrackedUpserts        []routeTestUntrackedUpsert
+	untrackedMembersByGroup map[int64]map[int64]core.UntrackedGroupMember
+	untrackedCountByChatID  map[int64]int
+	blockedByCreatorUser    map[string]map[string]bool
 }
 
 type routeTestUntrackedUpsert struct {
@@ -573,6 +589,16 @@ func (s *routeTestStore) DeleteManagedGroup(_ context.Context, chatID int64) err
 	return nil
 }
 
+func (s *routeTestStore) UpsertManagedGroup(_ context.Context, group core.ManagedGroup) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.managedGroupsByChatID == nil {
+		s.managedGroupsByChatID = make(map[int64]core.ManagedGroup)
+	}
+	s.managedGroupsByChatID[group.ChatID] = group
+	return nil
+}
+
 func (s *routeTestStore) IsTrackedGroupMember(_ context.Context, chatID, telegramUserID int64) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -607,6 +633,22 @@ func (s *routeTestStore) RemoveTrackedGroupMember(_ context.Context, chatID, tel
 func (s *routeTestStore) UpsertUntrackedGroupMember(_ context.Context, chatID, telegramUserID int64, source, status string, _ time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.untrackedMembersByGroup == nil {
+		s.untrackedMembersByGroup = make(map[int64]map[int64]core.UntrackedGroupMember)
+	}
+	if s.untrackedMembersByGroup[chatID] == nil {
+		s.untrackedMembersByGroup[chatID] = make(map[int64]core.UntrackedGroupMember)
+	}
+	s.untrackedMembersByGroup[chatID][telegramUserID] = core.UntrackedGroupMember{
+		ChatID:         chatID,
+		TelegramUserID: telegramUserID,
+		Source:         source,
+		LastStatus:     status,
+	}
+	if s.untrackedCountByChatID == nil {
+		s.untrackedCountByChatID = make(map[int64]int)
+	}
+	s.untrackedCountByChatID[chatID] = len(s.untrackedMembersByGroup[chatID])
 	s.untrackedUpserts = append(s.untrackedUpserts, routeTestUntrackedUpsert{
 		chatID:         chatID,
 		telegramUserID: telegramUserID,
@@ -614,6 +656,40 @@ func (s *routeTestStore) UpsertUntrackedGroupMember(_ context.Context, chatID, t
 		status:         status,
 	})
 	return nil
+}
+
+func (s *routeTestStore) RemoveUntrackedGroupMember(_ context.Context, chatID, telegramUserID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.untrackedMembersByGroup != nil && s.untrackedMembersByGroup[chatID] != nil {
+		delete(s.untrackedMembersByGroup[chatID], telegramUserID)
+	}
+	if s.untrackedCountByChatID != nil {
+		s.untrackedCountByChatID[chatID] = len(s.untrackedMembersByGroup[chatID])
+	}
+	return nil
+}
+
+func (s *routeTestStore) CountUntrackedGroupMembers(_ context.Context, chatID int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.untrackedCountByChatID == nil {
+		return 0, nil
+	}
+	return s.untrackedCountByChatID[chatID], nil
+}
+
+func (s *routeTestStore) ListUntrackedGroupMembers(_ context.Context, chatID int64) ([]core.UntrackedGroupMember, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.untrackedMembersByGroup == nil || s.untrackedMembersByGroup[chatID] == nil {
+		return nil, nil
+	}
+	out := make([]core.UntrackedGroupMember, 0, len(s.untrackedMembersByGroup[chatID]))
+	for _, member := range s.untrackedMembersByGroup[chatID] {
+		out = append(out, member)
+	}
+	return out, nil
 }
 
 func routeTestAdminMemberJSON(userID int64, isBot bool, canInviteUsers bool, canRestrictMembers bool) json.RawMessage {
@@ -683,6 +759,9 @@ func (routeTestStoreStub) UpsertUntrackedGroupMember(context.Context, int64, int
 func (routeTestStoreStub) RemoveUntrackedGroupMember(context.Context, int64, int64) error { return nil }
 func (routeTestStoreStub) CountUntrackedGroupMembers(context.Context, int64) (int, error) {
 	return 0, nil
+}
+func (routeTestStoreStub) ListUntrackedGroupMembers(context.Context, int64) ([]core.UntrackedGroupMember, error) {
+	return nil, nil
 }
 func (routeTestStoreStub) Creator(context.Context, string) (core.Creator, bool, error) {
 	return core.Creator{}, false, nil

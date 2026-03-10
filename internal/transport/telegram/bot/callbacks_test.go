@@ -1,6 +1,10 @@
 package bot
 
-import "testing"
+import (
+	"testing"
+
+	"imsub/internal/core"
+)
 
 func TestParseCallbackAction(t *testing.T) {
 	t.Parallel()
@@ -15,6 +19,7 @@ func TestParseCallbackAction(t *testing.T) {
 		{name: "creator reconnect", in: "creator:reconnect", want: callbackAction{domain: callbackDomainCreator, verb: callbackVerbReconnect}, ok: true},
 		{name: "creator open groups", in: "creator:open:groups", want: callbackAction{domain: callbackDomainCreator, verb: callbackVerbOpen, target: creatorCallbackTargetGroups}, ok: true},
 		{name: "creator pick group", in: "creator:pick:group:123", want: callbackAction{domain: callbackDomainCreator, verb: callbackVerbPick, target: creatorCallbackTargetGroup, chatID: 123}, ok: true},
+		{name: "group pick policy", in: "group:pick:observe_warn:-100:321", want: callbackAction{domain: callbackDomainGroup, verb: callbackVerbPick, policy: core.GroupPolicyObserveWarn, chatID: -100, threadID: 321}, ok: true},
 		{name: "reset pick both", in: "reset:pick:viewer:both", want: callbackAction{domain: callbackDomainReset, verb: callbackVerbPick, origin: resetOriginViewer, scope: resetScopeBoth}, ok: true},
 		{name: "invalid domain", in: "other:refresh", ok: false},
 		{name: "invalid creator target", in: "creator:open:other", ok: false},

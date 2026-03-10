@@ -22,6 +22,18 @@ other = "Gestisci gruppi"
 [btn_blocklist_sync]
 other = "Sync blocklist"
 
+[btn_group_policy_observe]
+other = "Ignora"
+
+[btn_group_policy_observe_warn]
+other = "Ignora, ma avvisa all'ingresso"
+
+[btn_group_policy_kick]
+other = "Espelli subito"
+
+[btn_group_policy_grace]
+other = "Tolleranza 7 giorni, poi espelli"
+
 [btn_manage_group]
 other = "Gestisci Gruppo - %s"
 
@@ -178,6 +190,27 @@ other = "Questo comando deve essere usato in una chat di gruppo."
 [group_registered]
 other = "✅ <b>Gruppo collegato</b>\n\nQuesto gruppo e' ora connesso a <b>%s</b>.\n\n⏳ L'accesso subscriber iniziera' a sincronizzarsi a breve.\n📩 Apri <code>/creator</code> in DM per controllare lo stato."
 
+[group_policy_prompt_html]
+other = "🛡️ <b>Scegli la policy del gruppo</b>\n\nSeleziona come ImSub deve gestire i membri presenti nel gruppo ma non ancora verificati tramite ImSub.\n\nQuesta scelta diventa il comportamento predefinito del gruppo subito dopo la registrazione."
+
+[group_policy_existing_members_html]
+other = "⚠️ Questo gruppo sembra avere gia' <b>%d membro/i non admin</b>.\n\nTelegram <b>non</b> fornisce a ImSub l'elenco completo dei membri gia' dentro al gruppo, quindi ImSub non puo' verificare, avvisare o rimuovere subito tutti quelli che sono gia' qui.\n\nLa policy scelta qui sotto verra' applicata solo ai membri che ImSub riuscira' a <b>osservare da ora in poi</b>, ad esempio nuovi ingressi e utenti che il bot vedra' successivamente nel gruppo.\n\nSe vuoi un controllo accessi rigoroso fin dall'inizio, rimuovi manualmente i membri non verificati gia' presenti e falli rientrare tramite ImSub."
+
+[group_policy_observe_line]
+other = "• Policy membri non verificati: <b>Ignora e traccia</b>"
+
+[group_policy_observe_warn_line]
+other = "• Policy membri non verificati: <b>Ignora, ma avvisa nel gruppo quando entra un utente non verificato</b>"
+
+[group_policy_kick_line]
+other = "• Policy membri non verificati: <b>Espelli subito i non verificati osservati</b>"
+
+[group_policy_grace_line]
+other = "• Policy membri non verificati: <b>Tolleranza 7 giorni, poi espulsione se ancora non verificati</b>"
+
+[group_untracked_join_warning_html]
+other = "⚠️ <b>Utente non verificato rilevato</b>\n\nUn utente e' entrato in questo gruppo, ma ImSub non puo' ancora confermare il suo abbonamento.\n\nQuesto gruppo e' configurato per <b>consentire l'ingresso</b> e continuare a tracciarlo.\n\nPer un controllo accessi rigoroso, chiedi ai membri di verificarsi con <code>/start</code> e rientrare tramite un invito ImSub."
+
 [group_checking_settings]
 other = "⏳ Controllo impostazioni del gruppo..."
 
@@ -194,7 +227,7 @@ other = "• Il gruppo e' <b>pubblico</b> (ha un username). Chiunque puo' trovar
 other = "• Il gruppo ha <b>%d membro/i non admin</b> che non sono tracciati dal bot. Questi utenti sono entrati prima della configurazione di ImSub e il loro stato di abbonamento non e' verificato. Considera di rimuoverli e farli rientrare tramite ImSub."
 
 [group_warn_join_by_request]
-other = "• <b>Approva nuovi membri</b> non e' abilitato. Se un admin condivide un altro link di invito, gli utenti potrebbero entrare senza verifica dell'abbonamento. Abilita <b>Approva nuovi membri</b> nelle impostazioni del gruppo, cosi' tutti i tentativi di accesso richiederanno l'approvazione, non solo quelli dai link di ImSub."
+other = "• I link di invito generati da ImSub richiedono approvazione prima dell'ingresso. Se un admin condivide un link di invito diverso, gli utenti potrebbero entrare senza verifica dell'abbonamento. Per mantenere il controllo accessi, usa solo link di invito generati da ImSub."
 
 [group_warn_bot_not_admin]
 other = "• ImSub non e' un <b>amministratore del gruppo</b>. Promuovi il bot ad amministratore prima di registrare questo gruppo."

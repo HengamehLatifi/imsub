@@ -30,32 +30,43 @@ const (
 	msgCmdHelpViewer  = "cmd_help_viewer"
 
 	// Group registration.
-	msgGroupNotGroup           = "group_not_group"
-	msgGroupNotAdmin           = "group_not_admin"
-	msgGroupNotCreator         = "group_not_creator"
-	msgGroupRegistered         = "group_registered"
-	msgGroupRegisteredDM       = "group_registered_dm"
-	msgGroupAlreadyLinked      = "group_already_linked"
-	msgGroupDifferentLinked    = "group_different_linked"
-	msgGroupTakenByOther       = "group_taken_by_other"
-	msgGroupWarnPublic         = "group_warn_public"          //nolint:gosec // i18n key, not a credential
-	msgGroupWarnJoinByReq      = "group_warn_join_by_request" //nolint:gosec // i18n key, not a credential
-	msgGroupWarnUntrackedUsers = "group_warn_untracked_users" //nolint:gosec // i18n key, not a credential
-	msgGroupWarnBotNotAdmin    = "group_warn_bot_not_admin"   //nolint:gosec // i18n key, not a credential
-	msgGroupWarnBotNoInvite    = "group_warn_bot_no_invite"   //nolint:gosec // i18n key, not a credential
-	msgGroupWarnBotNoRestrict  = "group_warn_bot_no_restrict" //nolint:gosec // i18n key, not a credential
-	msgGroupWarnSettingsIntro  = "group_warn_settings_intro"  //nolint:gosec // i18n key, not a credential
-	msgGroupCheckingSettings   = "group_checking_settings"
-	msgGroupSettingsOK         = "group_settings_ok"
-	msgGroupBotStatusChanged   = "group_bot_status_changed"
-	msgGroupBotRemovedOwnerDM  = "group_bot_removed_owner_dm"
-	msgGroupBotRemovedLagDM    = "group_bot_removed_cleanup_lag_dm"
-	msgGroupUnregistered       = "group_unregistered"
-	msgGroupUnregisterNotOwner = "group_unregister_not_owner"
+	msgGroupNotGroup              = "group_not_group"
+	msgGroupNotAdmin              = "group_not_admin"
+	msgGroupNotCreator            = "group_not_creator"
+	msgGroupRegistered            = "group_registered"
+	msgGroupRegisteredDM          = "group_registered_dm"
+	msgGroupAlreadyLinked         = "group_already_linked"
+	msgGroupDifferentLinked       = "group_different_linked"
+	msgGroupTakenByOther          = "group_taken_by_other"
+	msgGroupWarnPublic            = "group_warn_public"          //nolint:gosec // i18n key, not a credential
+	msgGroupWarnJoinByReq         = "group_warn_join_by_request" //nolint:gosec // i18n key, not a credential
+	msgGroupWarnUntrackedUsers    = "group_warn_untracked_users" //nolint:gosec // i18n key, not a credential
+	msgGroupWarnBotNotAdmin       = "group_warn_bot_not_admin"   //nolint:gosec // i18n key, not a credential
+	msgGroupWarnBotNoInvite       = "group_warn_bot_no_invite"   //nolint:gosec // i18n key, not a credential
+	msgGroupWarnBotNoRestrict     = "group_warn_bot_no_restrict" //nolint:gosec // i18n key, not a credential
+	msgGroupWarnSettingsIntro     = "group_warn_settings_intro"  //nolint:gosec // i18n key, not a credential
+	msgGroupPolicyPrompt          = "group_policy_prompt_html"
+	msgGroupPolicyExistingMembers = "group_policy_existing_members_html"
+	msgGroupPolicyObserveLine     = "group_policy_observe_line"
+	msgGroupPolicyObserveWarnLine = "group_policy_observe_warn_line"
+	msgGroupPolicyKickLine        = "group_policy_kick_line"
+	msgGroupPolicyGraceLine       = "group_policy_grace_line"
+	msgGroupUntrackedJoinWarning  = "group_untracked_join_warning_html"
+	msgGroupCheckingSettings      = "group_checking_settings"
+	msgGroupSettingsOK            = "group_settings_ok"
+	msgGroupBotStatusChanged      = "group_bot_status_changed"
+	msgGroupBotRemovedOwnerDM     = "group_bot_removed_owner_dm"
+	msgGroupBotRemovedLagDM       = "group_bot_removed_cleanup_lag_dm"
+	msgGroupUnregistered          = "group_unregistered"
+	msgGroupUnregisterNotOwner    = "group_unregister_not_owner"
 
 	// Buttons.
-	btnBack     = "btn_back"
-	btnCopyLink = "btn_copy_link"
+	btnBack                   = "btn_back"
+	btnCopyLink               = "btn_copy_link"
+	btnGroupPolicyObserve     = "btn_group_policy_observe"
+	btnGroupPolicyObserveWarn = "btn_group_policy_observe_warn"
+	btnGroupPolicyKick        = "btn_group_policy_kick"
+	btnGroupPolicyGrace       = "btn_group_policy_grace"
 )
 
 // Dependencies configure Telegram bot construction.
@@ -97,6 +108,7 @@ type controllerStore interface {
 	RemoveTrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
 	UpsertUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64, source, status string, at time.Time) error
 	RemoveUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
+	ListUntrackedGroupMembers(ctx context.Context, chatID int64) ([]core.UntrackedGroupMember, error)
 }
 
 // Bot owns Telegram bot flows and callback orchestration.

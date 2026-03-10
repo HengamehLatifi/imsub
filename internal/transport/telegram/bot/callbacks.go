@@ -3,6 +3,8 @@ package bot
 import (
 	"strconv"
 	"strings"
+
+	"imsub/internal/core"
 )
 
 type callbackDomain string
@@ -10,6 +12,7 @@ type callbackDomain string
 const (
 	callbackDomainViewer  callbackDomain = "viewer"
 	callbackDomainCreator callbackDomain = "creator"
+	callbackDomainGroup   callbackDomain = "group"
 	callbackDomainReset   callbackDomain = "reset"
 )
 
@@ -44,12 +47,14 @@ const (
 )
 
 type callbackAction struct {
-	domain callbackDomain
-	verb   callbackVerb
-	origin resetOrigin
-	scope  resetScope
-	target string
-	chatID int64
+	domain   callbackDomain
+	verb     callbackVerb
+	origin   resetOrigin
+	scope    resetScope
+	target   string
+	policy   core.GroupPolicy
+	chatID   int64
+	threadID int
 }
 
 func (a callbackAction) String() string {
@@ -63,8 +68,14 @@ func (a callbackAction) String() string {
 	if a.target != "" {
 		parts = append(parts, a.target)
 	}
+	if a.policy != "" {
+		parts = append(parts, string(a.policy))
+	}
 	if a.chatID != 0 {
 		parts = append(parts, strconv.FormatInt(a.chatID, 10))
+	}
+	if a.threadID != 0 {
+		parts = append(parts, strconv.Itoa(a.threadID))
 	}
 	return strings.Join(parts, ":")
 }
@@ -123,6 +134,34 @@ func parseCallbackAction(data string) (callbackAction, bool) {
 			action.chatID = chatID
 			return action, true
 		case callbackVerbCancel:
+			return callbackAction{}, false
+		default:
+			return callbackAction{}, false
+		}
+	case callbackDomainGroup:
+		switch action.verb {
+		case callbackVerbPick:
+			if len(parts) != 4 && len(parts) != 5 {
+				return callbackAction{}, false
+			}
+			action.policy = core.GroupPolicy(parts[2])
+			if !validGroupPolicy(action.policy) {
+				return callbackAction{}, false
+			}
+			chatID, err := strconv.ParseInt(parts[3], 10, 64)
+			if err != nil || chatID == 0 {
+				return callbackAction{}, false
+			}
+			action.chatID = chatID
+			if len(parts) == 5 {
+				threadID, err := strconv.Atoi(parts[4])
+				if err != nil || threadID <= 0 {
+					return callbackAction{}, false
+				}
+				action.threadID = threadID
+			}
+			return action, true
+		case callbackVerbRefresh, callbackVerbRegister, callbackVerbReconnect, callbackVerbOpen, callbackVerbBack, callbackVerbMenu, callbackVerbCancel, callbackVerbExecute:
 			return callbackAction{}, false
 		default:
 			return callbackAction{}, false
@@ -186,6 +225,15 @@ func (s resetScope) valid() bool {
 	}
 }
 
+func validGroupPolicy(p core.GroupPolicy) bool {
+	switch p {
+	case core.GroupPolicyObserve, core.GroupPolicyObserveWarn, core.GroupPolicyKick, core.GroupPolicyGraceWeek:
+		return true
+	default:
+		return false
+	}
+}
+
 func viewerRefreshCallback() string {
 	return callbackAction{domain: callbackDomainViewer, verb: callbackVerbRefresh}.String()
 }
@@ -220,6 +268,10 @@ func creatorGroupExecuteCallback(chatID int64) string {
 
 func creatorBlocklistToggleCallback() string {
 	return callbackAction{domain: callbackDomainCreator, verb: callbackVerbExecute, target: creatorCallbackTargetBlocklist}.String()
+}
+
+func groupRegisterPolicyCallback(chatID int64, threadID int, policy core.GroupPolicy) string {
+	return callbackAction{domain: callbackDomainGroup, verb: callbackVerbPick, policy: policy, chatID: chatID, threadID: threadID}.String()
 }
 
 func resetOpenCallback(origin resetOrigin) string {

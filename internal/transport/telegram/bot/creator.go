@@ -582,7 +582,7 @@ func buildCreatorStatusView(lang, reconnectURL string, creator core.Creator, sta
 			),
 			opts: client.MessageOptions{
 				DisablePreview: true,
-				Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(false, false), statusMenuRows...),
+				Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(false, false, false), statusMenuRows...),
 			},
 		}
 	}
@@ -601,7 +601,7 @@ func buildCreatorStatusView(lang, reconnectURL string, creator core.Creator, sta
 		),
 		opts: client.MessageOptions{
 			DisablePreview: true,
-			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(len(groups) > 1, true), statusMenuRows...),
+			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(len(groups) > 1, true, creator.BlocklistSyncEnabled), statusMenuRows...),
 		},
 	}
 }

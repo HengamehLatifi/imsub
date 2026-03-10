@@ -66,7 +66,7 @@ func NewGroupRegistrationUseCase(store groupRegistrationStore, sink events.Event
 }
 
 // RegisterGroup decides and applies the store-backed part of /registergroup.
-func (u *GroupRegistrationUseCase) RegisterGroup(ctx context.Context, ownerTelegramID, groupChatID int64, groupName string) (RegisterGroupResult, error) {
+func (u *GroupRegistrationUseCase) RegisterGroup(ctx context.Context, ownerTelegramID, groupChatID int64, groupName string, policy core.GroupPolicy, registrationThreadID int) (RegisterGroupResult, error) {
 	creator, ok, err := u.store.OwnedCreatorForUser(ctx, ownerTelegramID)
 	if err != nil {
 		u.recordOutcome(ctx, "failed")
@@ -110,12 +110,17 @@ func (u *GroupRegistrationUseCase) RegisterGroup(ctx context.Context, ownerTeleg
 		}, nil
 	}
 
+	if policy == "" {
+		policy = core.GroupPolicyObserve
+	}
+
 	managedGroup := core.ManagedGroup{
-		ChatID:       groupChatID,
-		CreatorID:    creator.ID,
-		GroupName:    groupName,
-		Policy:       core.GroupPolicyObserve,
-		RegisteredAt: u.now(),
+		ChatID:               groupChatID,
+		CreatorID:            creator.ID,
+		GroupName:            groupName,
+		Policy:               policy,
+		RegistrationThreadID: registrationThreadID,
+		RegisteredAt:         u.now(),
 	}
 	if err := u.store.UpsertManagedGroup(ctx, managedGroup); err != nil {
 		u.recordOutcome(ctx, "failed")

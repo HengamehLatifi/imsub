@@ -482,14 +482,13 @@ Planned improvements and open design questions, roughly ordered by impact.
 ### Access control
 
 - **Creator allowlist**: let creators manually grant group access to specific users (e.g. mods, friends) who aren't subscribers, bypassing the subscription check.
+- **Sub-only channel mode**: let a creator flag a Telegram channel as sub-only so that only verified subscribers can view its posts. The bot would manage channel membership the same way it manages group membership — granting access on `channel.subscribe`, revoking on `channel.subscription.end`, and reconciling periodically. This extends the existing group flow to Telegram channels, which have different invite-link and kick semantics.
 
 ### Group lifecycle
 
 - **Creator reset group action**: when a creator deletes their creator data, ask what to do with members of their managed groups. Options: kick all tracked members from those groups, or keep them. Currently `deleteCreatorData` removes the creator record and managed-group state but does not touch the Telegram groups themselves, so members remain there as orphans. The same choice should apply to the "reset both" flow.
-- **Unregister group**: let a creator unlink one managed Telegram group without deleting the entire creator record (e.g. `/unregistergroup` or an inline button). It should ask what to do with the current tracked members of that group: kick them, or leave them in place. Right now the only way to detach a managed group is to delete the creator entirely or remove the bot from the chat.
-- **Bot removal auto-unregister**: when Telegram sends a `my_chat_member` update showing the bot was removed or kicked from a managed group, automatically unregister that group and notify the owner. For now the code only logs this as the next step.
-- **Pre-populated group handling**: when a creator runs `/registergroup` on a group that already has members, decide what to do: kick everyone who isn't a verified subscriber, invite existing members to verify via `/start`, or ignore them. Currently the bot ignores pre-existing members entirely.
-- **Untracked member policy**: the bot now records untracked users seen via `chat_member` updates and group messages. They are observational only: resets and automatic removal paths act only on tracked memberships. The next step is a creator-configurable response policy: ignore, DM to verify, start a grace period, or kick.
+- **Unregister group**: let a creator unlink one managed Telegram group without deleting the entire creator record (e.g. `/unregistergroup` or an inline button). It should ask what to do with the current tracked members of that group: kick them, or leave them in place.
+- **Per-group policy editing in `/creator`**: registration now requires choosing an unverified-member policy per group, but the policy cannot yet be changed afterwards. Add a per-group policy editor to the `/creator` flow so creators can review and update each managed group's current policy without re-registering the group.
 
 ### GDPR compliance
 
@@ -505,6 +504,10 @@ Planned improvements and open design questions, roughly ordered by impact.
 - **`/help` command**: add a `/help` command that explains what the bot does, lists available commands, and provides a way to reach support (e.g. a link to a support channel, a contact username, or an inline form to submit issues). Could later evolve into an FAQ or guided troubleshooting flow.
 - **Localization**: add more languages beyond English and Italian.
 - **Inline status refresh**: let viewers check their subscription status without going through the full `/start` flow again.
+
+### API access
+
+- **User API keys for group member export**: optionally let developers provide a Telegram user API key (MTProto) so ImSub can fetch the full member list of a managed group. Telegram Bot API cannot enumerate group members, so a user API key would bypass that limitation and enable bulk member retrieval for reconciliation, pre-populated group handling, and untracked member detection. Keys would be stored encrypted, rate-limited, and revocable.
 
 ---
 

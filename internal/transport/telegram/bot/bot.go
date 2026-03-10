@@ -125,7 +125,7 @@ func viewerMainMenuMarkup(lang string) *telego.InlineKeyboardMarkup {
 	return telegramui.MainMenuMarkup(lang, viewerMainMenuCallbacks())
 }
 
-func creatorStatusMenuCallbacks(hasManageGroups, isActive bool) telegramui.CreatorMenuCallbacks {
+func creatorStatusMenuCallbacks(hasManageGroups, isActive, blocklistActive bool) telegramui.CreatorMenuCallbacks {
 	callbacks := telegramui.CreatorMenuCallbacks{
 		Refresh: creatorRefreshCallback(),
 		Reset:   resetOpenCallback(resetOriginCreator),
@@ -135,6 +135,7 @@ func creatorStatusMenuCallbacks(hasManageGroups, isActive bool) telegramui.Creat
 	}
 	if isActive {
 		callbacks.Blocklist = creatorBlocklistToggleCallback()
+		callbacks.BlocklistActive = blocklistActive
 	}
 	return callbacks
 }
@@ -202,9 +203,14 @@ func (c *Bot) RegisterTelegramHandlers() {
 
 func (c *Bot) onCallbackQuery(ctx context.Context, q telego.CallbackQuery) {
 	lang := i18n.NormalizeLanguage(q.From.LanguageCode)
-	var msgID int
+	exec := callbackExecution{
+		userID: q.From.ID,
+		lang:   lang,
+	}
 	if q.Message != nil {
-		msgID = q.Message.GetMessageID()
+		exec.editMsgID = q.Message.GetMessageID()
+		exec.editChatID = q.Message.GetChat().ID
+		exec.editChatTitle = q.Message.GetChat().Title
 	}
 
 	action, ok := parseCallbackAction(q.Data)
@@ -214,7 +220,8 @@ func (c *Bot) onCallbackQuery(ctx context.Context, q telego.CallbackQuery) {
 		return
 	}
 
-	alertErr := c.dispatchCallbackAction(ctx, q.From.ID, msgID, lang, action)
+	exec.action = action
+	alertErr := c.dispatchCallbackAction(ctx, exec)
 	if alertErr != "" {
 		c.answerCallbackAlert(ctx, q.ID, alertErr)
 		return
@@ -222,21 +229,33 @@ func (c *Bot) onCallbackQuery(ctx context.Context, q telego.CallbackQuery) {
 
 	callbackText := ""
 	if action.verb == callbackVerbRefresh {
-		callbackText = i18n.Translate(lang, msgCbRefreshed)
+		callbackText = i18n.Translate(exec.lang, msgCbRefreshed)
 	}
 	c.answerCallback(ctx, q.ID, callbackText)
 }
 
-func (c *Bot) dispatchCallbackAction(ctx context.Context, userID int64, editMsgID int, lang string, action callbackAction) string {
-	switch action.domain {
+type callbackExecution struct {
+	userID        int64
+	editChatID    int64
+	editChatTitle string
+	editThreadID  int
+	editMsgID     int
+	lang          string
+	action        callbackAction
+}
+
+func (c *Bot) dispatchCallbackAction(ctx context.Context, exec callbackExecution) string {
+	switch exec.action.domain {
 	case callbackDomainViewer:
-		return c.handleViewerStart(ctx, userID, editMsgID, lang)
+		return c.handleViewerStart(ctx, exec.userID, exec.editMsgID, exec.lang)
 	case callbackDomainCreator:
-		return c.handleCreatorCallback(ctx, userID, editMsgID, lang, action)
+		return c.handleCreatorCallback(ctx, exec.userID, exec.editMsgID, exec.lang, exec.action)
+	case callbackDomainGroup:
+		return c.handleGroupCallback(ctx, exec.userID, exec.editChatID, exec.editChatTitle, exec.editThreadID, exec.editMsgID, exec.lang, exec.action)
 	case callbackDomainReset:
-		return c.handleResetAction(ctx, userID, editMsgID, lang, action)
+		return c.handleResetAction(ctx, exec.userID, exec.editMsgID, exec.lang, exec.action)
 	}
-	c.log().Warn("unsupported callback action", "telegram_user_id", userID, "data", action.String())
+	c.log().Warn("unsupported callback action", "telegram_user_id", exec.userID, "data", exec.action.String())
 	return ""
 }
 

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"imsub/internal/core"
 )
 
 // UpsertUntrackedGroupMember records telegramUserID as observed but untracked in chatID.
@@ -55,4 +57,42 @@ func (s *Store) CountUntrackedGroupMembers(ctx context.Context, chatID int64) (i
 		return 0, fmt.Errorf("redis scard untracked group members: %w", err)
 	}
 	return int(count), nil
+}
+
+// ListUntrackedGroupMembers returns the observed-but-untracked users for chatID.
+func (s *Store) ListUntrackedGroupMembers(ctx context.Context, chatID int64) ([]core.UntrackedGroupMember, error) {
+	rawIDs, err := s.rdb.SMembers(ctx, keyUntrackedGroupMembers(chatID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis smembers untracked group members: %w", err)
+	}
+	if len(rawIDs) == 0 {
+		return nil, nil
+	}
+
+	out := make([]core.UntrackedGroupMember, 0, len(rawIDs))
+	for _, rawID := range rawIDs {
+		telegramUserID, parseErr := strconv.ParseInt(rawID, 10, 64)
+		if parseErr != nil {
+			s.log().Warn("ListUntrackedGroupMembers invalid telegram user id, skipping", "chat_id", chatID, "telegram_user_id_raw", rawID, "error", parseErr)
+			continue
+		}
+
+		vals, getErr := s.rdb.HGetAll(ctx, keyTrackedGroupMemberMeta(chatID, telegramUserID)).Result()
+		if getErr != nil {
+			return nil, fmt.Errorf("redis hgetall untracked group member meta: %w", getErr)
+		}
+		if len(vals) == 0 || vals["state"] != "untracked" {
+			continue
+		}
+
+		out = append(out, core.UntrackedGroupMember{
+			ChatID:         chatID,
+			TelegramUserID: telegramUserID,
+			Source:         vals["source"],
+			FirstSeenAt:    parseGroupTime(vals["first_seen_at"]),
+			LastSeenAt:     parseGroupTime(vals["last_seen_at"]),
+			LastStatus:     vals["last_status"],
+		})
+	}
+	return out, nil
 }

@@ -126,9 +126,10 @@ func Run() error {
 	jobRunner := jobs.NewRunner(logger, eventSink)
 	subscriberTask := jobs.NewSubscriberTask(reconcileSvc)
 	eventSubTask := jobs.NewEventSubTask(eventSubSvc)
-	integrityTask := jobs.NewIntegrityAuditTask(s, logger, eventSink)
 	tgClient := telegramclient.New(tgBot, tgLimiter, logger)
 	tgGroups := telegramgroups.New(tgBot, tgLimiter, logger, s)
+	gracePolicyTask := jobs.NewGracePolicyTask(s, tgGroups, logger)
+	integrityTask := jobs.NewIntegrityAuditTask(s, logger, eventSink)
 	blocklistSvc = core.NewCreatorBlocklistService(s, twitchAPI, tgGroups, logger)
 
 	flowController := telegrambot.New(telegrambot.Dependencies{
@@ -232,6 +233,12 @@ func Run() error {
 		return jobRunner.RunScheduled(gctx, jobs.Schedule{
 			Task:     integrityTask,
 			Interval: 20 * time.Minute,
+		})
+	})
+	g.Go(func() error {
+		return jobRunner.RunScheduled(gctx, jobs.Schedule{
+			Task:     gracePolicyTask,
+			Interval: 1 * time.Hour,
 		})
 	})
 

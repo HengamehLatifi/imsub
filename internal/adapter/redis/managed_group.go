@@ -29,6 +29,12 @@ func (s *Store) parseManagedGroup(vals map[string]string, chatID int64) core.Man
 		RegisteredAt: parseGroupTime(vals["registered_at"]),
 		UpdatedAt:    parseGroupTime(vals["updated_at"]),
 	}
+	if rawThreadID := vals["registration_thread_id"]; rawThreadID != "" {
+		threadID, err := strconv.Atoi(rawThreadID)
+		if err == nil && threadID > 0 {
+			group.RegistrationThreadID = threadID
+		}
+	}
 	if group.Policy == "" {
 		group.Policy = core.GroupPolicyObserve
 	}
@@ -140,15 +146,20 @@ func (s *Store) UpsertManagedGroup(ctx context.Context, group core.ManagedGroup)
 		return err
 	}
 
-	pipe := s.rdb.TxPipeline()
-	pipe.HSet(ctx, keyManagedGroup(group.ChatID), map[string]string{
+	fields := map[string]string{
 		"chat_id":       strconv.FormatInt(group.ChatID, 10),
 		"creator_id":    group.CreatorID,
 		"group_name":    group.GroupName,
 		"policy":        string(group.Policy),
 		"registered_at": group.RegisteredAt.UTC().Format(time.RFC3339),
 		"updated_at":    group.UpdatedAt.UTC().Format(time.RFC3339),
-	})
+	}
+	if group.RegistrationThreadID > 0 {
+		fields["registration_thread_id"] = strconv.Itoa(group.RegistrationThreadID)
+	}
+
+	pipe := s.rdb.TxPipeline()
+	pipe.HSet(ctx, keyManagedGroup(group.ChatID), fields)
 	pipe.SAdd(ctx, keyManagedGroupsSet(), strconv.FormatInt(group.ChatID, 10))
 	pipe.SAdd(ctx, keyManagedGroupsByCreator(group.CreatorID), strconv.FormatInt(group.ChatID, 10))
 	if ok && existing.CreatorID != "" && existing.CreatorID != group.CreatorID {

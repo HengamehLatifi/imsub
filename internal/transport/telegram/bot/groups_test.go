@@ -121,3 +121,20 @@ func TestBuildGroupBotStatusChangedView(t *testing.T) {
 		t.Fatalf("buildGroupBotStatusChangedView() = %+v, want text", view)
 	}
 }
+
+func TestBuildGroupRegistrationPolicyPromptView(t *testing.T) {
+	t.Parallel()
+
+	view := buildGroupRegistrationPolicyPromptView("en", 10, -100, 321, 4)
+	if view.text == "" || view.opts.ReplyToMessageID != 10 || view.opts.Markup == nil {
+		t.Fatalf("buildGroupRegistrationPolicyPromptView() = %+v, want text reply target and markup", view)
+	}
+}
+
+func TestFormatGroupPolicyLine(t *testing.T) {
+	t.Parallel()
+
+	if got := formatGroupPolicyLine("en", core.GroupPolicyObserveWarn); got == "" {
+		t.Fatal("formatGroupPolicyLine() = empty, want text")
+	}
+}

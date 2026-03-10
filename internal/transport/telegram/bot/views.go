@@ -51,7 +51,7 @@ func buildCreatorReconnectRequiredView(lang, reconnectURL string) sharedView {
 	return sharedView{
 		text: i18n.Translate(lang, msgCreatorReconnectNeeded),
 		opts: client.MessageOptions{
-			Markup: ui.CreatorStatusMenuMarkup(lang, reconnectURL, creatorStatusMenuCallbacks(false, false)),
+			Markup: ui.CreatorStatusMenuMarkup(lang, reconnectURL, creatorStatusMenuCallbacks(false, false, false)),
 		},
 	}
 }

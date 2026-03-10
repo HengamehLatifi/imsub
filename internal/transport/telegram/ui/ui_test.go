@@ -130,10 +130,11 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	}
 
 	creatorCallbacks := CreatorMenuCallbacks{
-		Refresh:      "creator:refresh",
-		ManageGroups: "creator:open:groups",
-		Blocklist:    "creator:exec:blocklist",
-		Reset:        "reset:open:creator",
+		Refresh:         "creator:refresh",
+		ManageGroups:    "creator:open:groups",
+		Blocklist:       "creator:exec:blocklist",
+		BlocklistActive: true,
+		Reset:           "reset:open:creator",
 	}
 	creatorMenu := CreatorMainMenuMarkup("en", CreatorMenuCallbacks{
 		Refresh: "creator:refresh",
@@ -183,6 +184,9 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	if reconnectMenu.InlineKeyboard[2][0].IconCustomEmojiID != blocklistButtonEmojiID {
 		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) blocklist icon = %q, want %q", "en", reconnectMenu.InlineKeyboard[2][0].IconCustomEmojiID, blocklistButtonEmojiID)
 	}
+	if reconnectMenu.InlineKeyboard[2][0].Style != "success" {
+		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) blocklist style = %q, want %q", "en", reconnectMenu.InlineKeyboard[2][0].Style, "success")
+	}
 	if reconnectMenu.InlineKeyboard[3][0].CallbackData != creatorCallbacks.Reset {
 		t.Errorf("CreatorStatusMenuMarkup(%q, reconnectURL) reset callback = %+v, want CallbackData=%q", "en", reconnectMenu.InlineKeyboard[3][0], creatorCallbacks.Reset)
 	}
@@ -224,6 +228,16 @@ func TestMainMenuAndWithMainMenuMarkup(t *testing.T) {
 	}
 	if creatorReconnectExtra.InlineKeyboard[3][0].CallbackData != creatorCallbacks.Blocklist {
 		t.Errorf("WithCreatorStatusMenu(%q, reconnectURL, rows=1) blocklist callback = %+v, want CallbackData=%q", "en", creatorReconnectExtra.InlineKeyboard[3][0], creatorCallbacks.Blocklist)
+	}
+
+	inactiveCallbacks := CreatorMenuCallbacks{
+		Refresh:   "creator:refresh",
+		Blocklist: "creator:exec:blocklist",
+		Reset:     "reset:open:creator",
+	}
+	inactiveMenu := CreatorStatusMenuMarkup("en", "", inactiveCallbacks)
+	if inactiveMenu.InlineKeyboard[1][0].Style != "" {
+		t.Errorf("CreatorStatusMenuMarkup(%q) inactive blocklist style = %q, want empty", "en", inactiveMenu.InlineKeyboard[1][0].Style)
 	}
 
 	resetPicker := ResetScopePickerMarkup("en", "reset:pick:viewer:viewer", "reset:pick:viewer:creator", "reset:pick:viewer:both", "reset:back:viewer")

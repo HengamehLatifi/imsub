@@ -522,7 +522,7 @@ func TestRegisterTelegramHandlersRegisterGroupBlocksWhenBotLacksRequiredPermissi
 		TwitchLogin:     "streamer",
 		OwnerTelegramID: 77,
 	})
-	h.caller.setBotUserID(999)
+	h.caller.setBotUserID()
 	h.caller.setChatMember(77, routeTestAdminMemberJSON(77, false, true, true))
 	h.caller.setChatMember(999, routeTestAdminMemberJSON(999, true, false, false))
 
@@ -555,6 +555,11 @@ func TestRegisterTelegramHandlersRegisterGroupRepliesInSameForumTopic(t *testing
 		TwitchLogin:     "streamer",
 		OwnerTelegramID: 77,
 	})
+	h.caller.setChatMemberCount(2)
+	h.caller.setChatAdministrators(json.RawMessage(`[
+		{"status":"administrator","user":{"id":77,"is_bot":false,"first_name":"Admin"}},
+		{"status":"administrator","user":{"id":999,"is_bot":true,"first_name":"ImSub"}}
+	]`))
 	h.caller.setChatMember(77, routeTestAdminMemberJSON(77, false, true, true))
 
 	h.handleUpdate(t, telego.Update{
@@ -583,6 +588,145 @@ func TestRegisterTelegramHandlersRegisterGroupRepliesInSameForumTopic(t *testing
 	}
 	if got := body["message_thread_id"]; got != float64(321) {
 		t.Fatalf("sendMessage message_thread_id = %v, want 321", got)
+	}
+}
+
+func TestRegisterTelegramHandlersRegisterGroupAlwaysPromptsForPolicy(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		TwitchLogin:     "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.caller.setBotUserID()
+	h.caller.setChatMemberCount(2)
+	h.caller.setChatAdministrators(json.RawMessage(`[
+		{"status":"administrator","user":{"id":77,"is_bot":false,"first_name":"Admin"}},
+		{"status":"administrator","user":{"id":999,"is_bot":true,"first_name":"ImSub"}}
+	]`))
+	h.caller.setChatMember(77, routeTestAdminMemberJSON(77, false, true, true))
+	h.caller.setChatMember(999, routeTestAdminMemberJSON(999, true, true, true))
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 49,
+		Message: &telego.Message{
+			MessageID: 12,
+			Text:      "/registergroup",
+			Chat: telego.Chat{
+				ID:    -1005,
+				Type:  telego.ChatTypeSupergroup,
+				Title: "VIP",
+			},
+			From: &telego.User{
+				ID:           77,
+				LanguageCode: "en",
+			},
+		},
+	})
+
+	body := h.caller.lastSendMessageBody()
+	h.assertEditMessageTextContains(t, body, "Choose group policy")
+	h.assertEditMessageLacksCallback(t, body, creatorRefreshCallback())
+	h.assertEditMessageHasCallback(t, body, groupRegisterPolicyCallback(-1005, 0, core.GroupPolicyObserve))
+	h.assertEditMessageHasCallback(t, body, groupRegisterPolicyCallback(-1005, 0, core.GroupPolicyObserveWarn))
+	h.assertEditMessageHasCallback(t, body, groupRegisterPolicyCallback(-1005, 0, core.GroupPolicyKick))
+	h.assertEditMessageHasCallback(t, body, groupRegisterPolicyCallback(-1005, 0, core.GroupPolicyGraceWeek))
+	if h.store.hasManagedGroup(-1005) {
+		t.Fatal("group should not be registered before choosing a policy")
+	}
+}
+
+func TestRegisterTelegramHandlersRegisterGroupPromptIncludesExistingMemberWarningWhenNeeded(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		TwitchLogin:     "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.caller.setBotUserID()
+	h.caller.setChatMemberCount(6)
+	h.caller.setChatAdministrators(json.RawMessage(`[
+		{"status":"administrator","user":{"id":77,"is_bot":false,"first_name":"Admin"}},
+		{"status":"administrator","user":{"id":999,"is_bot":true,"first_name":"ImSub"}}
+	]`))
+	h.caller.setChatMember(77, routeTestAdminMemberJSON(77, false, true, true))
+	h.caller.setChatMember(999, routeTestAdminMemberJSON(999, true, true, true))
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 50,
+		Message: &telego.Message{
+			MessageID: 12,
+			Text:      "/registergroup",
+			Chat: telego.Chat{
+				ID:    -1006,
+				Type:  telego.ChatTypeSupergroup,
+				Title: "VIP",
+			},
+			From: &telego.User{
+				ID:           77,
+				LanguageCode: "en",
+			},
+		},
+	})
+
+	body := h.caller.lastSendMessageBody()
+	h.assertEditMessageTextContains(t, body, "Choose group policy")
+	h.assertEditMessageTextContains(t, body, "already have <b>4 non-admin member(s)</b>")
+	h.assertEditMessageHasCallback(t, body, groupRegisterPolicyCallback(-1006, 0, core.GroupPolicyObserve))
+	h.assertEditMessageHasCallback(t, body, groupRegisterPolicyCallback(-1006, 0, core.GroupPolicyObserveWarn))
+	h.assertEditMessageHasCallback(t, body, groupRegisterPolicyCallback(-1006, 0, core.GroupPolicyKick))
+	h.assertEditMessageHasCallback(t, body, groupRegisterPolicyCallback(-1006, 0, core.GroupPolicyGraceWeek))
+	if h.store.hasManagedGroup(-1006) {
+		t.Fatal("group should not be registered before choosing a policy")
+	}
+}
+
+func TestRegisterTelegramHandlersRegisterGroupPolicyCallbackRegistersGroup(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		TwitchLogin:     "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.caller.setBotUserID()
+	h.caller.setChatMember(77, routeTestAdminMemberJSON(77, false, true, true))
+	h.caller.setChatMember(999, routeTestAdminMemberJSON(999, true, true, true))
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 51,
+		CallbackQuery: &telego.CallbackQuery{
+			ID:   "cb-group-policy",
+			Data: groupRegisterPolicyCallback(-1007, 0, core.GroupPolicyGraceWeek),
+			From: telego.User{
+				ID:           77,
+				LanguageCode: "en",
+			},
+			Message: &telego.Message{
+				MessageID: 44,
+				Chat: telego.Chat{
+					ID:    -1007,
+					Type:  telego.ChatTypeSupergroup,
+					Title: "VIP",
+				},
+			},
+		},
+	})
+
+	group, ok, err := h.store.ManagedGroupByChatID(t.Context(), -1007)
+	if err != nil || !ok {
+		t.Fatalf("ManagedGroupByChatID() = %+v, %t, %v; want stored group", group, ok, err)
+	}
+	if group.Policy != core.GroupPolicyGraceWeek {
+		t.Fatalf("group policy = %q, want %q", group.Policy, core.GroupPolicyGraceWeek)
+	}
+	if body := h.caller.lastEditMessageBody(); len(body) == 0 {
+		t.Fatal("expected registration callback to edit the policy message")
 	}
 }
 
@@ -645,6 +789,86 @@ func TestRegisterTelegramHandlersChatMemberJoinTracksUntrackedUser(t *testing.T)
 
 	if got := h.store.lastUntrackedMemberUpsert(); got.telegramUserID != 700 || got.source != "chat_member" {
 		t.Fatalf("last untracked upsert = %+v, want telegram_user_id=700 source=chat_member", got)
+	}
+}
+
+func TestRegisterTelegramHandlersChatMemberJoinKicksObservedUnverifiedUserWhenPolicyIsKick(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setManagedGroup(core.ManagedGroup{
+		ChatID:    -10034,
+		CreatorID: "creator-1",
+		GroupName: "VIP",
+		Policy:    core.GroupPolicyKick,
+	})
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 71,
+		ChatMember: &telego.ChatMemberUpdated{
+			Chat: telego.Chat{ID: -10034, Type: telego.ChatTypeSupergroup},
+			From: telego.User{ID: 702, IsBot: false},
+			OldChatMember: &telego.ChatMemberLeft{
+				Status: telego.MemberStatusLeft,
+				User:   telego.User{ID: 702, IsBot: false},
+			},
+			NewChatMember: &telego.ChatMemberMember{
+				Status: telego.MemberStatusMember,
+				User:   telego.User{ID: 702, IsBot: false},
+			},
+		},
+	})
+
+	h.caller.assertExactMethods(t, "banChatMember", "unbanChatMember")
+}
+
+func TestRegisterTelegramHandlersChatMemberJoinWarnsInRegistrationThreadWhenPolicyIsObserveWarn(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+	h.store.setOwnedCreator(core.Creator{
+		ID:              "creator-1",
+		TwitchLogin:     "streamer",
+		OwnerTelegramID: 77,
+	})
+	h.store.setViewerIdentity(core.UserIdentity{
+		TelegramUserID: 77,
+		Language:       "it",
+	})
+	h.store.setManagedGroup(core.ManagedGroup{
+		ChatID:               -10035,
+		CreatorID:            "creator-1",
+		GroupName:            "VIP",
+		Policy:               core.GroupPolicyObserveWarn,
+		RegistrationThreadID: 321,
+	})
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 72,
+		ChatMember: &telego.ChatMemberUpdated{
+			Chat: telego.Chat{ID: -10035, Type: telego.ChatTypeSupergroup},
+			From: telego.User{ID: 703, IsBot: false},
+			OldChatMember: &telego.ChatMemberLeft{
+				Status: telego.MemberStatusLeft,
+				User:   telego.User{ID: 703, IsBot: false},
+			},
+			NewChatMember: &telego.ChatMemberMember{
+				Status: telego.MemberStatusMember,
+				User:   telego.User{ID: 703, IsBot: false},
+			},
+		},
+	})
+
+	h.caller.assertExactMethods(t, "sendMessage")
+	var body map[string]any
+	if err := json.Unmarshal(h.caller.lastSendMessageBody(), &body); err != nil {
+		t.Fatalf("json.Unmarshal(sendMessage body) error = %v", err)
+	}
+	if got := body["message_thread_id"]; got != float64(321) {
+		t.Fatalf("sendMessage message_thread_id = %v, want 321", got)
+	}
+	if text, _ := body["text"].(string); !strings.Contains(text, "controllo accessi rigoroso") {
+		t.Fatalf("sendMessage text = %q, want warning copy", text)
 	}
 }
 
@@ -796,5 +1020,31 @@ func TestRegisterTelegramHandlersMyChatMemberRemovalCleanupLagStillNotifiesOwner
 	body := parseSendMessageRequest(t, h.caller.lastSendMessageBody())
 	if !strings.Contains(body.Text, "Subscriber cleanup could not finish immediately") {
 		t.Fatalf("sendMessage text = %q, want cleanup-lag owner notice", body.Text)
+	}
+}
+
+func TestRegisterTelegramHandlersMyChatMemberIgnoresNoStatusChange(t *testing.T) {
+	t.Parallel()
+
+	h := newRouteTestHarness(t)
+
+	h.handleUpdate(t, telego.Update{
+		UpdateID: 95,
+		MyChatMember: &telego.ChatMemberUpdated{
+			Chat: telego.Chat{ID: -10091, Type: telego.ChatTypeSupergroup, Title: "VIP"},
+			From: telego.User{ID: 77, LanguageCode: "en"},
+			OldChatMember: &telego.ChatMemberAdministrator{
+				Status: telego.MemberStatusAdministrator,
+				User:   telego.User{ID: 999, IsBot: true},
+			},
+			NewChatMember: &telego.ChatMemberAdministrator{
+				Status: telego.MemberStatusAdministrator,
+				User:   telego.User{ID: 999, IsBot: true},
+			},
+		},
+	})
+
+	if got := h.caller.lastSendMessageBody(); got != nil {
+		t.Fatalf("sendMessage body = %s, want nil", got)
 	}
 }

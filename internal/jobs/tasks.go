@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"imsub/internal/core"
 	"imsub/internal/events"
@@ -18,6 +19,16 @@ type subscriberReconciler interface {
 
 type eventSubReconciler interface {
 	ReconcileEventSubsOnce(ctx context.Context) error
+}
+
+type gracePolicyStore interface {
+	ListManagedGroups(ctx context.Context) ([]core.ManagedGroup, error)
+	ListUntrackedGroupMembers(ctx context.Context, chatID int64) ([]core.UntrackedGroupMember, error)
+	RemoveUntrackedGroupMember(ctx context.Context, chatID, telegramUserID int64) error
+}
+
+type groupKicker interface {
+	KickFromGroup(ctx context.Context, groupChatID, telegramUserID int64) error
 }
 
 type subscriberTask struct {
@@ -58,9 +69,32 @@ type eventSubTask struct {
 	reconciler eventSubReconciler
 }
 
+type gracePolicyTask struct {
+	store      gracePolicyStore
+	kicker     groupKicker
+	logger     *slog.Logger
+	now        func() time.Time
+	graceAfter time.Duration
+}
+
 // NewEventSubTask builds the EventSub reconciliation task.
 func NewEventSubTask(r eventSubReconciler) Task {
 	return eventSubTask{reconciler: r}
+}
+
+// NewGracePolicyTask builds the periodic enforcement task for grace-period
+// unverified-member policies.
+func NewGracePolicyTask(store gracePolicyStore, kicker groupKicker, logger *slog.Logger) Task {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return gracePolicyTask{
+		store:      store,
+		kicker:     kicker,
+		logger:     logger,
+		now:        func() time.Time { return time.Now().UTC() },
+		graceAfter: 7 * 24 * time.Hour,
+	}
 }
 
 func (t eventSubTask) Name() string { return "reconcile_eventsubs" }
@@ -80,6 +114,62 @@ func (t eventSubTask) Classify(err error) string {
 		return taskResultFailed
 	}
 	return "ok"
+}
+
+func (t gracePolicyTask) Name() string { return "enforce_group_grace_policy" }
+
+func (t gracePolicyTask) Run(ctx context.Context) error {
+	if t.store == nil || t.kicker == nil {
+		return nil
+	}
+
+	groups, err := t.store.ListManagedGroups(ctx)
+	if err != nil {
+		return fmt.Errorf("list managed groups: %w", err)
+	}
+
+	deadline := t.now().Add(-t.graceAfter)
+	var partialErrs []error
+	for _, group := range groups {
+		if group.Policy != core.GroupPolicyGraceWeek {
+			continue
+		}
+		untracked, err := t.store.ListUntrackedGroupMembers(ctx, group.ChatID)
+		if err != nil {
+			partialErrs = append(partialErrs, fmt.Errorf("list untracked group members for %d: %w", group.ChatID, err))
+			t.logger.Warn("grace policy list untracked members failed", "chat_id", group.ChatID, "error", err)
+			continue
+		}
+		for _, member := range untracked {
+			if member.FirstSeenAt.IsZero() || member.FirstSeenAt.After(deadline) {
+				continue
+			}
+			if err := t.kicker.KickFromGroup(ctx, group.ChatID, member.TelegramUserID); err != nil {
+				partialErrs = append(partialErrs, fmt.Errorf("kick unverified member %d from %d: %w", member.TelegramUserID, group.ChatID, err))
+				t.logger.Warn("grace policy kick failed", "chat_id", group.ChatID, "telegram_user_id", member.TelegramUserID, "error", err)
+				continue
+			}
+			if err := t.store.RemoveUntrackedGroupMember(ctx, group.ChatID, member.TelegramUserID); err != nil {
+				partialErrs = append(partialErrs, fmt.Errorf("remove untracked group member %d from %d: %w", member.TelegramUserID, group.ChatID, err))
+				t.logger.Warn("grace policy untracked cleanup failed", "chat_id", group.ChatID, "telegram_user_id", member.TelegramUserID, "error", err)
+			}
+		}
+	}
+	if len(partialErrs) > 0 {
+		return errors.Join(append([]error{core.ErrPartialReconcile}, partialErrs...)...)
+	}
+	return nil
+}
+
+func (t gracePolicyTask) Classify(err error) string {
+	switch {
+	case err == nil:
+		return "ok"
+	case errors.Is(err, core.ErrPartialReconcile):
+		return "partial_failure"
+	default:
+		return taskResultFailed
+	}
 }
 
 type integrityAuditStore interface {

@@ -11,6 +11,7 @@ import (
 	"imsub/internal/core"
 	"imsub/internal/platform/i18n"
 	"imsub/internal/transport/telegram/client"
+	telegramui "imsub/internal/transport/telegram/ui"
 	"imsub/internal/usecase"
 
 	"github.com/mymmrac/telego"
@@ -94,23 +95,81 @@ func (c *Bot) onRegisterGroup(ctx *tghandler.Context, msg telego.Message) error 
 		return nil
 	}
 
-	regRes, err := c.groupRegistration.RegisterGroup(ctx, msg.From.ID, msg.Chat.ID, msg.Chat.Title)
-	if err != nil {
-		c.log().Warn("RegisterGroup failed", "chat_id", msg.Chat.ID, "owner_telegram_id", msg.From.ID, "error", err)
-		return nil
-	}
-	view, ok := buildGroupRegistrationView(lang, msg.MessageID, regRes)
-	if !ok {
-		c.log().Warn("unsupported group registration outcome", "chat_id", msg.Chat.ID, "outcome", regRes.Outcome)
-		return nil
-	}
+	estimatedMembers := c.estimateExistingNonAdminMembers(ctx, msg.Chat.ID)
+	view := buildGroupRegistrationPolicyPromptView(lang, msg.MessageID, msg.Chat.ID, threadID, estimatedMembers)
 	view.opts.MessageThreadID = threadID
-
-	groupMsgID := c.sendMsg(ctx, msg.Chat.ID, view.text, &view.opts)
-	if view.dispatchFollowUp {
-		c.dispatchGroupRegistrationFollowUp(ctx, msg, lang, regRes, view, groupMsgID, threadID)
-	}
+	c.sendMsg(ctx, msg.Chat.ID, view.text, &view.opts)
 	return nil
+}
+
+func (c *Bot) handleGroupCallback(ctx context.Context, userID, chatID int64, chatTitle string, messageThreadID, editMsgID int, lang string, action callbackAction) string {
+	if action.verb != callbackVerbPick || action.policy == "" || action.chatID == 0 {
+		c.log().Warn("unsupported group callback action", "telegram_user_id", userID, "verb", action.verb, "policy", action.policy, "chat_id", action.chatID)
+		return ""
+	}
+	if chatID == 0 || action.chatID != chatID {
+		c.log().Warn("group callback chat mismatch", "telegram_user_id", userID, "callback_chat_id", action.chatID, "message_chat_id", chatID)
+		return ""
+	}
+	if c.groupRegistration == nil {
+		c.log().Warn("group registration use case unavailable for group callback", "chat_id", chatID)
+		return ""
+	}
+
+	if !c.userCanRegisterGroup(ctx, userID, chatID) {
+		return i18n.Translate(lang, msgGroupNotAdmin)
+	}
+	_, ok, err := c.creatorStatus.LoadOwnedCreator(ctx, userID)
+	if err != nil {
+		c.log().Warn("group callback getOwnedCreator failed", "chat_id", chatID, "owner_telegram_id", userID, "error", err)
+		return ""
+	}
+	if !ok {
+		return i18n.Translate(lang, msgGroupNotCreator)
+	}
+	if eval := c.evaluateBotGroupCapabilities(ctx, chatID); len(eval.issues(lang)) > 0 {
+		return formatGroupSettingWarnings(lang, eval.issues(lang))
+	}
+
+	regRes, err := c.groupRegistration.RegisterGroup(ctx, userID, chatID, chatTitle, action.policy, action.threadID)
+	if err != nil {
+		c.log().Warn("RegisterGroup from callback failed", "chat_id", chatID, "owner_telegram_id", userID, "policy", action.policy, "error", err)
+		return ""
+	}
+	view, ok := buildGroupRegistrationView(lang, editMsgID, regRes)
+	if !ok {
+		c.log().Warn("unsupported group registration outcome from callback", "chat_id", chatID, "outcome", regRes.Outcome)
+		return ""
+	}
+	c.reply(ctx, chatID, editMsgID, view.text, &view.opts)
+	if view.dispatchFollowUp {
+		c.dispatchGroupRegistrationFollowUp(ctx, telego.Message{
+			MessageID:       editMsgID,
+			MessageThreadID: messageThreadID,
+			IsTopicMessage:  messageThreadID > 0,
+			Chat: telego.Chat{
+				ID:    chatID,
+				Type:  telego.ChatTypeSupergroup,
+				Title: chatTitle,
+			},
+			From: &telego.User{ID: userID, LanguageCode: lang},
+		}, lang, regRes, view, editMsgID, messageThreadID)
+	}
+	return ""
+}
+
+func (c *Bot) userCanRegisterGroup(ctx context.Context, userID, chatID int64) bool {
+	if c.tgLimiter != nil {
+		if waitErr := c.tgLimiter.Wait(ctx, chatID); waitErr != nil {
+			c.log().Warn("Get chat member rate limit wait failed", "chat_id", chatID, "error", waitErr)
+			return false
+		}
+	}
+	member, err := c.tg.GetChatMember(ctx, &telego.GetChatMemberParams{
+		ChatID: telegoutil.ID(chatID),
+		UserID: userID,
+	})
+	return err == nil && IsAdmin(member)
 }
 
 // onUnregisterCommand handles /unregistergroup by unbinding the current Telegram group.
@@ -183,7 +242,16 @@ func (c *Bot) onMyChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMe
 		return nil
 	}
 
-	switch update.NewChatMember.MemberStatus() {
+	oldStatus := ""
+	if update.OldChatMember != nil {
+		oldStatus = update.OldChatMember.MemberStatus()
+	}
+	newStatus := update.NewChatMember.MemberStatus()
+	if oldStatus == newStatus {
+		return nil
+	}
+
+	switch newStatus {
 	case telego.MemberStatusMember, telego.MemberStatusAdministrator, telego.MemberStatusCreator:
 		lang := i18n.NormalizeLanguage(update.From.LanguageCode)
 		view := buildGroupBotStatusChangedView(lang)
@@ -194,7 +262,7 @@ func (c *Bot) onMyChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMe
 			})
 		}
 	case telego.MemberStatusLeft, telego.MemberStatusBanned:
-		c.handleBotRemovedFromManagedGroup(ctx, update.Chat.ID, update.NewChatMember.MemberStatus())
+		c.handleBotRemovedFromManagedGroup(ctx, update.Chat.ID, newStatus)
 	}
 
 	return nil
@@ -273,7 +341,7 @@ func (c *Bot) onChatMemberUpdated(ctx *tghandler.Context, update telego.ChatMemb
 	status := update.NewChatMember.MemberStatus()
 	switch status {
 	case telego.MemberStatusMember, telego.MemberStatusRestricted:
-		c.observeGroupMember(ctx, group.ChatID, memberUser.ID, "chat_member", status)
+		c.observeGroupMember(ctx, group, memberUser.ID, "chat_member", status)
 	case telego.MemberStatusLeft, telego.MemberStatusBanned:
 		c.removeObservedGroupMember(ctx, group.ChatID, memberUser.ID)
 	}
@@ -292,7 +360,7 @@ func (c *Bot) onGroupMessage(ctx *tghandler.Context, msg telego.Message) error {
 	if !ok {
 		return nil
 	}
-	c.observeGroupMember(ctx, group.ChatID, msg.From.ID, "message", telego.MemberStatusMember)
+	c.observeGroupMember(ctx, group, msg.From.ID, "message", telego.MemberStatusMember)
 	return nil
 }
 
@@ -354,6 +422,7 @@ type groupRegistrationView struct {
 
 func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecase.RegisterGroupResult) (groupRegistrationView, bool) {
 	view := groupRegistrationView{opts: client.MessageOptions{ReplyToMessageID: replyToMessageID}}
+	policyLine := formatGroupPolicyLine(lang, regRes.ExistingGroup.Policy)
 
 	switch regRes.Outcome {
 	case usecase.RegisterGroupOutcomeNotCreator:
@@ -364,6 +433,7 @@ func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecas
 		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupAlreadyLinked), html.EscapeString(regRes.Creator.TwitchLogin))
 		view.text = joinNonEmptySections(
 			textSection{text: view.groupBaseText},
+			textSection{text: policyLine},
 			textSection{text: i18n.Translate(lang, msgGroupCheckingSettings)},
 		)
 		view.dispatchFollowUp = true
@@ -371,6 +441,7 @@ func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecas
 		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupRegistered), html.EscapeString(regRes.Creator.TwitchLogin))
 		view.text = joinNonEmptySections(
 			textSection{text: view.groupBaseText},
+			textSection{text: policyLine},
 			textSection{text: i18n.Translate(lang, msgGroupCheckingSettings)},
 		)
 		view.dispatchFollowUp = true
@@ -385,7 +456,7 @@ func (c *Bot) dispatchGroupRegistrationFollowUp(ctx context.Context, msg telego.
 	if !regRes.FollowUp.NeedsActivation && !regRes.FollowUp.NeedsSettingsCheck {
 		return
 	}
-	if regRes.FollowUp.NeedsActivation {
+	if regRes.FollowUp.NeedsActivation && c.creatorActivation != nil {
 		c.runBackground(context.WithoutCancel(ctx), func(bg context.Context) {
 			c.activateCreatorOnFirstGroupRegistration(bg, regRes.Creator, msg.Chat.ID, messageThreadID, lang)
 		})
@@ -572,7 +643,10 @@ func (c *Bot) countUntrackedMembers(ctx context.Context, chatID int64) int {
 		return count
 	}
 	c.log().Warn("CountUntrackedGroupMembers failed, falling back to estimate", "chat_id", chatID, "error", err)
+	return c.estimateExistingNonAdminMembers(ctx, chatID)
+}
 
+func (c *Bot) estimateExistingNonAdminMembers(ctx context.Context, chatID int64) int {
 	if waitErr := c.tgLimiter.Wait(ctx, chatID); waitErr != nil {
 		c.log().Warn("GetChatMemberCount rate limit wait failed", "error", waitErr)
 		return 0
@@ -598,24 +672,59 @@ func (c *Bot) countUntrackedMembers(ctx context.Context, chatID int64) int {
 	return untracked
 }
 
-func (c *Bot) observeGroupMember(ctx context.Context, chatID, telegramUserID int64, source, status string) {
-	tracked, err := c.store.IsTrackedGroupMember(ctx, chatID, telegramUserID)
+func (c *Bot) observeGroupMember(ctx context.Context, group core.ManagedGroup, telegramUserID int64, source, status string) {
+	tracked, err := c.store.IsTrackedGroupMember(ctx, group.ChatID, telegramUserID)
 	if err != nil {
-		c.log().Warn("IsTrackedGroupMember failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
+		c.log().Warn("IsTrackedGroupMember failed", "chat_id", group.ChatID, "telegram_user_id", telegramUserID, "error", err)
 		return
 	}
 	now := time.Now().UTC()
 	if tracked {
-		if err := c.store.AddTrackedGroupMember(ctx, chatID, telegramUserID, source, now); err != nil {
-			c.log().Warn("AddTrackedGroupMember refresh failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
+		if err := c.store.AddTrackedGroupMember(ctx, group.ChatID, telegramUserID, source, now); err != nil {
+			c.log().Warn("AddTrackedGroupMember refresh failed", "chat_id", group.ChatID, "telegram_user_id", telegramUserID, "error", err)
 		}
-		if err := c.store.RemoveUntrackedGroupMember(ctx, chatID, telegramUserID); err != nil {
-			c.log().Warn("RemoveUntrackedGroupMember refresh failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "error", err)
+		if err := c.store.RemoveUntrackedGroupMember(ctx, group.ChatID, telegramUserID); err != nil {
+			c.log().Warn("RemoveUntrackedGroupMember refresh failed", "chat_id", group.ChatID, "telegram_user_id", telegramUserID, "error", err)
 		}
 		return
 	}
-	if err := c.store.UpsertUntrackedGroupMember(ctx, chatID, telegramUserID, source, status, now); err != nil {
-		c.log().Warn("UpsertUntrackedGroupMember failed", "chat_id", chatID, "telegram_user_id", telegramUserID, "source", source, "error", err)
+	if err := c.store.UpsertUntrackedGroupMember(ctx, group.ChatID, telegramUserID, source, status, now); err != nil {
+		c.log().Warn("UpsertUntrackedGroupMember failed", "chat_id", group.ChatID, "telegram_user_id", telegramUserID, "source", source, "error", err)
+		return
+	}
+	if group.Policy == core.GroupPolicyObserveWarn && source == "chat_member" {
+		c.sendGroupUntrackedJoinWarning(ctx, group)
+		return
+	}
+	if group.Policy != core.GroupPolicyKick {
+		return
+	}
+	if err := c.KickFromGroup(ctx, group.ChatID, telegramUserID); err != nil {
+		c.log().Warn("kick unverified group member failed", "chat_id", group.ChatID, "telegram_user_id", telegramUserID, "source", source, "error", err)
+		return
+	}
+	if err := c.store.RemoveUntrackedGroupMember(ctx, group.ChatID, telegramUserID); err != nil {
+		c.log().Warn("RemoveUntrackedGroupMember after kick failed", "chat_id", group.ChatID, "telegram_user_id", telegramUserID, "error", err)
+	}
+}
+
+func (c *Bot) sendGroupUntrackedJoinWarning(ctx context.Context, group core.ManagedGroup) {
+	lang := "en"
+	creator, ok, err := c.store.Creator(ctx, group.CreatorID)
+	if err != nil {
+		c.log().Warn("load creator for untracked join warning failed", "chat_id", group.ChatID, "creator_id", group.CreatorID, "error", err)
+	} else if ok {
+		if identity, found, identityErr := c.store.UserIdentity(ctx, creator.OwnerTelegramID); identityErr != nil {
+			c.log().Warn("load owner identity for untracked join warning failed", "chat_id", group.ChatID, "creator_id", group.CreatorID, "owner_telegram_id", creator.OwnerTelegramID, "error", identityErr)
+		} else if found && identity.Language != "" {
+			lang = i18n.NormalizeLanguage(identity.Language)
+		}
+	}
+
+	view := buildGroupUntrackedJoinWarningView(lang)
+	view.opts.MessageThreadID = group.RegistrationThreadID
+	if c.sendMsg(ctx, group.ChatID, view.text, &view.opts) == 0 {
+		c.log().Warn("send untracked join warning failed", "chat_id", group.ChatID, "registration_thread_id", group.RegistrationThreadID)
 	}
 }
 
@@ -646,6 +755,29 @@ func buildGroupReplyView(lang, key string, replyToMessageID int) sharedView {
 	return view
 }
 
+func buildGroupRegistrationPolicyPromptView(lang string, replyToMessageID int, chatID int64, threadID int, estimatedMembers int) sharedView {
+	text := i18n.Translate(lang, msgGroupPolicyPrompt)
+	if estimatedMembers > 0 {
+		text = joinNonEmptySections(
+			textSection{text: text},
+			textSection{text: fmt.Sprintf(i18n.Translate(lang, msgGroupPolicyExistingMembers), estimatedMembers)},
+		)
+	}
+
+	return sharedView{
+		text: text,
+		opts: client.MessageOptions{
+			ReplyToMessageID: replyToMessageID,
+			Markup: telegoutil.InlineKeyboard(
+				telegoutil.InlineKeyboardRow(telegramui.CallbackButton(i18n.Translate(lang, btnGroupPolicyObserve), groupRegisterPolicyCallback(chatID, threadID, core.GroupPolicyObserve))),
+				telegoutil.InlineKeyboardRow(telegramui.CallbackButton(i18n.Translate(lang, btnGroupPolicyObserveWarn), groupRegisterPolicyCallback(chatID, threadID, core.GroupPolicyObserveWarn))),
+				telegoutil.InlineKeyboardRow(telegramui.IconCallbackButton(i18n.Translate(lang, btnGroupPolicyKick), groupRegisterPolicyCallback(chatID, threadID, core.GroupPolicyKick), "5258318620722733379").WithStyle("danger")),
+				telegoutil.InlineKeyboardRow(telegramui.IconCallbackButton(i18n.Translate(lang, btnGroupPolicyGrace), groupRegisterPolicyCallback(chatID, threadID, core.GroupPolicyGraceWeek), "5258123337149717894").WithStyle("danger")),
+			),
+		},
+	}
+}
+
 func buildGroupSettingWarningsView(lang string, replyToMessageID int, issues []string) sharedView {
 	return sharedView{
 		text: formatGroupSettingWarnings(lang, issues),
@@ -664,6 +796,25 @@ func buildGroupSettingsCheckResultView(lang, groupBaseText string, issues []stri
 
 func buildGroupBotStatusChangedView(lang string) sharedView {
 	return buildTextView(lang, msgGroupBotStatusChanged)
+}
+
+func buildGroupUntrackedJoinWarningView(lang string) sharedView {
+	return buildTextView(lang, msgGroupUntrackedJoinWarning)
+}
+
+func formatGroupPolicyLine(lang string, policy core.GroupPolicy) string {
+	switch policy {
+	case core.GroupPolicyObserve:
+		return i18n.Translate(lang, msgGroupPolicyObserveLine)
+	case core.GroupPolicyObserveWarn:
+		return i18n.Translate(lang, msgGroupPolicyObserveWarnLine)
+	case core.GroupPolicyKick:
+		return i18n.Translate(lang, msgGroupPolicyKickLine)
+	case core.GroupPolicyGraceWeek:
+		return i18n.Translate(lang, msgGroupPolicyGraceLine)
+	default:
+		return i18n.Translate(lang, msgGroupPolicyObserveLine)
+	}
 }
 
 func groupMessageThreadID(msg telego.Message) int {
