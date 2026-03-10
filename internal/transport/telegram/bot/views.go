@@ -10,7 +10,6 @@ import (
 	"imsub/internal/transport/telegram/client"
 	"imsub/internal/transport/telegram/ui"
 
-	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
@@ -34,13 +33,6 @@ func buildMainMenuTextView(lang, key string) sharedView {
 	}
 }
 
-func buildHTMLTextView(lang, key string) sharedView {
-	return sharedView{
-		text: i18n.Translate(lang, key),
-		opts: client.MessageOptions{ParseMode: telego.ModeHTML},
-	}
-}
-
 func buildViewerStatusErrorView(lang string) sharedView {
 	return buildMainMenuTextView(lang, msgErrLoadStatus)
 }
@@ -59,8 +51,7 @@ func buildCreatorReconnectRequiredView(lang, reconnectURL string) sharedView {
 	return sharedView{
 		text: i18n.Translate(lang, msgCreatorReconnectNeeded),
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
-			Markup:    ui.CreatorStatusMenuMarkup(lang, reconnectURL, creatorStatusMenuCallbacks(false, false)),
+			Markup: ui.CreatorStatusMenuMarkup(lang, reconnectURL, creatorStatusMenuCallbacks(false, false)),
 		},
 	}
 }
@@ -69,8 +60,7 @@ func buildSubscriptionEndView(lang, viewerLogin, broadcasterLogin string) shared
 	return sharedView{
 		text: fmt.Sprintf(i18n.Translate(lang, msgSubEndPartial), html.EscapeString(viewerLogin)),
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
-			Markup:    ui.SubEndSubscribeMarkup(lang, broadcasterLogin),
+			Markup: ui.SubEndSubscribeMarkup(lang, broadcasterLogin),
 		},
 	}
 }
@@ -80,8 +70,7 @@ func buildSubscriptionStartView(lang, broadcasterLogin string, targets core.Join
 	return sharedView{
 		text: fmt.Sprintf(i18n.Translate(lang, msgSubStartReady), html.EscapeString(broadcasterLogin)),
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
-			Markup:    tu.InlineKeyboard(joinRows...),
+			Markup: tu.InlineKeyboard(joinRows...),
 		},
 	}
 }
@@ -93,20 +82,14 @@ func buildGroupBotRemovedOwnerView(lang, groupName string, cleanupLag bool) shar
 	}
 	return sharedView{
 		text: fmt.Sprintf(i18n.Translate(lang, key), html.EscapeString(groupName)),
-		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
-		},
+		opts: client.MessageOptions{},
 	}
 }
 
 func buildViewerOAuthFailureView(lang, key string) sharedView { return buildTextView(lang, key) }
 
 func buildCreatorOAuthFailureView(lang, key string) sharedView {
-	view := buildTextView(lang, key)
-	if key == msgCreatorReconnectMismatch {
-		view.opts = client.MessageOptions{ParseMode: telego.ModeHTML}
-	}
-	return view
+	return buildTextView(lang, key)
 }
 
 func buildOAuthLoadStatusErrorView(lang string) sharedView { return buildViewerStatusErrorView(lang) }

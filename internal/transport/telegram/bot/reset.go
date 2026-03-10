@@ -135,7 +135,7 @@ func (c *Bot) handleResetBackToMenu(ctx context.Context, telegramUserID int64, e
 }
 
 func (c *Bot) handleResetCancel(ctx context.Context, telegramUserID int64, editMsgID int, lang string) string {
-	view := buildHTMLTextView(lang, msgResetExitHTML)
+	view := buildTextView(lang, msgResetExitHTML)
 	c.reply(ctx, telegramUserID, editMsgID, view.text, &view.opts)
 	return ""
 }
@@ -257,7 +257,6 @@ func buildResetPromptView(lang string, scopes core.ScopeState, origin resetOrigi
 	return sharedView{
 		text: resetChooseScopeText(lang, scopes),
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
 			Markup: ui.ResetScopePickerMarkup(
 				lang,
 				resetPickCallback(origin, resetScopeViewer),
@@ -273,8 +272,7 @@ func buildResetConfirmReply(lang string, view resetConfirmView, origin resetOrig
 	return sharedView{
 		text: view.text,
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
-			Markup:    ui.ResetConfirmMarkup(lang, resetExecuteCallback(origin, scope), resetBackCallback(origin)),
+			Markup: ui.ResetConfirmMarkup(lang, resetExecuteCallback(origin, scope), resetBackCallback(origin)),
 		},
 	}
 }
@@ -289,14 +287,14 @@ func buildResetErrorView(lang string) sharedView {
 func buildResetEmptyView(lang string) sharedView {
 	return sharedView{
 		text: i18n.Translate(lang, msgResetNothingHTML),
-		opts: client.MessageOptions{ParseMode: telego.ModeHTML},
+		opts: client.MessageOptions{},
 	}
 }
 
 func buildResetExecutionView(lang string, res usecase.ResetResult) sharedView {
 	return sharedView{
 		text: renderResetExecutionResult(lang, res),
-		opts: client.MessageOptions{ParseMode: telego.ModeHTML},
+		opts: client.MessageOptions{},
 	}
 }
 

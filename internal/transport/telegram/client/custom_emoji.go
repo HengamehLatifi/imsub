@@ -1,10 +1,6 @@
 package client
 
-import (
-	"strings"
-
-	"github.com/mymmrac/telego"
-)
+import "strings"
 
 type customEmojiReplacement struct {
 	standard string
@@ -104,7 +100,7 @@ func customEmojiTag(fallback, customEmojiID string) string {
 }
 
 func transformOutgoingText(text string, opts *MessageOptions) string {
-	if text == "" || opts == nil || opts.ParseMode != telego.ModeHTML || opts.DisableCustomEmoji {
+	if text == "" || (opts != nil && (opts.DisableHTML || opts.DisableCustomEmoji)) {
 		return text
 	}
 

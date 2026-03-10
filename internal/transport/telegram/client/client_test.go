@@ -61,6 +61,7 @@ func TestSendIncludesMessageThreadID(t *testing.T) {
 		t.Fatalf("Send() message id = %d, want 99", got)
 	}
 	caller.assertJSONField(t, "sendMessage", "message_thread_id", float64(123))
+	caller.assertJSONField(t, "sendMessage", "parse_mode", telego.ModeHTML)
 }
 
 func TestSendDraftIncludesMessageThreadID(t *testing.T) {
@@ -74,7 +75,6 @@ func TestSendDraftIncludesMessageThreadID(t *testing.T) {
 	c := newTestClient(t, caller)
 
 	c.SendDraft(t.Context(), 100, 7, "draft", &MessageOptions{
-		ParseMode:       telego.ModeHTML,
 		MessageThreadID: 456,
 	})
 
@@ -92,11 +92,10 @@ func TestSendTransformsConfiguredEmojiForHTMLByDefault(t *testing.T) {
 	}
 	c := newTestClient(t, caller)
 
-	c.Send(t.Context(), 100, "⏳ Checking", &MessageOptions{
-		ParseMode: telego.ModeHTML,
-	})
+	c.Send(t.Context(), 100, "⏳ Checking", nil)
 
 	caller.assertJSONFieldContains(t, "sendMessage", "text", `<tg-emoji emoji-id="5386367538735104399">⏳</tg-emoji>`)
+	caller.assertJSONField(t, "sendMessage", "parse_mode", telego.ModeHTML)
 }
 
 func TestSendTransformsPlayPauseEmojiForHTML(t *testing.T) {
@@ -109,9 +108,7 @@ func TestSendTransformsPlayPauseEmojiForHTML(t *testing.T) {
 	}
 	c := newTestClient(t, caller)
 
-	c.Send(t.Context(), 100, "▶️ Start ⏸️ Stop", &MessageOptions{
-		ParseMode: telego.ModeHTML,
-	})
+	c.Send(t.Context(), 100, "▶️ Start ⏸️ Stop", nil)
 
 	caller.assertJSONFieldContains(t, "sendMessage", "text", `<tg-emoji emoji-id="5348125953090403204">▶️</tg-emoji>`)
 	caller.assertJSONFieldContains(t, "sendMessage", "text", `<tg-emoji emoji-id="5359543311897998264">⏸️</tg-emoji>`)
@@ -127,9 +124,10 @@ func TestSendLeavesPlainTextEmojiUntouched(t *testing.T) {
 	}
 	c := newTestClient(t, caller)
 
-	c.Send(t.Context(), 100, "⏳ Checking", nil)
+	c.Send(t.Context(), 100, "⏳ Checking", &MessageOptions{DisableHTML: true})
 
 	caller.assertJSONField(t, "sendMessage", "text", "⏳ Checking")
+	caller.assertJSONFieldMissing(t, "sendMessage", "parse_mode")
 }
 
 func TestSendLeavesHTMLEmojiUntouchedWhenDisabled(t *testing.T) {
@@ -143,11 +141,56 @@ func TestSendLeavesHTMLEmojiUntouchedWhenDisabled(t *testing.T) {
 	c := newTestClient(t, caller)
 
 	c.Send(t.Context(), 100, "⏳ Checking", &MessageOptions{
-		ParseMode:          telego.ModeHTML,
 		DisableCustomEmoji: true,
 	})
 
 	caller.assertJSONField(t, "sendMessage", "text", "⏳ Checking")
+	caller.assertJSONField(t, "sendMessage", "parse_mode", telego.ModeHTML)
+}
+
+func TestEditUsesHTMLByDefault(t *testing.T) {
+	t.Parallel()
+
+	caller := &recordingCaller{
+		results: map[string]json.RawMessage{
+			"editMessageText": json.RawMessage(`true`),
+		},
+	}
+	c := newTestClient(t, caller)
+
+	c.Edit(t.Context(), 100, 10, "hello", nil)
+
+	caller.assertJSONField(t, "editMessageText", "parse_mode", telego.ModeHTML)
+}
+
+func TestEditCanDisableHTML(t *testing.T) {
+	t.Parallel()
+
+	caller := &recordingCaller{
+		results: map[string]json.RawMessage{
+			"editMessageText": json.RawMessage(`true`),
+		},
+	}
+	c := newTestClient(t, caller)
+
+	c.Edit(t.Context(), 100, 10, "hello", &MessageOptions{DisableHTML: true})
+
+	caller.assertJSONFieldMissing(t, "editMessageText", "parse_mode")
+}
+
+func TestSendDraftCanDisableHTML(t *testing.T) {
+	t.Parallel()
+
+	caller := &recordingCaller{
+		results: map[string]json.RawMessage{
+			"sendMessageDraft": json.RawMessage(`true`),
+		},
+	}
+	c := newTestClient(t, caller)
+
+	c.SendDraft(t.Context(), 100, 7, "draft", &MessageOptions{DisableHTML: true})
+
+	caller.assertJSONFieldMissing(t, "sendMessageDraft", "parse_mode")
 }
 
 func newTestClient(t *testing.T, caller telegoapi.Caller) *Client {
@@ -210,5 +253,17 @@ func (c *recordingCaller) assertJSONFieldContains(t *testing.T, method, field, w
 	}
 	if !strings.Contains(got, wantSubstring) {
 		t.Fatalf("%s payload[%q] = %q, want substring %q", method, field, got, wantSubstring)
+	}
+}
+
+func (c *recordingCaller) assertJSONFieldMissing(t *testing.T, method, field string) {
+	t.Helper()
+
+	payload, ok := c.request[method]
+	if !ok {
+		t.Fatalf("request for method %q not recorded", method)
+	}
+	if got, ok := payload[field]; ok {
+		t.Fatalf("%s payload[%q] = %#v, want field omitted", method, field, got)
 	}
 }

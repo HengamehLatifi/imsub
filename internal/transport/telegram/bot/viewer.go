@@ -147,7 +147,6 @@ func buildViewerPromptView(lang, userName, authURL string) sharedView {
 	return sharedView{
 		text: fmt.Sprintf(i18n.Translate(lang, msgLinkPromptHTML), html.EscapeString(displayName)),
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
 			Markup: tu.InlineKeyboard(
 				tu.InlineKeyboardRow(ui.LinkButton(i18n.Translate(lang, btnLinkTwitch), authURL)),
 				tu.InlineKeyboardRow(ui.CopyLinkButton(i18n.Translate(lang, btnCopyLink), authURL)),
@@ -161,7 +160,6 @@ func buildViewerLinkedView(lang, twitchLogin string, targets core.JoinTargets) s
 	return sharedView{
 		text: ui.LinkedStatusWithJoinStateHTML(lang, twitchLogin, targets.ActiveCreatorNames, len(joinRows) > 0),
 		opts: client.MessageOptions{
-			ParseMode:      telego.ModeHTML,
 			Markup:         ui.WithMainMenu(lang, viewerMainMenuCallbacks(), joinRows...),
 			DisablePreview: true,
 		},

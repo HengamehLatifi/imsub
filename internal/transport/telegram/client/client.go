@@ -16,7 +16,7 @@ type limiter interface {
 
 // MessageOptions configures send/edit operations.
 type MessageOptions struct {
-	ParseMode          string
+	DisableHTML        bool
 	DisableCustomEmoji bool
 	Markup             *telego.InlineKeyboardMarkup
 	DisablePreview     bool
@@ -51,12 +51,13 @@ func (c *Client) Send(ctx context.Context, chatID int64, text string, opts *Mess
 	}
 	text = transformOutgoingText(text, opts)
 	params := tu.Message(tu.ID(chatID), text)
+	params.WithParseMode(telego.ModeHTML)
 	if opts != nil {
 		if opts.Markup != nil {
 			params.WithReplyMarkup(opts.Markup)
 		}
-		if opts.ParseMode != "" {
-			params.WithParseMode(opts.ParseMode)
+		if opts.DisableHTML {
+			params.ParseMode = ""
 		}
 		if opts.DisablePreview {
 			params.WithLinkPreviewOptions(&telego.LinkPreviewOptions{IsDisabled: true})
@@ -94,12 +95,13 @@ func (c *Client) Edit(ctx context.Context, chatID int64, messageID int, text str
 	}
 	text = transformOutgoingText(text, opts)
 	params := tu.EditMessageText(tu.ID(chatID), messageID, text)
+	params.WithParseMode(telego.ModeHTML)
 	if opts != nil {
 		if opts.Markup != nil {
 			params.WithReplyMarkup(opts.Markup)
 		}
-		if opts.ParseMode != "" {
-			params.WithParseMode(opts.ParseMode)
+		if opts.DisableHTML {
+			params.ParseMode = ""
 		}
 		if opts.DisablePreview {
 			params.WithLinkPreviewOptions(&telego.LinkPreviewOptions{IsDisabled: true})
@@ -159,13 +161,14 @@ func (c *Client) SendDraft(ctx context.Context, chatID int64, draftID int, text 
 		}
 	}
 	params := &telego.SendMessageDraftParams{
-		ChatID:  chatID,
-		DraftID: draftID,
-		Text:    text,
+		ChatID:    chatID,
+		DraftID:   draftID,
+		Text:      text,
+		ParseMode: telego.ModeHTML,
 	}
 	if opts != nil {
-		if opts.ParseMode != "" {
-			params.ParseMode = opts.ParseMode
+		if opts.DisableHTML {
+			params.ParseMode = ""
 		}
 		if opts.MessageThreadID > 0 {
 			params.MessageThreadID = opts.MessageThreadID

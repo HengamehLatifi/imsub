@@ -36,14 +36,6 @@ func TestBuildMainMenuTextView(t *testing.T) {
 	}
 }
 
-func TestBuildHTMLTextView(t *testing.T) {
-	t.Parallel()
-	view := buildHTMLTextView("en", msgCmdHelp)
-	if view.text == "" {
-		t.Fatalf("buildHTMLTextView() = %+v, want text", view)
-	}
-}
-
 func TestBuildViewerStatusErrorView(t *testing.T) {
 	t.Parallel()
 	view := buildViewerStatusErrorView("en")
@@ -60,11 +52,11 @@ func TestBuildCreatorLinkErrorView(t *testing.T) {
 	}
 }
 
-func TestBuildCreatorOAuthFailureViewReconnectMismatchUsesHTML(t *testing.T) {
+func TestBuildCreatorOAuthFailureViewReconnectMismatchReturnsText(t *testing.T) {
 	t.Parallel()
 	view := buildCreatorOAuthFailureView("en", msgCreatorReconnectMismatch)
-	if view.opts.ParseMode == "" {
-		t.Fatalf("buildCreatorOAuthFailureView() = %+v, want HTML parse mode", view)
+	if view.text == "" {
+		t.Fatalf("buildCreatorOAuthFailureView() = %+v, want text", view)
 	}
 }
 

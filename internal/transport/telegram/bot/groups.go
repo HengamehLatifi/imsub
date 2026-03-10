@@ -315,7 +315,7 @@ func (c *Bot) sendPostRegistrationMessages(ctx context.Context, opts postRegistr
 		groupBaseText: opts.groupBaseText,
 	}, nil)
 
-	c.sendDraft(ctx, opts.ownerUserID, draftID, rendered.draftDM, &client.MessageOptions{ParseMode: telego.ModeHTML})
+	c.sendDraft(ctx, opts.ownerUserID, draftID, rendered.draftDM, &client.MessageOptions{})
 
 	warnings := c.evaluateGroupSettings(ctx, opts.groupChatID).issues(opts.lang)
 	rendered = renderPostRegistrationCopy(postRegistrationCopyInput{
@@ -324,12 +324,11 @@ func (c *Bot) sendPostRegistrationMessages(ctx context.Context, opts postRegistr
 		creatorName:   opts.creatorName,
 		groupBaseText: opts.groupBaseText,
 	}, warnings)
-	c.sendDraft(ctx, opts.ownerUserID, draftID, rendered.finalDM, &client.MessageOptions{ParseMode: telego.ModeHTML})
-	c.sendMsg(ctx, opts.ownerUserID, rendered.finalDM, &client.MessageOptions{ParseMode: telego.ModeHTML})
+	c.sendDraft(ctx, opts.ownerUserID, draftID, rendered.finalDM, &client.MessageOptions{})
+	c.sendMsg(ctx, opts.ownerUserID, rendered.finalDM, &client.MessageOptions{})
 
 	if opts.groupMsgID != 0 {
 		c.reply(ctx, opts.groupChatID, opts.groupMsgID, rendered.groupMessage, &client.MessageOptions{
-			ParseMode:       telego.ModeHTML,
 			MessageThreadID: opts.messageThreadID,
 		})
 	}
@@ -361,14 +360,12 @@ func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecas
 		view.text = i18n.Translate(lang, msgGroupNotCreator)
 	case usecase.RegisterGroupOutcomeTakenByOther:
 		view.text = fmt.Sprintf(i18n.Translate(lang, msgGroupTakenByOther), html.EscapeString(regRes.OtherCreatorName))
-		view.opts.ParseMode = telego.ModeHTML
 	case usecase.RegisterGroupOutcomeAlreadyLinked:
 		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupAlreadyLinked), html.EscapeString(regRes.Creator.TwitchLogin))
 		view.text = joinNonEmptySections(
 			textSection{text: view.groupBaseText},
 			textSection{text: i18n.Translate(lang, msgGroupCheckingSettings)},
 		)
-		view.opts.ParseMode = telego.ModeHTML
 		view.dispatchFollowUp = true
 	case usecase.RegisterGroupOutcomeRegistered:
 		view.groupBaseText = fmt.Sprintf(i18n.Translate(lang, msgGroupRegistered), html.EscapeString(regRes.Creator.TwitchLogin))
@@ -376,7 +373,6 @@ func buildGroupRegistrationView(lang string, replyToMessageID int, regRes usecas
 			textSection{text: view.groupBaseText},
 			textSection{text: i18n.Translate(lang, msgGroupCheckingSettings)},
 		)
-		view.opts.ParseMode = telego.ModeHTML
 		view.dispatchFollowUp = true
 	default:
 		return groupRegistrationView{}, false
@@ -655,7 +651,6 @@ func buildGroupSettingWarningsView(lang string, replyToMessageID int, issues []s
 		text: formatGroupSettingWarnings(lang, issues),
 		opts: client.MessageOptions{
 			ReplyToMessageID: replyToMessageID,
-			ParseMode:        telego.ModeHTML,
 		},
 	}
 }
@@ -663,12 +658,12 @@ func buildGroupSettingWarningsView(lang string, replyToMessageID int, issues []s
 func buildGroupSettingsCheckResultView(lang, groupBaseText string, issues []string) sharedView {
 	return sharedView{
 		text: groupBaseText + "\n\n" + formatGroupSettingsResult(lang, issues),
-		opts: client.MessageOptions{ParseMode: telego.ModeHTML},
+		opts: client.MessageOptions{},
 	}
 }
 
 func buildGroupBotStatusChangedView(lang string) sharedView {
-	return buildHTMLTextView(lang, msgGroupBotStatusChanged)
+	return buildTextView(lang, msgGroupBotStatusChanged)
 }
 
 func groupMessageThreadID(msg telego.Message) int {

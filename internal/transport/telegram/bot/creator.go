@@ -553,7 +553,6 @@ func buildCreatorPromptView(lang, authURL string, reconnect bool) sharedView {
 	return sharedView{
 		text: i18n.Translate(lang, textKey),
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
 			Markup: tu.InlineKeyboard(
 				tu.InlineKeyboardRow(ui.LinkButton(i18n.Translate(lang, openKey), authURL)),
 				tu.InlineKeyboardRow(ui.CopyLinkButton(i18n.Translate(lang, btnCopyLink), authURL)),
@@ -582,7 +581,6 @@ func buildCreatorStatusView(lang, reconnectURL string, creator core.Creator, sta
 				groupLines,
 			),
 			opts: client.MessageOptions{
-				ParseMode:      telego.ModeHTML,
 				DisablePreview: true,
 				Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(false, false), statusMenuRows...),
 			},
@@ -602,7 +600,6 @@ func buildCreatorStatusView(lang, reconnectURL string, creator core.Creator, sta
 			groupLines,
 		),
 		opts: client.MessageOptions{
-			ParseMode:      telego.ModeHTML,
 			DisablePreview: true,
 			Markup:         ui.WithCreatorStatusMenu(lang, reconnectURL, creatorStatusMenuCallbacks(len(groups) > 1, true), statusMenuRows...),
 		},
@@ -632,8 +629,7 @@ func buildCreatorManagedGroupsView(lang string, creator core.Creator, groups []c
 	return sharedView{
 		text: text,
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
-			Markup:    tu.InlineKeyboard(rows...),
+			Markup: tu.InlineKeyboard(rows...),
 		},
 	}
 }
@@ -647,7 +643,6 @@ func buildCreatorGroupUnregisterConfirmView(lang string, creator core.Creator, g
 			html.EscapeString(creator.TwitchLogin),
 		),
 		opts: client.MessageOptions{
-			ParseMode: telego.ModeHTML,
 			Markup: tu.InlineKeyboard(
 				tu.InlineKeyboardRow(ui.UnregisterButton(i18n.Translate(lang, btnUnregisterGroup), creatorGroupExecuteCallback(group.ChatID))),
 				tu.InlineKeyboardRow(ui.BackButton(i18n.Translate(lang, btnBack), backCallback)),
